@@ -20,6 +20,7 @@ impl Drop for DecoderContext {
 }
 
 
+/// A decoder that decompress input data from another `Read`.
 pub struct Decoder<R: Read> {
     // input reader (compressed data)
     reader: R,

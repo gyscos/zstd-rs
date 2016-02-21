@@ -1,6 +1,7 @@
-//! Rust binding to the [zstd library][zstd]
+//! Rust binding to the [zstd library][zstd].
 //!
 //! This crate provides:
+//!
 //! * `Encoder` to compress data using zstd and send the output to another write.
 //! * `Decoder` to read input data from a `Read` and decompress it.
 //!

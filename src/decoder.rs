@@ -38,7 +38,7 @@ impl<R: Read> Decoder<R> {
 
         try!(ll::parse_code(unsafe { ll::ZBUFF_decompressInit(context.c) }));
 
-        let buffer_size = 320;
+        let buffer_size = unsafe { ll::ZBUFF_recommendedDInSize() };
 
         Ok(Decoder {
             reader: reader,

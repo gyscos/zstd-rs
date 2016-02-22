@@ -1,6 +1,8 @@
 # zstd
 
 [![Build Status](https://travis-ci.org/Gyscos/zstd-rs.svg?branch=master)](https://travis-ci.org/Gyscos/zstd-rs)
+[![crates.io](http://meritbadge.herokuapp.com/zstd)](https://crates.io/crates/zstd)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 This library is a rust binding for the [zstd compression library][zstd].
 

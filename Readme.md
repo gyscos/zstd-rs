@@ -8,6 +8,28 @@ This library is a rust binding for the [zstd compression library][zstd].
 
 # [Documentation][doc]
 
+## Add to `cargo.toml`
+
+```
+cargo add zstd
+```
+
+## Usage
+
+```rust
+extern crate zstd;
+
+use std::io;
+
+fn main() {
+	// Uncompress input and print the result.
+	let mut decoder = zstd::Decoder::new(io::stdin()).unwrap();
+	io::copy(&mut decoder, &mut io::stdout()).unwrap();
+}
+```
+
+# Disclaimer
+
 This implementation is largely inspired by bozaro's [lz4-rs][lz4].
 
 [zstd]: https://github.com/Cyan4973/zstd

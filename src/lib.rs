@@ -2,8 +2,22 @@
 //!
 //! This crate provides:
 //!
-//! * `Encoder` to compress data using zstd and send the output to another write.
-//! * `Decoder` to read input data from a `Read` and decompress it.
+//! * An [encoder](struct.Encoder.html) to compress data using zstd and send the output to another write.
+//! * A [decoder](struct.Decoder.html) to read input data from a `Read` and decompress it.
+//!
+//! # Example
+//!
+//! ```rust
+//! extern crate zstd;
+//!
+//! use std::io;
+//!
+//! fn main() {
+//! 	// Uncompress input and print the result.
+//! 	let mut decoder = zstd::Decoder::new(io::stdin()).unwrap();
+//! 	io::copy(&mut decoder, &mut io::stdout()).unwrap();
+//! }
+//! ```
 //!
 //! [zstd]: https://github.com/Cyan4973/zstd
 extern crate libc;
@@ -17,7 +31,7 @@ pub use decoder::Decoder;
 
 #[test]
 fn test_cycle() {
-    use std::io::{Read,Write};
+    use std::io::{Read, Write};
     let text = "This is a sample text. It is not meant to be interesting or anything. Just text, \
                 nothing more. Don't expect too much from it.";
 

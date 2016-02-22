@@ -10,8 +10,19 @@ This library is a rust binding for the [zstd compression library][zstd].
 
 ## Add to `cargo.toml`
 
+### Using [cargo-edit][cargo-edit]
+
 ```bash
 $ cargo add zstd
+```
+
+### Manually
+
+```toml
+# Cargo.toml
+
+[dependencies]
+zstd = "0.1"
 ```
 
 ## Usage
@@ -39,4 +50,5 @@ This implementation is largely inspired by bozaro's [lz4-rs][lz4].
 
 [zstd]: https://github.com/Cyan4973/zstd
 [lz4]: https://github.com/bozaro/lz4-rs
+[cargo-edit]: https://github.com/killercup/cargo-edit#cargo-add
 [doc]: https://gyscos.github.io/zstd-rs/zstd/index.html

@@ -30,7 +30,8 @@ fn main() {
 
 # TODO
 
-Benchmarks, optimizations, ...
+* Benchmarks, optimizations, ...
+* Train dictionary
 
 # Disclaimer
 

@@ -33,12 +33,29 @@ pub struct Decoder<R: Read> {
 }
 
 impl<R: Read> Decoder<R> {
+    /// Creates a new decoder.
     pub fn new(reader: R) -> IoResult<Self> {
-
         let context = DecoderContext::new();
 
         try!(ll::parse_code(unsafe { ll::ZBUFF_decompressInit(context.c) }));
 
+        Decoder::with_context(reader, context)
+    }
+
+    /// Creates a new decoder, using an existing dictionary.
+    ///
+    /// The dictionary must be the same as the one used during compression.
+    pub fn with_dictionary(reader: R, dictionary: &[u8]) -> IoResult<Self> {
+        let context = DecoderContext::new();
+
+        try!(ll::parse_code(unsafe {
+            ll::ZBUFF_decompressInitDictionary(context.c, dictionary.as_ptr(), dictionary.len())
+        }));
+
+        Decoder::with_context(reader, context)
+    }
+
+    fn with_context(reader: R, context: DecoderContext) -> IoResult<Self> {
         let buffer_size = unsafe { ll::ZBUFF_recommendedDInSize() };
 
         Ok(Decoder {

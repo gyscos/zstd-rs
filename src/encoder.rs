@@ -38,13 +38,35 @@ impl<W: Write> Encoder<W> {
     ///
     /// `level`: compression level (1-21)
     pub fn new(writer: W, level: i32) -> IoResult<Self> {
-
-        let buffer_size = unsafe { ll::ZBUFF_recommendedCOutSize() };
-
         let context = EncoderContext::new();
 
         // Initialize the stream
         try!(ll::parse_code(unsafe { ll::ZBUFF_compressInit(context.c, level) }));
+
+        Encoder::with_context(writer, context)
+    }
+
+    /// Creates a new encoder, using an existing dictionary.
+    ///
+    /// (Provides better compression ratio for small files,
+    /// but requires the dictionary to be present during decompression.)
+    pub fn with_dictionary(writer: W, level: i32, dictionary: &[u8]) -> IoResult<Self> {
+        let context = EncoderContext::new();
+
+        // Initialize the stream with an existing dictionary
+        try!(ll::parse_code(unsafe {
+            ll::ZBUFF_compressInitDictionary(context.c,
+                                             dictionary.as_ptr(),
+                                             dictionary.len(),
+                                             level)
+        }));
+
+        Encoder::with_context(writer, context)
+    }
+
+    fn with_context(writer: W, context: EncoderContext) -> IoResult<Self> {
+        // This is the output buffer size, for compressed data we get from zstd.
+        let buffer_size = unsafe { ll::ZBUFF_recommendedCOutSize() };
 
         Ok(Encoder {
             writer: writer,

@@ -10,8 +10,8 @@ This library is a rust binding for the [zstd compression library][zstd].
 
 ## Add to `cargo.toml`
 
-```
-cargo add zstd
+```bash
+$ cargo add zstd
 ```
 
 ## Usage
@@ -27,6 +27,10 @@ fn main() {
 	io::copy(&mut decoder, &mut io::stdout()).unwrap();
 }
 ```
+
+# TODO
+
+Benchmarks, optimizations, ...
 
 # Disclaimer
 

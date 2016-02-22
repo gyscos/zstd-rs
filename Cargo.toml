@@ -6,6 +6,11 @@ build = "src/build.rs"
 description = "Rust zstd bindings library."
 license = "MIT"
 
+[[bin]]
+name = "zstd"
+test = false
+doc = false
+
 [dependencies]
 libc = "0.2.5"
 

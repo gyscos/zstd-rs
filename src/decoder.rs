@@ -79,7 +79,6 @@ impl<R: Read> Read for Decoder<R> {
             }
 
             let mut out_size = buf.len() - written;
-            println!("Buffer: {:?}, off: {}", &self.buffer, self.offset);
             let mut in_size = self.buffer.len() - self.offset;
 
             unsafe {

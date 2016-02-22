@@ -4,6 +4,8 @@ name = "zstd"
 version = "0.1.0"
 build = "src/build.rs"
 description = "Rust zstd bindings library."
+documentation = "https://gyscos.github.io/zstd-rs/zstd/index.html"
+repository = "https://github.com/Gyscos/zstd-rs"
 license = "MIT"
 
 [[bin]]

@@ -2,7 +2,7 @@ extern crate zstd;
 
 use std::env;
 use std::fs;
-use std::io::{self,Read,Write};
+use std::io;
 
 const SUFFIX: &'static str = ".zst";
 

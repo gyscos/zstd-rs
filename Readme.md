@@ -42,7 +42,6 @@ fn main() {
 # TODO
 
 * Benchmarks, optimizations, ...
-* Train dictionary
 
 # Disclaimer
 

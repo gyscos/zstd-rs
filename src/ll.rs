@@ -140,4 +140,11 @@ extern "C" {
 
     pub fn ZBUFF_recommendedDInSize() -> size_t;
     pub fn ZBUFF_recommendedDOutSize() -> size_t;
+
+    pub fn ZDICT_trainFromBuffer(dictBuffer: *mut u8,
+                                 dictBufferCapacity: size_t,
+                                 samplesBuffer: *const u8,
+                                 sampleSizes: *const size_t,
+                                 nbSamples: size_t)
+                                 -> size_t;
 }

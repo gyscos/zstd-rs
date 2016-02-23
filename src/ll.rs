@@ -140,6 +140,4 @@ extern "C" {
 
     pub fn ZBUFF_recommendedDInSize() -> size_t;
     pub fn ZBUFF_recommendedDOutSize() -> size_t;
-
-    pub fn ZSTD_compressBound(srcSize: size_t) -> ZBUFFErrorCode;
 }

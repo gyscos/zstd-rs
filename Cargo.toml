@@ -1,20 +1,25 @@
 [package]
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
-name = "zstd"
-version = "0.1.0"
 build = "src/build.rs"
 description = "Rust zstd bindings library."
 documentation = "https://gyscos.github.io/zstd-rs/zstd/index.html"
-repository = "https://github.com/Gyscos/zstd-rs"
 license = "MIT"
+name = "zstd"
+repository = "https://github.com/Gyscos/zstd-rs"
+version = "0.1.0"
 
 [[bin]]
+doc = false
 name = "zstd"
 test = false
-doc = false
 
-[dependencies]
-libc = "0.2.5"
+[[bin]]
+doc = false
+name = "stream"
+test = false
 
 [build-dependencies]
 gcc = "0.3.21"
+
+[dependencies]
+libc = "0.2.5"

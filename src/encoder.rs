@@ -99,6 +99,11 @@ impl<W: Write> Encoder<W> {
         // Return the writer, because why not
         Ok(self.writer)
     }
+
+    /// Return a recommendation for the size of data to write at once.
+    pub fn recommended_input_size() -> usize {
+        unsafe { ll::ZBUFF_recommendedCInSize() }
+    }
 }
 
 impl<W: Write> Write for Encoder<W> {
@@ -119,7 +124,7 @@ impl<W: Write> Write for Encoder<W> {
                 self.buffer.set_len(out_size);
 
                 // Do we care about the hint?
-                let hint = try!(ll::parse_code(code));
+                let _ = try!(ll::parse_code(code));
             }
             try!(self.writer.write_all(&self.buffer));
             read += in_size;

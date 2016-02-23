@@ -65,6 +65,11 @@ impl<R: Read> Decoder<R> {
             context: context,
         })
     }
+
+    /// Recommendation for the size of the output buffer.
+    pub fn recommended_output_size() -> usize {
+        unsafe { ll::ZBUFF_recommendedDOutSize() }
+    }
 }
 
 impl<R: Read> Read for Decoder<R> {
@@ -104,7 +109,7 @@ impl<R: Read> Read for Decoder<R> {
                                                         &mut out_size,
                                                         self.buffer[self.offset..].as_ptr(),
                                                         &mut in_size);
-                let hint = try!(ll::parse_code(code));
+                let _ = try!(ll::parse_code(code));
             }
 
             written += out_size;

@@ -8,7 +8,7 @@ This library is a rust binding for the [zstd compression library][zstd].
 
 # [Documentation][doc]
 
-## Add to `cargo.toml`
+## 1 - Add to `cargo.toml`
 
 ### Using [cargo-edit][cargo-edit]
 
@@ -25,15 +25,22 @@ $ cargo add zstd
 zstd = "0.1"
 ```
 
-## Usage
+## 2 - Usage
+
+Check the [stream] example:
 
 ```rust
 extern crate zstd;
 
 use std::io;
 
-fn main() {
-	// Uncompress input and print the result.
+fn compress(level: i32) {
+	let mut encoder = zstd::Encoder::new(io::stdout(), level).unwrap();
+	io::copy(&mut io::stdin(), &mut encoder).unwrap();
+    encoder.finish().unwrap();
+}
+
+fn decompress() {
 	let mut decoder = zstd::Decoder::new(io::stdin()).unwrap();
 	io::copy(&mut decoder, &mut io::stdout()).unwrap();
 }
@@ -51,3 +58,4 @@ This implementation is largely inspired by bozaro's [lz4-rs][lz4].
 [lz4]: https://github.com/bozaro/lz4-rs
 [cargo-edit]: https://github.com/killercup/cargo-edit#cargo-add
 [doc]: https://gyscos.github.io/zstd-rs/zstd/index.html
+[stream]: src/bin/stream.rs

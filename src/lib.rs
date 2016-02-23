@@ -36,6 +36,11 @@ use std::io;
 /// The dictionary must be present during decompression,
 /// but can be shared accross multiple "similar" files.
 pub fn train_dict(sample_data: &[u8], sample_sizes: &[usize], max_size: usize) -> io::Result<Vec<u8>> {
+    // Complain if the lengths don't add up to the entire data.
+    if sample_sizes.iter().fold(0, |a,b| a+b) != sample_data.len() {
+        return Err(io::Error::new(io::ErrorKind::Other, "sample sizes don't add up".to_string()));
+    }
+
     let mut result = Vec::with_capacity(max_size);
     unsafe {
         let code = ll::ZDICT_trainFromBuffer(result.as_mut_ptr(),

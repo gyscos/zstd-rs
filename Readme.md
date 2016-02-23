@@ -10,7 +10,7 @@ This library is a rust binding for the [zstd compression library][zstd].
 
 ## 1 - Add to `cargo.toml`
 
-### Using [cargo-edit][cargo-edit]
+### Using [cargo-edit]
 
 ```bash
 $ cargo add zstd
@@ -52,10 +52,14 @@ fn decompress() {
 
 # Disclaimer
 
-This implementation is largely inspired by bozaro's [lz4-rs][lz4].
+This implementation is largely inspired by bozaro's [lz4-rs].
+
+# License
+
+[MIT](LICENSE)
 
 [zstd]: https://github.com/Cyan4973/zstd
-[lz4]: https://github.com/bozaro/lz4-rs
+[lz4-rs]: https://github.com/bozaro/lz4-rs
 [cargo-edit]: https://github.com/killercup/cargo-edit#cargo-add
 [doc]: https://gyscos.github.io/zstd-rs/zstd/index.html
 [stream]: src/bin/stream.rs

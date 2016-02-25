@@ -43,7 +43,7 @@ fn main() {
         sample_sizes.push(size);
     }
 
-    let dict = zstd::train_dict(&buffer, &sample_sizes, max_size).unwrap();
+    let dict = zstd::dict::from_continuous(&buffer, &sample_sizes, max_size).unwrap();
     let mut dict_reader: &[u8] = &dict;
     io::copy(&mut dict_reader, &mut io::stdout()).unwrap();
 }

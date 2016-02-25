@@ -1,3 +1,5 @@
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
 //! Rust binding to the [zstd library][zstd].
 //!
 //! This crate provides:

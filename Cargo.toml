@@ -28,3 +28,7 @@ gcc = "0.3.21"
 
 [dependencies]
 libc = "0.2.5"
+clippy = { version = "0.0.44", optional = true }
+
+[features]
+default = []

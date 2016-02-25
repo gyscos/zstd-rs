@@ -30,9 +30,6 @@ pub mod dict;
 pub use encoder::Encoder;
 pub use decoder::Decoder;
 
-use std::io;
-
-
 #[test]
 fn test_cycle() {
     use std::io::{Read, Write};
@@ -41,7 +38,7 @@ fn test_cycle() {
                 Just text, nothing more. \
                 Don't expect too much from it.";
 
-    let mut buffer: Vec<u8> = Vec::new();
+    let buffer: Vec<u8> = Vec::new();
 
     let mut encoder = Encoder::new(buffer, 1).unwrap();
     encoder.write_all(text.as_bytes()).unwrap();

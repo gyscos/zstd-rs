@@ -46,6 +46,20 @@ fn decompress() {
 }
 ```
 
+# Compile it yourself
+
+This repository includes `zstd` as a submodule. To get everything during your clone, use :
+
+```
+git clone https://github.com/Gyscos/zstd-rs --recursive
+```
+
+Or, if you cloned it regularly, call this from inside the repository:
+
+```
+git submodule update --init
+```
+
 # TODO
 
 * Benchmarks, optimizations, ...

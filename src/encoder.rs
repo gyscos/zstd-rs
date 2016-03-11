@@ -1,4 +1,4 @@
-use std::io::{Write, Result as IoResult};
+use std::io::{self, Write};
 
 use ll;
 
@@ -37,7 +37,7 @@ impl<W: Write> Encoder<W> {
     /// Creates a new encoder.
     ///
     /// `level`: compression level (1-21)
-    pub fn new(writer: W, level: i32) -> IoResult<Self> {
+    pub fn new(writer: W, level: i32) -> io::Result<Self> {
         let context = EncoderContext::new();
 
         // Initialize the stream
@@ -50,7 +50,7 @@ impl<W: Write> Encoder<W> {
     ///
     /// (Provides better compression ratio for small files,
     /// but requires the dictionary to be present during decompression.)
-    pub fn with_dictionary(writer: W, level: i32, dictionary: &[u8]) -> IoResult<Self> {
+    pub fn with_dictionary(writer: W, level: i32, dictionary: &[u8]) -> io::Result<Self> {
         let context = EncoderContext::new();
 
         // Initialize the stream with an existing dictionary
@@ -64,7 +64,7 @@ impl<W: Write> Encoder<W> {
         Encoder::with_context(writer, context)
     }
 
-    fn with_context(writer: W, context: EncoderContext) -> IoResult<Self> {
+    fn with_context(writer: W, context: EncoderContext) -> io::Result<Self> {
         // This is the output buffer size, for compressed data we get from zstd.
         let buffer_size = unsafe { ll::ZBUFF_recommendedCOutSize() };
 
@@ -78,7 +78,7 @@ impl<W: Write> Encoder<W> {
     /// Finishes the stream. You need to call this after writing your stuff.
     ///
     /// This returns the inner writer in case you need it.
-    pub fn finish(mut self) -> IoResult<W> {
+    pub fn finish(mut self) -> io::Result<W> {
 
         // First, closes the stream.
         let mut out_size = self.buffer.capacity();
@@ -107,7 +107,7 @@ impl<W: Write> Encoder<W> {
 }
 
 impl<W: Write> Write for Encoder<W> {
-    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // How much we've read from this task
         let mut read = 0;
         while read != buf.len() {
@@ -132,7 +132,7 @@ impl<W: Write> Write for Encoder<W> {
         Ok(read)
     }
 
-    fn flush(&mut self) -> IoResult<()> {
+    fn flush(&mut self) -> io::Result<()> {
         let mut out_size = self.buffer.capacity();
         let written = try!(ll::parse_code(unsafe {
             ll::ZBUFF_compressFlush(self.context.c, self.buffer.as_mut_ptr(), &mut out_size)

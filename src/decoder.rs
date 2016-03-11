@@ -1,4 +1,4 @@
-use std::io::{Read, Result as IoResult};
+use std::io::{self, Read};
 
 use ll;
 
@@ -34,7 +34,7 @@ pub struct Decoder<R: Read> {
 
 impl<R: Read> Decoder<R> {
     /// Creates a new decoder.
-    pub fn new(reader: R) -> IoResult<Self> {
+    pub fn new(reader: R) -> io::Result<Self> {
         let context = DecoderContext::new();
 
         try!(ll::parse_code(unsafe { ll::ZBUFF_decompressInit(context.c) }));
@@ -45,7 +45,7 @@ impl<R: Read> Decoder<R> {
     /// Creates a new decoder, using an existing dictionary.
     ///
     /// The dictionary must be the same as the one used during compression.
-    pub fn with_dictionary(reader: R, dictionary: &[u8]) -> IoResult<Self> {
+    pub fn with_dictionary(reader: R, dictionary: &[u8]) -> io::Result<Self> {
         let context = DecoderContext::new();
 
         try!(ll::parse_code(unsafe {
@@ -55,7 +55,7 @@ impl<R: Read> Decoder<R> {
         Decoder::with_context(reader, context)
     }
 
-    fn with_context(reader: R, context: DecoderContext) -> IoResult<Self> {
+    fn with_context(reader: R, context: DecoderContext) -> io::Result<Self> {
         let buffer_size = unsafe { ll::ZBUFF_recommendedDInSize() };
 
         Ok(Decoder {
@@ -73,7 +73,7 @@ impl<R: Read> Decoder<R> {
 }
 
 impl<R: Read> Read for Decoder<R> {
-    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 
         let mut written = 0;
         while written != buf.len() {

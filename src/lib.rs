@@ -39,6 +39,9 @@ pub use decoder::Decoder;
 use std::io;
 
 
+/// Decompress the given data as if using a `Decoder`.
+///
+/// The input data must be in the zstd frame format.
 pub fn decode_all(data: &[u8]) -> io::Result<Vec<u8>> {
     let mut result = Vec::new();
     let mut decoder = try!(Decoder::new(data));
@@ -46,6 +49,9 @@ pub fn decode_all(data: &[u8]) -> io::Result<Vec<u8>> {
     Ok(result)
 }
 
+/// Compress all the given data as if using an `Encoder`.
+///
+/// Result will be in the zstd frame format.
 pub fn encode_all(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     let result = Vec::<u8>::new();
     let mut encoder = try!(Encoder::new(result, level));

@@ -8,7 +8,7 @@ use std::io;
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
-pub fn compress(destination: &mut [u8], source: &[u8], level: i32) -> io::Result<usize> {
+pub fn compress_to_buffer(destination: &mut [u8], source: &[u8], level: i32) -> io::Result<usize> {
     let code = unsafe {
         ll::ZSTD_compress(destination.as_mut_ptr(),
                           destination.len(),
@@ -20,14 +20,14 @@ pub fn compress(destination: &mut [u8], source: &[u8], level: i32) -> io::Result
 }
 
 /// Compress a block of data, and return the compressed result in a `Vec<u8>`.
-pub fn compress_to_vec(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     let buffer_len = unsafe { ll::ZSTD_compressBound(data.len()) };
     let mut buffer = Vec::with_capacity(buffer_len);
 
     unsafe {
         // Use all capacity. Memory may not be initialized, but we won't read it.
         buffer.set_len(buffer_len);
-        let len = try!(compress(&mut buffer[..], data, level));
+        let len = try!(compress_to_buffer(&mut buffer[..], data, level));
         buffer.set_len(len);
     }
     Ok(buffer)
@@ -37,7 +37,7 @@ pub fn compress_to_vec(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
-pub fn decompress(destination: &mut [u8], source: &[u8]) -> io::Result<usize> {
+pub fn decompress_to_buffer(destination: &mut [u8], source: &[u8]) -> io::Result<usize> {
     let code = unsafe {
         ll::ZSTD_decompress(destination.as_mut_ptr(),
                             destination.len(),
@@ -51,11 +51,11 @@ pub fn decompress(destination: &mut [u8], source: &[u8]) -> io::Result<usize> {
 ///
 /// The decompressed data should be less than `capacity` bytes,
 /// or an error will be returned.
-pub fn decompress_to_vec(data: &[u8], capacity: usize) -> io::Result<Vec<u8>> {
+pub fn decompress(data: &[u8], capacity: usize) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::with_capacity(capacity);
     unsafe {
         buffer.set_len(capacity);
-        let len = try!(decompress(&mut buffer[..], data));
+        let len = try!(decompress_to_buffer(&mut buffer[..], data));
         buffer.set_len(len);
     }
     Ok(buffer)
@@ -73,9 +73,9 @@ fn test_direct() {
                 single-origin coffee tofu actually, ramps pabst farm-to-table art party kombucha \
                 artisan fanny pack. Flannel salvia ennui viral leggings selfies.";
 
-    let compressed = compress_to_vec(text.as_bytes(), 1).unwrap();
+    let compressed = compress(text.as_bytes(), 1).unwrap();
 
-    let uncompressed = decompress_to_vec(&compressed, text.len()).unwrap();
+    let uncompressed = decompress(&compressed, text.len()).unwrap();
 
     assert_eq!(text.as_bytes(), &uncompressed[..]);
 }

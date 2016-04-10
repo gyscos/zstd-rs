@@ -18,8 +18,10 @@ use std::io;
 use ll;
 
 /// Train a dictionary from a big continuous chunk of data.
-pub fn from_continuous(sample_data: &[u8],
-                       sample_sizes: &[usize],
+///
+/// This is the most efficient way to train a dictionary,
+/// since this is directly fed into `zstd`.
+pub fn from_continuous(sample_data: &[u8], sample_sizes: &[usize],
                        max_size: usize)
                        -> io::Result<Vec<u8>> {
     // Complain if the lengths don't add up to the entire data.
@@ -45,7 +47,8 @@ pub fn from_continuous(sample_data: &[u8],
 ///
 /// The samples will internaly be copied to a single continuous buffer,
 /// so make sure you have enough memory available.
-pub fn from_samples<S: AsRef<[u8]>>(samples: &[S], max_size: usize) -> io::Result<Vec<u8>> {
+pub fn from_samples<S: AsRef<[u8]>>(samples: &[S], max_size: usize)
+                                    -> io::Result<Vec<u8>> {
     // Copy every sample to a big chunk of memory
     let data: Vec<_> = samples.iter()
                               .flat_map(|s| s.as_ref())

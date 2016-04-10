@@ -63,12 +63,14 @@ pub fn encode_all(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
 
 #[test]
 fn test_cycle() {
-    let text = "This is a sample text. It is not meant to be interesting or anything. Just text, \
-                nothing more. Don't expect too much from it.";
+    let text = "This is a sample text. It is not meant to be interesting or \
+                anything. Just text, nothing more. Don't expect too much \
+                from it.";
 
     let compressed = encode_all(text.as_bytes(), 1).unwrap();
 
-    let decompressed = String::from_utf8(decode_all(&compressed).unwrap()).unwrap();
+    let decompressed = String::from_utf8(decode_all(&compressed).unwrap())
+                           .unwrap();
 
     assert_eq!(text, &decompressed);
 }

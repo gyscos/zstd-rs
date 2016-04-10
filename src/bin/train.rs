@@ -25,7 +25,8 @@ fn main() {
     let mut max_size = 110 * 1024;
 
     if env::args().len() == 1 {
-        writeln!(io::stderr(), "Usage: `train [-c MAX_SIZE] FILES...`").unwrap();
+        writeln!(io::stderr(), "Usage: `train [-c MAX_SIZE] FILES...`")
+            .unwrap();
         return;
     }
 
@@ -55,7 +56,8 @@ fn main() {
         sample_sizes.push(size);
     }
 
-    let dict = zstd::dict::from_continuous(&buffer, &sample_sizes, max_size).unwrap();
+    let dict = zstd::dict::from_continuous(&buffer, &sample_sizes, max_size)
+                   .unwrap();
     let mut dict_reader: &[u8] = &dict;
     io::copy(&mut dict_reader, &mut io::stdout()).unwrap();
 }

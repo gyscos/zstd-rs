@@ -49,7 +49,9 @@ impl<R: Read> Decoder<R> {
         let context = DecoderContext::new();
 
         try!(ll::parse_code(unsafe {
-            ll::ZBUFF_decompressInitDictionary(context.c, dictionary.as_ptr(), dictionary.len())
+            ll::ZBUFF_decompressInitDictionary(context.c,
+                                               dictionary.as_ptr(),
+                                               dictionary.len())
         }));
 
         Decoder::with_context(reader, context)
@@ -104,11 +106,13 @@ impl<R: Read> Read for Decoder<R> {
             let mut in_size = self.buffer.len() - self.offset;
 
             unsafe {
-                let code = ll::ZBUFF_decompressContinue(self.context.c,
-                                                        buf[written..].as_mut_ptr(),
-                                                        &mut out_size,
-                                                        self.buffer[self.offset..].as_ptr(),
-                                                        &mut in_size);
+                let code =
+                    ll::ZBUFF_decompressContinue(self.context.c,
+                                                 buf[written..].as_mut_ptr(),
+                                                 &mut out_size,
+                                                 self.buffer[self.offset..]
+                                                     .as_ptr(),
+                                                 &mut in_size);
                 let _ = try!(ll::parse_code(code));
             }
 

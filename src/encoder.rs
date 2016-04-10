@@ -41,7 +41,9 @@ impl<W: Write> Encoder<W> {
         let context = EncoderContext::new();
 
         // Initialize the stream
-        try!(ll::parse_code(unsafe { ll::ZBUFF_compressInit(context.c, level) }));
+        try!(ll::parse_code(unsafe {
+            ll::ZBUFF_compressInit(context.c, level)
+        }));
 
         Encoder::with_context(writer, context)
     }
@@ -50,7 +52,8 @@ impl<W: Write> Encoder<W> {
     ///
     /// (Provides better compression ratio for small files,
     /// but requires the dictionary to be present during decompression.)
-    pub fn with_dictionary(writer: W, level: i32, dictionary: &[u8]) -> io::Result<Self> {
+    pub fn with_dictionary(writer: W, level: i32, dictionary: &[u8])
+                           -> io::Result<Self> {
         let context = EncoderContext::new();
 
         // Initialize the stream with an existing dictionary
@@ -83,7 +86,9 @@ impl<W: Write> Encoder<W> {
         // First, closes the stream.
         let mut out_size = self.buffer.capacity();
         let remaining = try!(ll::parse_code(unsafe {
-            ll::ZBUFF_compressEnd(self.context.c, self.buffer.as_mut_ptr(), &mut out_size)
+            ll::ZBUFF_compressEnd(self.context.c,
+                                  self.buffer.as_mut_ptr(),
+                                  &mut out_size)
         }));
         unsafe {
             self.buffer.set_len(out_size);
@@ -117,7 +122,8 @@ impl<W: Write> Write for Encoder<W> {
             unsafe {
                 // Compress the given buffer into our output buffer
                 let code = ll::ZBUFF_compressContinue(self.context.c,
-                                                      self.buffer.as_mut_ptr(),
+                                                      self.buffer
+                                                          .as_mut_ptr(),
                                                       &mut out_size,
                                                       buf[read..].as_ptr(),
                                                       &mut in_size);
@@ -135,7 +141,9 @@ impl<W: Write> Write for Encoder<W> {
     fn flush(&mut self) -> io::Result<()> {
         let mut out_size = self.buffer.capacity();
         let written = try!(ll::parse_code(unsafe {
-            ll::ZBUFF_compressFlush(self.context.c, self.buffer.as_mut_ptr(), &mut out_size)
+            ll::ZBUFF_compressFlush(self.context.c,
+                                    self.buffer.as_mut_ptr(),
+                                    &mut out_size)
         }));
         unsafe {
             self.buffer.set_len(written);

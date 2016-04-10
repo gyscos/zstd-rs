@@ -8,7 +8,8 @@ use std::io;
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
-pub fn compress_to_buffer(destination: &mut [u8], source: &[u8], level: i32) -> io::Result<usize> {
+pub fn compress_to_buffer(destination: &mut [u8], source: &[u8], level: i32)
+                          -> io::Result<usize> {
     let code = unsafe {
         ll::ZSTD_compress(destination.as_mut_ptr(),
                           destination.len(),
@@ -37,7 +38,8 @@ pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
-pub fn decompress_to_buffer(destination: &mut [u8], source: &[u8]) -> io::Result<usize> {
+pub fn decompress_to_buffer(destination: &mut [u8], source: &[u8])
+                            -> io::Result<usize> {
     let code = unsafe {
         ll::ZSTD_decompress(destination.as_mut_ptr(),
                             destination.len(),
@@ -63,15 +65,19 @@ pub fn decompress(data: &[u8], capacity: usize) -> io::Result<Vec<u8>> {
 
 #[test]
 fn test_direct() {
-    let text = "Pork belly art party wolf XOXO, neutra scenester ugh thundercats tattooed squid \
-                skateboard beard readymade kogi. VHS cardigan schlitz, meditation chartreuse kogi \
-                tilde church-key. Actually direct trade hammock, aesthetic VHS semiotics organic \
-                narwhal lo-fi heirloom flexitarian master cleanse polaroid man bun. Flannel \
-                helvetica mustache, bicycle rights small batch slow-carb neutra tilde \
-                williamsburg meh poutine humblebrag. Four dollar toast butcher actually franzen, \
-                gastropub mustache tofu cardigan. 90's fingerstache forage brooklyn meditation \
-                single-origin coffee tofu actually, ramps pabst farm-to-table art party kombucha \
-                artisan fanny pack. Flannel salvia ennui viral leggings selfies.";
+    let text = "Pork belly art party wolf XOXO, neutra scenester ugh \
+                thundercats tattooed squid skateboard beard readymade kogi. \
+                VHS cardigan schlitz, meditation chartreuse kogi tilde \
+                church-key. Actually direct trade hammock, aesthetic VHS \
+                semiotics organic narwhal lo-fi heirloom flexitarian master \
+                cleanse polaroid man bun. Flannel helvetica mustache, \
+                bicycle rights small batch slow-carb neutra tilde \
+                williamsburg meh poutine humblebrag. Four dollar toast \
+                butcher actually franzen, gastropub mustache tofu cardigan. \
+                90's fingerstache forage brooklyn meditation single-origin \
+                coffee tofu actually, ramps pabst farm-to-table art party \
+                kombucha artisan fanny pack. Flannel salvia ennui viral \
+                leggings selfies.";
 
     let compressed = compress(text.as_bytes(), 1).unwrap();
 

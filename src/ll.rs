@@ -62,7 +62,7 @@
 
 use std::io;
 use std::ffi::CStr;
-use libc::{size_t, c_void, c_int, c_char, c_uint};
+use libc::{c_char, c_int, c_uint, c_void, size_t};
 
 pub type ZBUFFCompressionContext = *mut c_void;
 pub type ZBUFFDecompressionContext = *mut c_void;
@@ -79,7 +79,8 @@ pub fn parse_code(code: ErrorCode) -> Result<usize, io::Error> {
             Ok(code as usize)
         } else {
             let msg = CStr::from_ptr(ZBUFF_getErrorName(code));
-            let error = io::Error::new(io::ErrorKind::Other, msg.to_str().unwrap().to_string());
+            let error = io::Error::new(io::ErrorKind::Other,
+                                       msg.to_str().unwrap().to_string());
             Err(error)
         }
     }
@@ -91,26 +92,23 @@ extern "C" {
     pub fn ZBUFF_createCCtx() -> ZBUFFCompressionContext;
     pub fn ZBUFF_freeCCtx(cctx: ZBUFFCompressionContext) -> ErrorCode;
 
-    pub fn ZBUFF_compressInit(cctx: ZBUFFCompressionContext, compressionLevel: c_int) -> ErrorCode;
+    pub fn ZBUFF_compressInit(cctx: ZBUFFCompressionContext,
+                              compressionLevel: c_int)
+                              -> ErrorCode;
 
     pub fn ZBUFF_compressInitDictionary(cctx: ZBUFFCompressionContext,
-                                        dict: *const u8,
-                                        dictSize: size_t,
+                                        dict: *const u8, dictSize: size_t,
                                         compressionLevel: c_int)
                                         -> ErrorCode;
 
-    pub fn ZBUFF_compressContinue(cctx: ZBUFFCompressionContext,
-                                  dst: *mut u8,
-                                  dstCapacityPtr: *mut size_t,
-                                  src: *const u8,
+    pub fn ZBUFF_compressContinue(cctx: ZBUFFCompressionContext, dst: *mut u8,
+                                  dstCapacityPtr: *mut size_t, src: *const u8,
                                   srcSizePtr: *mut size_t)
                                   -> ErrorCode;
-    pub fn ZBUFF_compressFlush(cctx: ZBUFFCompressionContext,
-                               dst: *mut u8,
+    pub fn ZBUFF_compressFlush(cctx: ZBUFFCompressionContext, dst: *mut u8,
                                dstCapacityPtr: *mut size_t)
                                -> ErrorCode;
-    pub fn ZBUFF_compressEnd(cctx: ZBUFFCompressionContext,
-                             dst: *mut u8,
+    pub fn ZBUFF_compressEnd(cctx: ZBUFFCompressionContext, dst: *mut u8,
                              dstCapacityPtr: *mut size_t)
                              -> ErrorCode;
 
@@ -122,14 +120,11 @@ extern "C" {
 
     pub fn ZBUFF_decompressInit(dctx: ZBUFFDecompressionContext) -> size_t;
     pub fn ZBUFF_decompressInitDictionary(dctx: ZBUFFDecompressionContext,
-                                          dict: *const u8,
-                                          dictSize: size_t)
+                                          dict: *const u8, dictSize: size_t)
                                           -> ErrorCode;
     pub fn ZBUFF_decompressContinue(dctx: ZBUFFDecompressionContext,
-                                    dst: *mut u8,
-                                    dstCapacityPtr: *mut size_t,
-                                    src: *const u8,
-                                    srcSizePtr: *mut size_t)
+                                    dst: *mut u8, dstCapacityPtr: *mut size_t,
+                                    src: *const u8, srcSizePtr: *mut size_t)
                                     -> ErrorCode;
 
     pub fn ZBUFF_isError(errorCode: size_t) -> c_uint;
@@ -151,11 +146,8 @@ extern "C" {
     ///
     /// The number of bytes written into `dst`, or an error code if it fails
     /// (which can be tested using ZSTD_isError())
-    pub fn ZSTD_compress(dst: *mut u8,
-                         dstCapacity: size_t,
-                         src: *const u8,
-                         srcSize: size_t,
-                         compressionLevel: i32)
+    pub fn ZSTD_compress(dst: *mut u8, dstCapacity: size_t, src: *const u8,
+                         srcSize: size_t, compressionLevel: i32)
                          -> ErrorCode;
 
     /// `compressedSize` : is the _exact_ size of the compressed blob, otherwise decompression will fail.
@@ -165,10 +157,8 @@ extern "C" {
     ///
     /// The number of bytes decompressed into `dst` (<= `dstCapacity`),
     /// or an errorCode if it fails (which can be tested using ZSTD_isError())
-    pub fn ZSTD_decompress(dst: *mut u8,
-                           dstCapacity: size_t,
-                           source: *const u8,
-                           compressedSize: size_t)
+    pub fn ZSTD_decompress(dst: *mut u8, dstCapacity: size_t,
+                           source: *const u8, compressedSize: size_t)
                            -> ErrorCode;
 
     /// maximum compressed size (worst case scenario)
@@ -179,7 +169,6 @@ extern "C" {
     pub fn ZDICT_trainFromBuffer(dictBuffer: *mut u8,
                                  dictBufferCapacity: size_t,
                                  samplesBuffer: *const u8,
-                                 sampleSizes: *const size_t,
-                                 nbSamples: size_t)
+                                 sampleSizes: *const size_t, nbSamples: size_t)
                                  -> size_t;
 }

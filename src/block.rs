@@ -1,4 +1,8 @@
 //! Methods to compress and decompress individual blocks.
+//!
+//! These methods process all the input data at once.
+//! It is therefore best used with relatively small blocks
+//! (like small network packets).
 
 use ll;
 

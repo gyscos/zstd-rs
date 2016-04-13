@@ -21,6 +21,9 @@ impl Drop for DecoderContext {
 
 
 /// A decoder that decompress input data from another `Read`.
+///
+/// This allows to read a stream of compressed data
+/// (good for files or heavy network stream).
 pub struct Decoder<R: Read> {
     // input reader (compressed data)
     reader: R,

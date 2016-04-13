@@ -19,8 +19,10 @@ impl Drop for EncoderContext {
     }
 }
 
-
 /// An encoder that compress and forward data to another writer.
+///
+/// This allows to compress a stream of data
+/// (good for files or heavy network stream).
 ///
 /// Don't forget to call `finish()` before dropping it!
 ///

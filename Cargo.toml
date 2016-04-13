@@ -6,7 +6,7 @@ documentation = "https://gyscos.github.io/zstd-rs/zstd/index.html"
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/Gyscos/zstd-rs"
-version = "0.1.3"
+version = "0.1.4"
 
 [[bin]]
 doc = false

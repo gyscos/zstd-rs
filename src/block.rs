@@ -22,6 +22,7 @@ pub fn compress_to_buffer(destination: &mut [u8], source: &[u8], level: i32)
 
 /// Compress a block of data, and return the compressed result in a `Vec<u8>`.
 pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+    // We allocate a big buffer, slightly larger than the input data.
     let buffer_len = unsafe { ll::ZSTD_compressBound(data.len()) };
     let mut buffer = Vec::with_capacity(buffer_len);
 
@@ -31,6 +32,8 @@ pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
         let len = try!(compress_to_buffer(&mut buffer[..], data, level));
         buffer.set_len(len);
     }
+
+    // Should we shrink the vec? Meh, let the user do it if he wants.
     Ok(buffer)
 }
 
@@ -65,6 +68,7 @@ pub fn decompress(data: &[u8], capacity: usize) -> io::Result<Vec<u8>> {
 
 #[test]
 fn test_direct() {
+    // hipsum.co
     let text = "Pork belly art party wolf XOXO, neutra scenester ugh \
                 thundercats tattooed squid skateboard beard readymade kogi. \
                 VHS cardigan schlitz, meditation chartreuse kogi tilde \

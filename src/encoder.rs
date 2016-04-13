@@ -22,7 +22,9 @@ impl Drop for EncoderContext {
 
 /// An encoder that compress and forward data to another writer.
 ///
-/// The zstd library has an internal input buffer (~128kb).
+/// Don't forget to call `finish()` before dropping it!
+///
+/// Note: The zstd library has its own internal input buffer (~128kb).
 pub struct Encoder<W: Write> {
     // output writer (compressed data)
     writer: W,
@@ -78,7 +80,7 @@ impl<W: Write> Encoder<W> {
         })
     }
 
-    /// Finishes the stream. You need to call this after writing your stuff.
+    /// Finishes the stream. You *need* to call this after writing your stuff.
     ///
     /// This returns the inner writer in case you need it.
     pub fn finish(mut self) -> io::Result<W> {

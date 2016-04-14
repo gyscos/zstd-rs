@@ -14,8 +14,11 @@
 //! [`Encoder::with_dictionary`]: ../struct.Encoder.html#method.with_dictionary
 //! [`Decoder::with_dictionary`]: ../struct.Decoder.html#method.with_dictionary
 
-use std::io;
 use ll;
+
+use std::io::{self, Read};
+use std::path;
+use std::fs;
 
 /// Train a dictionary from a big continuous chunk of data.
 ///
@@ -57,4 +60,19 @@ pub fn from_samples<S: AsRef<[u8]>>(samples: &[S], max_size: usize)
     let sizes: Vec<_> = samples.iter().map(|s| s.as_ref().len()).collect();
 
     from_continuous(&data, &sizes, max_size)
+}
+
+/// Train a dict from a list of files.
+pub fn from_files<P: AsRef<path::Path>>(filenames: &[P], max_size: usize)
+                                        -> io::Result<Vec<u8>> {
+    let mut buffer = Vec::new();
+    let mut sizes = Vec::new();
+
+    for filename in filenames {
+        let mut file = try!(fs::File::open(filename));
+        let len = try!(file.read_to_end(&mut buffer));
+        sizes.push(len);
+    }
+
+    from_continuous(&buffer, &sizes, max_size)
 }

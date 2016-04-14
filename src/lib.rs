@@ -24,17 +24,17 @@
 //! ```
 //!
 //! [zstd]: https://github.com/Cyan4973/zstd
+#![deny(missing_docs)]
 extern crate libc;
 
 mod ll;
-mod encoder;
-mod decoder;
+mod stream;
 
 pub mod block;
 pub mod dict;
 
-pub use encoder::Encoder;
-pub use decoder::Decoder;
+pub use stream::encoder::Encoder;
+pub use stream::decoder::Decoder;
 
 use std::io;
 

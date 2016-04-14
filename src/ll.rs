@@ -67,6 +67,9 @@ use libc::{c_char, c_int, c_uint, c_void, size_t};
 pub type ZBUFFCompressionContext = *mut c_void;
 pub type ZBUFFDecompressionContext = *mut c_void;
 
+pub type ZSTDCompressionContext = *mut c_void;
+pub type ZSTDDecompressionContext = *mut c_void;
+
 pub type ErrorCode = size_t;
 
 /// Parse the result code
@@ -138,28 +141,33 @@ extern "C" {
 
     // zstd.h
 
-    /// Compresses `srcSize` bytes from buffer `src` into buffer `dst` of size `dstCapacity`.
-    /// Destination buffer must be already allocated.
-    /// Compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`.
-    ///
-    /// # Return
-    ///
-    /// The number of bytes written into `dst`, or an error code if it fails
-    /// (which can be tested using ZSTD_isError())
-    pub fn ZSTD_compress(dst: *mut u8, dstCapacity: size_t, src: *const u8,
-                         srcSize: size_t, compressionLevel: i32)
-                         -> ErrorCode;
+    // Compression context memory management
+    pub fn ZSTD_createCCtx() -> ZSTDCompressionContext;
+    pub fn ZSTD_freeCCtx(cctx: ZSTDCompressionContext) -> ErrorCode;
 
-    /// `compressedSize` : is the _exact_ size of the compressed blob, otherwise decompression will fail.
-    /// `dstCapacity` must be large enough, equal or larger than originalSize.
+    // Decompression context memory management
+    pub fn ZSTD_createDCtx() -> ZSTDDecompressionContext;
+    pub fn ZSTD_freeDCtx(cctx: ZSTDDecompressionContext) -> ErrorCode;
+
+    /// Compression using a pre-defined Dictionary content (see dictBuilder).
     ///
-    /// # Return
+    /// Note : dict can be NULL, in which case, it's equivalent to ZSTD_compressCCtx() */
+    pub fn ZSTD_compress_usingDict(ctx: ZSTDCompressionContext, dst: *mut u8,
+                                   dstCapacity: size_t, src: *const u8,
+                                   srcSize: size_t, dict: *const u8,
+                                   dictSize: size_t, compressionLevel: i32)
+                                   -> ErrorCode;
+
+    /// Decompression using a pre-defined Dictionary content (see dictBuilder).
     ///
-    /// The number of bytes decompressed into `dst` (<= `dstCapacity`),
-    /// or an errorCode if it fails (which can be tested using ZSTD_isError())
-    pub fn ZSTD_decompress(dst: *mut u8, dstCapacity: size_t,
-                           source: *const u8, compressedSize: size_t)
-                           -> ErrorCode;
+    /// Dictionary must be identical to the one used during compression, otherwise regenerated data will be corrupted.
+    ///
+    /// Note : dict can be NULL, in which case, it's equivalent to ZSTD_decompressDCtx() */
+    pub fn ZSTD_decompress_usingDict(dctx: ZSTDDecompressionContext,
+                                     dst: *mut u8, dstCapacity: size_t,
+                                     src: *const u8, srcSize: size_t,
+                                     dict: *const u8, dictSize: size_t)
+                                     -> ErrorCode;
 
     /// maximum compressed size (worst case scenario)
     pub fn ZSTD_compressBound(srcSize: size_t) -> size_t;

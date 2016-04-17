@@ -54,7 +54,7 @@ This repository includes `zstd` as a submodule. To get everything during your cl
 git clone https://github.com/Gyscos/zstd-rs --recursive
 ```
 
-Or, if you cloned it regularly, call this from inside the repository:
+Or, if you cloned it without the `--recursive` flag, call this from inside the repository:
 
 ```
 git submodule update --init

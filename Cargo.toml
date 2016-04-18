@@ -16,7 +16,7 @@ libc = "0.2"
 
 [dependencies.clippy]
 optional = true
-version = "0.0.44"
+version = "0.0.63"
 
 [dev-dependencies]
 clap = "2.2.6"

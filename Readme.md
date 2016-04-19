@@ -48,7 +48,7 @@ fn decompress() {
 
 # Compile it yourself
 
-This repository includes `zstd` as a submodule. To get everything during your clone, use :
+This repository includes `zstd` as a [submodule]. To get everything during your clone, use :
 
 ```
 git clone https://github.com/Gyscos/zstd-rs --recursive
@@ -79,3 +79,4 @@ This implementation is largely inspired by bozaro's [lz4-rs].
 [cargo-edit]: https://github.com/killercup/cargo-edit#cargo-add
 [doc]: https://gyscos.github.io/zstd-rs/zstd/index.html
 [stream]: examples/stream.rs
+[submodule]: https://git-scm.com/book/en/v2/Git-Tools-Submodules

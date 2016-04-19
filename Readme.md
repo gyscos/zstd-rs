@@ -60,6 +60,8 @@ Or, if you cloned it without the `--recursive` flag, call this from inside the r
 git submodule update --init
 ```
 
+Then, running `cargo build` should take care of building the C library and linking to it.
+
 # TODO
 
 * Benchmarks, optimizations, ...
@@ -76,4 +78,4 @@ This implementation is largely inspired by bozaro's [lz4-rs].
 [lz4-rs]: https://github.com/bozaro/lz4-rs
 [cargo-edit]: https://github.com/killercup/cargo-edit#cargo-add
 [doc]: https://gyscos.github.io/zstd-rs/zstd/index.html
-[stream]: src/bin/stream.rs
+[stream]: examples/stream.rs

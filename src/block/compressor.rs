@@ -6,8 +6,8 @@ struct EncoderContext {
     c: ll::ZSTDCompressionContext,
 }
 
-impl EncoderContext {
-    fn new() -> Self {
+impl Default for EncoderContext {
+    fn default() -> Self {
         EncoderContext { c: unsafe { ll::ZSTD_createCCtx() } }
     }
 }
@@ -20,6 +20,7 @@ impl Drop for EncoderContext {
 }
 
 /// Allows to compress multiple blocks of data, re-using the context.
+#[derive(Default)]
 pub struct Compressor {
     context: EncoderContext,
     dict: Vec<u8>,
@@ -34,7 +35,7 @@ impl Compressor {
     /// Creates a new zstd compressor, using the given dictionary.
     pub fn with_dict(dict: Vec<u8>) -> Self {
         Compressor {
-            context: EncoderContext::new(),
+            context: EncoderContext::default(),
             dict: dict,
         }
     }

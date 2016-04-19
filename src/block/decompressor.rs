@@ -6,8 +6,8 @@ struct DecoderContext {
     c: ll::ZSTDDecompressionContext,
 }
 
-impl DecoderContext {
-    fn new() -> Self {
+impl Default for DecoderContext {
+    fn default() -> Self {
         DecoderContext { c: unsafe { ll::ZSTD_createDCtx() } }
     }
 }
@@ -20,6 +20,7 @@ impl Drop for DecoderContext {
 }
 
 /// Allows to decompress multiple blocks of data, re-using the context.
+#[derive(Default)]
 pub struct Decompressor {
     context: DecoderContext,
     dict: Vec<u8>,
@@ -34,7 +35,7 @@ impl Decompressor {
     /// Creates a new zstd decompressor, using the given dictionary.
     pub fn with_dict(dict: Vec<u8>) -> Self {
         Decompressor {
-            context: DecoderContext::new(),
+            context: DecoderContext::default(),
             dict: dict,
         }
     }

@@ -6,8 +6,8 @@ struct EncoderContext {
     c: ll::ZBUFFCompressionContext,
 }
 
-impl EncoderContext {
-    fn new() -> Self {
+impl Default for EncoderContext {
+    fn default() -> Self {
         EncoderContext { c: unsafe { ll::ZBUFF_createCCtx() } }
     }
 }
@@ -42,7 +42,7 @@ impl<W: Write> Encoder<W> {
     ///
     /// `level`: compression level (1-21)
     pub fn new(writer: W, level: i32) -> io::Result<Self> {
-        let context = EncoderContext::new();
+        let context = EncoderContext::default();
 
         // Initialize the stream
         try!(ll::parse_code(unsafe {
@@ -58,7 +58,7 @@ impl<W: Write> Encoder<W> {
     /// but requires the dictionary to be present during decompression.)
     pub fn with_dictionary(writer: W, level: i32, dictionary: &[u8])
                            -> io::Result<Self> {
-        let context = EncoderContext::new();
+        let context = EncoderContext::default();
 
         // Initialize the stream with an existing dictionary
         try!(ll::parse_code(unsafe {

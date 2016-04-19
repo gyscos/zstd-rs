@@ -6,8 +6,8 @@ struct DecoderContext {
     c: ll::ZBUFFDecompressionContext,
 }
 
-impl DecoderContext {
-    fn new() -> Self {
+impl Default for DecoderContext {
+    fn default() -> Self {
         DecoderContext { c: unsafe { ll::ZBUFF_createDCtx() } }
     }
 }
@@ -38,7 +38,7 @@ pub struct Decoder<R: Read> {
 impl<R: Read> Decoder<R> {
     /// Creates a new decoder.
     pub fn new(reader: R) -> io::Result<Self> {
-        let context = DecoderContext::new();
+        let context = DecoderContext::default();
 
         try!(ll::parse_code(unsafe { ll::ZBUFF_decompressInit(context.c) }));
 
@@ -49,7 +49,7 @@ impl<R: Read> Decoder<R> {
     ///
     /// The dictionary must be the same as the one used during compression.
     pub fn with_dictionary(reader: R, dictionary: &[u8]) -> io::Result<Self> {
-        let context = DecoderContext::new();
+        let context = DecoderContext::default();
 
         try!(ll::parse_code(unsafe {
             ll::ZBUFF_decompressInitDictionary(context.c,

@@ -75,6 +75,14 @@ impl<R: Read> Decoder<R> {
     pub fn recommended_output_size() -> usize {
         unsafe { ll::ZBUFF_recommendedDOutSize() }
     }
+
+    /// Return the inner `Read`.
+    ///
+    /// Calling `finish()` is not *required* after reading a stream -
+    /// just use it if you need to get the `Read` back.
+    pub fn finish(self) -> R {
+        self.reader
+    }
 }
 
 impl<R: Read> Read for Decoder<R> {

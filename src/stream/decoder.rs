@@ -80,6 +80,10 @@ impl<R: Read> Decoder<R> {
 impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 
+        if self.offset > self.buffer.capacity() {
+            return Ok(0); // End-of-frame reached.
+        }
+
         let mut written = 0;
         while written != buf.len() {
 
@@ -108,7 +112,7 @@ impl<R: Read> Read for Decoder<R> {
             let mut out_size = buf.len() - written;
             let mut in_size = self.buffer.len() - self.offset;
 
-            unsafe {
+            let res = unsafe {
                 let code =
                     ll::ZBUFF_decompressContinue(self.context.c,
                                                  buf[written..].as_mut_ptr(),
@@ -116,10 +120,14 @@ impl<R: Read> Read for Decoder<R> {
                                                  self.buffer[self.offset..]
                                                      .as_ptr(),
                                                  &mut in_size);
-                let _ = try!(ll::parse_code(code));
-            }
+                try!(ll::parse_code(code))
+            };
 
             written += out_size;
+            if res == 0 {
+                self.offset = self.buffer.capacity() + 1; // End-of-frame marker.
+                break;
+            }
             self.offset += in_size;
         }
         Ok(written)

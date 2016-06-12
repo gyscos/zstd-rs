@@ -1,6 +1,6 @@
 # zstd
 
-[![Build Status](https://travis-ci.org/Gyscos/zstd-rs.svg?branch=master)](https://travis-ci.org/Gyscos/zstd-rs)
+[![Build Status](https://travis-ci.org/gyscos/zstd-rs.svg?branch=master)](https://travis-ci.org/gyscos/zstd-rs)
 [![crates.io](http://meritbadge.herokuapp.com/zstd)](https://crates.io/crates/zstd)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
@@ -51,7 +51,7 @@ fn decompress() {
 This repository includes `zstd` as a [submodule]. To get everything during your clone, use :
 
 ```
-git clone https://github.com/Gyscos/zstd-rs --recursive
+git clone https://github.com/gyscos/zstd-rs --recursive
 ```
 
 Or, if you cloned it without the `--recursive` flag, call this from inside the repository:

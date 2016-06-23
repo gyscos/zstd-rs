@@ -144,7 +144,6 @@ impl<W: Write> Write for Encoder<W> {
 
     fn flush(&mut self) -> io::Result<()> {
         let mut out_size = self.buffer.capacity();
-        // let written = try!(ll::parse_code(unsafe {
         unsafe {
             let code = ll::ZBUFF_compressFlush(self.context.c,
                                     self.buffer.as_mut_ptr(),

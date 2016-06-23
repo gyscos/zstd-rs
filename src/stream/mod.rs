@@ -22,7 +22,7 @@ fn test_end_of_frame() {
 
 #[test]
 fn test_flush() {
-    use std::io::{self, Write};
+    use std::io::Write;
 
     let buf = Vec::new();
     let mut z = encoder::Encoder::new(buf, 19).unwrap();

@@ -37,6 +37,43 @@ pub struct Encoder<W: Write> {
     context: EncoderContext,
 }
 
+/// A wrapper around an `Encoder<W>` that finishes the stream on drop.
+pub struct AutoFinishEncoder<W: Write> {
+    // We wrap this in an option to take it during drop.
+    encoder: Option<Encoder<W>>,
+    // TODO: make this a FnOnce once it works in a Box
+    on_finish: Option<Box<FnMut(io::Result<W>)>>,
+}
+
+impl<W: Write> AutoFinishEncoder<W> {
+    fn new<F: 'static + FnMut(io::Result<W>)>(encoder: Encoder<W>, on_finish: F) -> Self {
+        AutoFinishEncoder {
+            encoder: Some(encoder),
+            on_finish: Some(Box::new(on_finish)),
+        }
+    }
+}
+
+impl<W: Write> Drop for AutoFinishEncoder<W> {
+    fn drop(&mut self) {
+        let result = self.encoder.take().unwrap().finish();
+        if let Some(mut on_finish) = self.on_finish.take() {
+            on_finish(result);
+        }
+    }
+}
+
+impl<W: Write> Write for AutoFinishEncoder<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.encoder.as_mut().unwrap().write(buf)
+    }
+
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.encoder.as_mut().unwrap().flush()
+    }
+}
+
 impl<W: Write> Encoder<W> {
     /// Creates a new encoder.
     ///
@@ -69,6 +106,22 @@ impl<W: Write> Encoder<W> {
         }));
 
         Encoder::with_context(writer, context)
+    }
+
+    /// Returns an encoder that will finish the stream on drop.
+    ///
+    /// # Panic
+    ///
+    /// Panics if an error happens when finishing the stream.
+    pub fn auto_finish(self) -> AutoFinishEncoder<W> {
+        self.on_finish(|result| { result.unwrap(); })
+    }
+
+    /// Returns an encoder that will finish the stream on drop.
+    ///
+    /// Calls the given callback with the result from `finish()`.
+    pub fn on_finish<F: 'static + FnMut(io::Result<W>)>(self, f: F) -> AutoFinishEncoder<W> {
+        AutoFinishEncoder::new(self, f)
     }
 
     fn with_context(writer: W, context: EncoderContext) -> io::Result<Self> {

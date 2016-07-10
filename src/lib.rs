@@ -31,7 +31,7 @@ mod stream;
 pub mod block;
 pub mod dict;
 
-pub use stream::encoder::Encoder;
+pub use stream::encoder::{Encoder, AutoFinishEncoder};
 pub use stream::decoder::Decoder;
 
 use std::io;

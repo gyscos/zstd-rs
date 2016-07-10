@@ -35,9 +35,8 @@ extern crate zstd;
 use std::io;
 
 fn compress(level: i32) {
-	let mut encoder = zstd::Encoder::new(io::stdout(), level).unwrap();
+    let mut encoder = zstd::Encoder::new(io::stdout(), level).unwrap().auto_finish();
 	io::copy(&mut io::stdin(), &mut encoder).unwrap();
-    encoder.finish().unwrap();
 }
 
 fn decompress() {

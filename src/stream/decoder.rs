@@ -133,7 +133,8 @@ impl<R: Read> Read for Decoder<R> {
 
             written += out_size;
             if res == 0 {
-                self.offset = self.buffer.capacity() + 1; // End-of-frame marker.
+                // End-of-frame marker.
+                self.offset = self.buffer.capacity() + 1;
                 break;
             }
             self.offset += in_size;

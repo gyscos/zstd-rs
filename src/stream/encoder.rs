@@ -46,7 +46,9 @@ pub struct AutoFinishEncoder<W: Write> {
 }
 
 impl<W: Write> AutoFinishEncoder<W> {
-    fn new<F: 'static + FnMut(io::Result<W>)>(encoder: Encoder<W>, on_finish: F) -> Self {
+    fn new<F: 'static + FnMut(io::Result<W>)>(encoder: Encoder<W>,
+                                              on_finish: F)
+                                              -> Self {
         AutoFinishEncoder {
             encoder: Some(encoder),
             on_finish: Some(Box::new(on_finish)),
@@ -114,18 +116,23 @@ impl<W: Write> Encoder<W> {
     ///
     /// Panics if an error happens when finishing the stream.
     pub fn auto_finish(self) -> AutoFinishEncoder<W> {
-        self.on_finish(|result| { result.unwrap(); })
+        self.on_finish(|result| {
+            result.unwrap();
+        })
     }
 
     /// Returns an encoder that will finish the stream on drop.
     ///
     /// Calls the given callback with the result from `finish()`.
-    pub fn on_finish<F: 'static + FnMut(io::Result<W>)>(self, f: F) -> AutoFinishEncoder<W> {
+    pub fn on_finish<F: 'static + FnMut(io::Result<W>)>
+        (self, f: F)
+         -> AutoFinishEncoder<W> {
         AutoFinishEncoder::new(self, f)
     }
 
     fn with_context(writer: W, context: EncoderContext) -> io::Result<Self> {
-        // This is the output buffer size, for compressed data we get from zstd.
+        // This is the output buffer size,
+        // for compressed data we get from zstd.
         let buffer_size = unsafe { ll::ZBUFF_recommendedCOutSize() };
 
         Ok(Encoder {
@@ -199,8 +206,8 @@ impl<W: Write> Write for Encoder<W> {
         let mut out_size = self.buffer.capacity();
         unsafe {
             let code = ll::ZBUFF_compressFlush(self.context.c,
-                                    self.buffer.as_mut_ptr(),
-                                    &mut out_size);
+                                               self.buffer.as_mut_ptr(),
+                                               &mut out_size);
             self.buffer.set_len(out_size);
             let _ = try!(ll::parse_code(code));
         }

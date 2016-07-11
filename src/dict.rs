@@ -54,9 +54,9 @@ pub fn from_samples<S: AsRef<[u8]>>(samples: &[S], max_size: usize)
                                     -> io::Result<Vec<u8>> {
     // Copy every sample to a big chunk of memory
     let data: Vec<_> = samples.iter()
-                              .flat_map(|s| s.as_ref())
-                              .cloned()
-                              .collect();
+        .flat_map(|s| s.as_ref())
+        .cloned()
+        .collect();
     let sizes: Vec<_> = samples.iter().map(|s| s.as_ref().len()).collect();
 
     from_continuous(&data, &sizes, max_size)

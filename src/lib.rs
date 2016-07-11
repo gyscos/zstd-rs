@@ -31,7 +31,7 @@ mod stream;
 pub mod block;
 pub mod dict;
 
-pub use stream::encoder::{Encoder, AutoFinishEncoder};
+pub use stream::encoder::{AutoFinishEncoder, Encoder};
 pub use stream::decoder::Decoder;
 
 use std::io;
@@ -68,7 +68,7 @@ fn test_cycle() {
     let compressed = encode_all(text.as_bytes(), 1).unwrap();
 
     let decompressed = String::from_utf8(decode_all(&compressed).unwrap())
-                           .unwrap();
+        .unwrap();
 
     assert_eq!(text, &decompressed);
 }

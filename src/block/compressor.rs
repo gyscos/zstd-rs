@@ -60,17 +60,17 @@ impl Compressor {
         ll::parse_code(code)
     }
 
-    /// Compress a block of data, and return the compressed result in a `Vec<u8>`.
-    pub fn compress(&mut self, data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+    /// Compresses a block of data and returns the compressed result.
+    pub fn compress(&mut self, data: &[u8], lvl: i32) -> io::Result<Vec<u8>> {
         // We allocate a big buffer, slightly larger than the input data.
         let buffer_len = unsafe { ll::ZSTD_compressBound(data.len()) };
         let mut buffer = Vec::with_capacity(buffer_len);
         unsafe {
-            // Use all capacity. Memory may not be initialized, but we won't read it.
+            // Use all capacity.
+            // Memory may not be initialized, but we won't read it.
             buffer.set_len(buffer_len);
-            let len = try!(self.compress_to_buffer(&mut buffer[..],
-                                                   data,
-                                                   level));
+            let len =
+                try!(self.compress_to_buffer(&mut buffer[..], data, lvl));
             buffer.set_len(len);
         }
 

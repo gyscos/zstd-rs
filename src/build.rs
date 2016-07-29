@@ -18,6 +18,7 @@ fn main() {
 
     // Some extra parameters
     config.opt_level(3);
+    config.include("zstd/lib/");
     config.include("zstd/lib/common");
 
     // Compile!

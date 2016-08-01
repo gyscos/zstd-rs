@@ -7,6 +7,7 @@ fn main() {
     let globs = &["zstd/lib/common/*.c",
                   "zstd/lib/compress/*.c",
                   "zstd/lib/decompress/*.c",
+                  "zstd/lib/legacy/*.c",
                   "zstd/lib/dictBuilder/*.c"];
 
     for pattern in globs {
@@ -20,6 +21,9 @@ fn main() {
     config.opt_level(3);
     config.include("zstd/lib/");
     config.include("zstd/lib/common");
+    config.include("zstd/lib/legacy");
+
+    config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
 
     // Compile!
     config.compile("libzstd.a");

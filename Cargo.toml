@@ -1,7 +1,7 @@
 [package]
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 build = "src/build.rs"
-description = "Rust zstd bindings library."
+description = "Binding for the zstd compression library."
 documentation = "https://gyscos.github.io/zstd-rs/zstd/index.html"
 license = "MIT"
 name = "zstd"

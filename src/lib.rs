@@ -9,7 +9,7 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```ignore
 //! extern crate zstd;
 //!
 //! use std::io;

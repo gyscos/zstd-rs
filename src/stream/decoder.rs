@@ -109,12 +109,6 @@ impl<R: Read> Read for Decoder<R> {
                 unsafe {
                     self.buffer.set_len(read);
                 }
-                // If we can't read anything, no need to try and decompress it.
-                // Just break the loop.
-                if read == 0 {
-                    break;
-                }
-
             }
 
             let mut out_size = buf.len() - written;
@@ -140,5 +134,28 @@ impl<R: Read> Read for Decoder<R> {
             self.offset += in_size;
         }
         Ok(written)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_read_small() {
+        use std::io::{self, Read};
+        use super::Decoder;
+
+        const EXPECTED_DECODED_LENGTH: usize = 18;
+        let mut output = [0u8; EXPECTED_DECODED_LENGTH];
+        let input = &[
+            0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x68, 0x7d, 0x00,
+            0x00, 0x48, 0x05, 0x54, 0x45, 0x53, 0x54, 0x30,
+            0x00, 0x10, 0x00, 0x01, 0x00, 0x05, 0x38, 0x02,
+        ];
+
+        let r = io::Cursor::new(input);
+        let mut r = Decoder::new(r).unwrap();
+
+        assert!(r.read(&mut output[..1]).unwrap() == 1);
+        assert!(r.read(&mut output[1..]).unwrap() > 0);
     }
 }

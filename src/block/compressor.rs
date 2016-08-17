@@ -1,9 +1,10 @@
 use ll;
+use ::parse_code;
 
 use std::io;
 
 struct EncoderContext {
-    c: ll::ZSTDCompressionContext,
+    c: *mut ll::ZSTD_CCtx,
 }
 
 impl Default for EncoderContext {
@@ -15,7 +16,7 @@ impl Default for EncoderContext {
 impl Drop for EncoderContext {
     fn drop(&mut self) {
         let code = unsafe { ll::ZSTD_freeCCtx(self.c) };
-        ll::parse_code(code).unwrap();
+        parse_code(code).unwrap();
     }
 }
 
@@ -57,7 +58,7 @@ impl Compressor {
                                         self.dict.len(),
                                         level)
         };
-        ll::parse_code(code)
+        parse_code(code)
     }
 
     /// Compresses a block of data and returns the compressed result.

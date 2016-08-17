@@ -1,9 +1,10 @@
 use ll;
+use ::parse_code;
 
 use std::io;
 
 struct DecoderContext {
-    c: ll::ZSTDDecompressionContext,
+    c: *mut ll::ZSTD_DCtx,
 }
 
 impl Default for DecoderContext {
@@ -15,7 +16,7 @@ impl Default for DecoderContext {
 impl Drop for DecoderContext {
     fn drop(&mut self) {
         let code = unsafe { ll::ZSTD_freeDCtx(self.c) };
-        ll::parse_code(code).unwrap();
+        parse_code(code).unwrap();
     }
 }
 
@@ -56,7 +57,7 @@ impl Decompressor {
                                           self.dict.as_ptr(),
                                           self.dict.len())
         };
-        ll::parse_code(code)
+        parse_code(code)
     }
 
     /// Decompress a block of data, and return the decompressed result in a `Vec<u8>`.

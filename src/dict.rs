@@ -15,6 +15,7 @@
 //! [`Decoder::with_dictionary`]: ../struct.Decoder.html#method.with_dictionary
 
 use ll;
+use ::parse_code;
 
 use std::io::{self, Read};
 use std::path;
@@ -40,7 +41,7 @@ pub fn from_continuous(sample_data: &[u8], sample_sizes: &[usize],
                                              sample_data.as_ptr(),
                                              sample_sizes.as_ptr(),
                                              sample_sizes.len());
-        let written = try!(ll::parse_code(code));
+        let written = try!(parse_code(code));
         result.set_len(written);
     }
     Ok(result)

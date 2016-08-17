@@ -1,21 +1,23 @@
 use std::io::{self, Write};
 
+use ::parse_code;
+
 use ll;
 
 struct EncoderContext {
-    c: ll::ZBUFFCompressionContext,
+    s: *mut ll::ZSTD_CStream,
 }
 
 impl Default for EncoderContext {
     fn default() -> Self {
-        EncoderContext { c: unsafe { ll::ZBUFF_createCCtx() } }
+        EncoderContext { s: unsafe { ll::ZSTD_createCStream() } }
     }
 }
 
 impl Drop for EncoderContext {
     fn drop(&mut self) {
-        let code = unsafe { ll::ZBUFF_freeCCtx(self.c) };
-        ll::parse_code(code).unwrap();
+        let code = unsafe { ll::ZSTD_freeCStream(self.s) };
+        parse_code(code).unwrap();
     }
 }
 
@@ -84,9 +86,7 @@ impl<W: Write> Encoder<W> {
         let context = EncoderContext::default();
 
         // Initialize the stream
-        try!(ll::parse_code(unsafe {
-            ll::ZBUFF_compressInit(context.c, level)
-        }));
+        try!(parse_code(unsafe { ll::ZSTD_initCStream(context.s, level) }));
 
         Encoder::with_context(writer, context)
     }
@@ -100,11 +100,11 @@ impl<W: Write> Encoder<W> {
         let context = EncoderContext::default();
 
         // Initialize the stream with an existing dictionary
-        try!(ll::parse_code(unsafe {
-            ll::ZBUFF_compressInitDictionary(context.c,
-                                             dictionary.as_ptr(),
-                                             dictionary.len(),
-                                             level)
+        try!(parse_code(unsafe {
+            ll::ZSTD_initCStream_usingDict(context.s,
+                                           dictionary.as_ptr(),
+                                           dictionary.len(),
+                                           level)
         }));
 
         Encoder::with_context(writer, context)
@@ -133,7 +133,7 @@ impl<W: Write> Encoder<W> {
     fn with_context(writer: W, context: EncoderContext) -> io::Result<Self> {
         // This is the output buffer size,
         // for compressed data we get from zstd.
-        let buffer_size = unsafe { ll::ZBUFF_recommendedCOutSize() };
+        let buffer_size = unsafe { ll::ZSTD_CStreamOutSize() };
 
         Ok(Encoder {
             writer: writer,
@@ -148,14 +148,18 @@ impl<W: Write> Encoder<W> {
     pub fn finish(mut self) -> io::Result<W> {
 
         // First, closes the stream.
-        let mut out_size = self.buffer.capacity();
-        let remaining = try!(ll::parse_code(unsafe {
-            ll::ZBUFF_compressEnd(self.context.c,
-                                  self.buffer.as_mut_ptr(),
-                                  &mut out_size)
+
+        let mut buffer = ll::ZSTD_outBuffer {
+            dst: self.buffer.as_mut_ptr(),
+            size: self.buffer.capacity(),
+            pos: 0,
+        };
+        let remaining = try!(parse_code(unsafe {
+            ll::ZSTD_endStream(self.context.s,
+                               &mut buffer as *mut ll::ZSTD_outBuffer)
         }));
         unsafe {
-            self.buffer.set_len(out_size);
+            self.buffer.set_len(buffer.pos);
         }
         if remaining != 0 {
             // Need to flush?
@@ -171,45 +175,55 @@ impl<W: Write> Encoder<W> {
 
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
-        unsafe { ll::ZBUFF_recommendedCInSize() }
+        unsafe { ll::ZSTD_CStreamInSize() }
     }
 }
 
 impl<W: Write> Write for Encoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // How much we've read from this task
-        let mut read = 0;
-        while read != buf.len() {
-            let mut out_size = self.buffer.capacity();
-            let mut in_size = buf.len() - read;
+        let mut in_buffer = ll::ZSTD_inBuffer {
+            src: buf.as_ptr(),
+            size: buf.len(),
+            pos: 0,
+        };
 
+        let mut out_buffer = ll::ZSTD_outBuffer {
+            dst: self.buffer.as_mut_ptr(),
+            size: self.buffer.capacity(),
+            pos: 0,
+        };
+        while in_buffer.pos != buf.len() {
+            out_buffer.pos = 0;
             unsafe {
                 // Compress the given buffer into our output buffer
-                let code = ll::ZBUFF_compressContinue(self.context.c,
-                                                      self.buffer
-                                                          .as_mut_ptr(),
-                                                      &mut out_size,
-                                                      buf[read..].as_ptr(),
-                                                      &mut in_size);
-                self.buffer.set_len(out_size);
+                let code = ll::ZSTD_compressStream(self.context.s,
+                                                   &mut out_buffer as *mut ll::ZSTD_outBuffer,
+                                                   &mut in_buffer as *mut ll::ZSTD_inBuffer);
+                self.buffer.set_len(out_buffer.pos);
 
                 // Do we care about the hint?
-                let _ = try!(ll::parse_code(code));
+                let _ = try!(parse_code(code));
             }
+
+
             try!(self.writer.write_all(&self.buffer));
-            read += in_size;
         }
-        Ok(read)
+        Ok(in_buffer.pos)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut out_size = self.buffer.capacity();
+        let mut buffer = ll::ZSTD_outBuffer {
+            dst: self.buffer.as_mut_ptr(),
+            size: self.buffer.capacity(),
+            pos: 0,
+        };
         unsafe {
-            let code = ll::ZBUFF_compressFlush(self.context.c,
-                                               self.buffer.as_mut_ptr(),
-                                               &mut out_size);
-            self.buffer.set_len(out_size);
-            let _ = try!(ll::parse_code(code));
+            let code =
+                ll::ZSTD_flushStream(self.context.s,
+                                     &mut buffer as *mut ll::ZSTD_outBuffer);
+            self.buffer.set_len(buffer.pos);
+            let _ = try!(parse_code(code));
         }
 
         try!(self.writer.write_all(&self.buffer));

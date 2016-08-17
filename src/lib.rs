@@ -9,7 +9,7 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```no_run
 //! extern crate zstd;
 //!
 //! use std::io;
@@ -79,9 +79,8 @@ fn parse_code(code: libc::size_t) -> Result<usize, io::Error> {
 
 #[test]
 fn test_cycle() {
-    let text = "This is a sample text. It is not meant to be interesting or \
-                anything. Just text, nothing more. Don't expect too much \
-                from it.";
+    // Where could I find some long text?...
+    let text = include_str!("ll.rs");
 
     let compressed = encode_all(text.as_bytes(), 1).unwrap();
 

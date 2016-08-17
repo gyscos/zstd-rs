@@ -107,6 +107,8 @@ impl<R: Read> Read for Decoder<R> {
         };
         while out_buffer.pos != buf.len() {
 
+            let mut input_exhausted = false;
+
             if in_buffer.pos == in_buffer.size {
                 // We need moar data!
                 // Make a nice clean buffer
@@ -122,12 +124,10 @@ impl<R: Read> Read for Decoder<R> {
                 }
                 in_buffer.pos = 0;
                 in_buffer.size = read;
-                // If we can't read anything, no need to try and decompress it.
-                // Just break the loop.
+                // So we can't read anything: input is exhausted.
                 if read == 0 {
-                    break;
+                    input_exhausted = true;
                 }
-
             }
 
             let res = unsafe {
@@ -137,6 +137,11 @@ impl<R: Read> Read for Decoder<R> {
                                               &mut in_buffer as *mut ll::ZSTD_inBuffer);
                 try!(parse_code(code))
             };
+
+            if res > 1 && input_exhausted {
+                // zstd keeps asking for more, but we're short on data!
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "incomplete frame"));
+            }
 
             if res == 0 {
                 // Remember that we've reached the end of the current frame,

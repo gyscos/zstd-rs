@@ -5,7 +5,7 @@ description = "Binding for the zstd compression library."
 documentation = "https://gyscos.github.io/zstd-rs/zstd/index.html"
 license = "MIT"
 name = "zstd"
-repository = "https://github.com/Gyscos/zstd-rs"
+repository = "https://github.com/gyscos/zstd-rs"
 version = "0.1.13"
 
 [build-dependencies]

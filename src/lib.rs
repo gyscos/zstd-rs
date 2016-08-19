@@ -76,16 +76,51 @@ fn parse_code(code: libc::size_t) -> Result<usize, io::Error> {
     }
 }
 
+#[cfg(test)]
+fn test_cycle<I1: ?Sized, O1, I2: ?Sized, O2, F, G>(value: &I1, f: F, g: G)
+    where F: FnOnce(&I1) -> O1,
+          G: FnOnce(&I2) -> O2,
+          I1: PartialEq + std::fmt::Debug,
+          O1: std::ops::Deref<Target = I2>,
+          O2: std::ops::Deref<Target = I1>
+{
+    let mid = f(value);
+    let end = g(mid.deref());
+    assert_eq!(value, end.deref());
+}
 
-#[test]
-fn test_cycle() {
-    // Where could I find some long text?...
-    let text = include_str!("ll.rs");
+#[cfg(test)]
+fn test_cycle_unwrap<I1: ?Sized, O1, I2: ?Sized, O2, E1, E2, F, G>(value: &I1,
+                                                                   f: F, g: G)
+    where F: FnOnce(&I1) -> Result<O1, E1>,
+          G: FnOnce(&I2) -> Result<O2, E2>,
+          I1: PartialEq + std::fmt::Debug,
+          O1: std::ops::Deref<Target = I2>,
+          O2: std::ops::Deref<Target = I1>,
+          E1: std::fmt::Debug,
+          E2: std::fmt::Debug,
+{
+    test_cycle(value, |data| f(data).unwrap(), |data| g(data).unwrap());
+}
 
-    let compressed = encode_all(text.as_bytes(), 1).unwrap();
+#[cfg(test)]
+mod tests {
+    use {decode_all, encode_all};
 
-    let decompressed = String::from_utf8(decode_all(&compressed).unwrap())
-        .unwrap();
+    // Check that compressing+decompressing some data gives back the original
+    fn test_full_cycle(input: &[u8], level: i32) {
+        ::test_cycle_unwrap(input, |data| encode_all(data, level), decode_all);
+    }
 
-    assert_eq!(text, &decompressed);
+
+    #[test]
+    fn test_ll_source() {
+        // Where could I find some long text?...
+        let data = include_bytes!("ll.rs");
+        // Test a few compression levels.
+        // TODO: check them all?
+        for level in 1..5 {
+            test_full_cycle(data, level);
+        }
+    }
 }

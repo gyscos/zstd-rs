@@ -44,25 +44,29 @@ pub fn decompress(data: &[u8], capacity: usize) -> io::Result<Vec<u8>> {
     Decompressor::new().decompress(data, capacity)
 }
 
-#[test]
-fn test_direct() {
-    // hipsum.co
-    let text =
-        "Pork belly art party wolf XOXO, neutra scenester ugh thundercats \
-         tattooed squid skateboard beard readymade kogi. VHS cardigan \
-         schlitz, meditation chartreuse kogi tilde church-key. Actually \
-         direct trade hammock, aesthetic VHS semiotics organic narwhal lo-fi \
-         heirloom flexitarian master cleanse polaroid man bun. Flannel \
-         helvetica mustache, bicycle rights small batch slow-carb neutra \
-         tilde williamsburg meh poutine humblebrag. Four dollar toast \
-         butcher actually franzen, gastropub mustache tofu cardigan. 90's \
-         fingerstache forage brooklyn meditation single-origin coffee tofu \
-         actually, ramps pabst farm-to-table art party kombucha artisan \
-         fanny pack. Flannel salvia ennui viral leggings selfies.";
+#[cfg(test)]
+mod tests {
+    use super::{compress, decompress};
 
-    let compressed = compress(text.as_bytes(), 1).unwrap();
+    #[test]
+    fn test_direct() {
+        // hipsum.co
+        let text = "Pork belly art party wolf XOXO, neutra scenester ugh \
+                    thundercats tattooed squid skateboard beard readymade \
+                    kogi. VHS cardigan schlitz, meditation chartreuse kogi \
+                    tilde church-key. Actually direct trade hammock, \
+                    aesthetic VHS semiotics organic narwhal lo-fi heirloom \
+                    flexitarian master cleanse polaroid man bun. Flannel \
+                    helvetica mustache, bicycle rights small batch slow-carb \
+                    neutra tilde williamsburg meh poutine humblebrag. Four \
+                    dollar toast butcher actually franzen, gastropub \
+                    mustache tofu cardigan. 90's fingerstache forage \
+                    brooklyn meditation single-origin coffee tofu actually, \
+                    ramps pabst farm-to-table art party kombucha artisan \
+                    fanny pack. Flannel salvia ennui viral leggings selfies.";
 
-    let uncompressed = decompress(&compressed, text.len()).unwrap();
-
-    assert_eq!(text.as_bytes(), &uncompressed[..]);
+        ::test_cycle_unwrap(text.as_bytes(),
+                            |data| compress(data, 1),
+                            |data| decompress(data, text.len()));
+    }
 }

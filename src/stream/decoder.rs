@@ -140,7 +140,8 @@ impl<R: Read> Read for Decoder<R> {
 
             if res > 1 && input_exhausted {
                 // zstd keeps asking for more, but we're short on data!
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "incomplete frame"));
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof,
+                                          "incomplete frame"));
             }
 
             if res == 0 {

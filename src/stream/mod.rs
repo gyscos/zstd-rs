@@ -39,4 +39,29 @@ mod tests {
         let s = ::std::str::from_utf8(&s).unwrap();
         assert_eq!(s, "hello");
     }
+
+    #[test]
+    fn test_invalid_frame() {
+        use std::io::Read;
+
+        // I really hope this data is invalid...
+        let data = &[1u8, 2u8, 3u8, 4u8, 5u8];
+        let mut dec = decoder::Decoder::new(&data[..]).unwrap();
+        assert!(dec.read_to_end(&mut Vec::new()).is_err());
+    }
+
+    #[test]
+    fn test_incomplete_frame() {
+        use std::io::{Read, Write};
+
+        let mut enc = encoder::Encoder::new(Vec::new(), 1).unwrap();
+        enc.write_all(b"This is a regular string").unwrap();
+        let mut compressed = enc.finish().unwrap();
+
+        let half_size = compressed.len() - 2;
+        compressed.truncate(half_size);
+
+        let mut dec = decoder::Decoder::new(&compressed[..]).unwrap();
+        assert!(dec.read_to_end(&mut Vec::new()).is_err());
+    }
 }

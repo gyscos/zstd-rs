@@ -36,7 +36,7 @@ fn decompress_file(file: &str) -> io::Result<()> {
     match file {
         "-" => decompress_from(io::stdin()),
         other => {
-            decompress_from(io::BufReader::new(try!(fs::File::open(file))))
+            decompress_from(io::BufReader::new(try!(fs::File::open(other))))
         }
     }
 }

@@ -64,4 +64,29 @@ mod tests {
         let mut dec = decoder::Decoder::new(&compressed[..]).unwrap();
         assert!(dec.read_to_end(&mut Vec::new()).is_err());
     }
+
+    #[test]
+    fn test_legacy() {
+        use std::fs;
+        use std::io::Read;
+
+        let mut target = Vec::new();
+
+        // Read the content from that file
+        fs::File::open("assets/example.txt")
+            .unwrap()
+            .read_to_end(&mut target)
+            .unwrap();
+
+        for version in &[5, 6, 7, 8] {
+            let filename = format!("assets/example.txt.v{}.zst", version);
+            let file = fs::File::open(filename).unwrap();
+            let mut decoder = decoder::Decoder::new(file).unwrap();
+
+            let mut buffer = Vec::new();
+            decoder.read_to_end(&mut buffer).unwrap();
+
+            assert!(target == buffer, "Error decompressing legacy version {}", version);
+        }
+    }
 }

@@ -21,7 +21,7 @@
 //! }
 //! ```
 //!
-//! [zstd]: https://github.com/Cyan4973/zstd
+//! [zstd]: https://github.com/facebook/zstd
 #![deny(missing_docs)]
 extern crate libc;
 

@@ -73,7 +73,7 @@ This implementation is largely inspired by bozaro's [lz4-rs].
 
 [MIT](LICENSE)
 
-[zstd]: https://github.com/Cyan4973/zstd
+[zstd]: https://github.com/facebook/zstd
 [lz4-rs]: https://github.com/bozaro/lz4-rs
 [cargo-edit]: https://github.com/killercup/cargo-edit#cargo-add
 [doc]: https://gyscos.github.io/zstd-rs/zstd/index.html

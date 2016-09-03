@@ -1,15 +1,24 @@
-pub mod encoder;
-pub mod decoder;
+//! Compress and decompress Zstd streams.
+//!
+//! This module provide a `Read`/`Write` interface to zstd streams of arbitrary length.
+//!
+//! They are compatible with the `zstd` command-line tool.
+
+mod encoder;
+mod decoder;
+
+pub use self::encoder::{AutoFinishEncoder, Encoder};
+pub use self::decoder::Decoder;
 
 #[cfg(test)]
 mod tests {
-    use super::{decoder, encoder};
+    use super::{Decoder, Encoder};
 
     #[test]
     fn test_end_of_frame() {
         use std::io::{Read, Write};
 
-        let mut enc = encoder::Encoder::new(Vec::new(), 1).unwrap();
+        let mut enc = Encoder::new(Vec::new(), 1).unwrap();
         enc.write_all(b"foo").unwrap();
         let mut compressed = enc.finish().unwrap();
 
@@ -17,7 +26,7 @@ mod tests {
         compressed.push(0);
 
         // Drain zstd stream until end-of-frame.
-        let mut dec = decoder::Decoder::new(&compressed[..]).unwrap();
+        let mut dec = Decoder::new(&compressed[..]).unwrap();
         let mut buf = Vec::new();
         dec.read_to_end(&mut buf).unwrap();
         assert_eq!(&buf, b"foo");
@@ -28,7 +37,7 @@ mod tests {
         use std::io::Write;
 
         let buf = Vec::new();
-        let mut z = encoder::Encoder::new(buf, 19).unwrap();
+        let mut z = Encoder::new(buf, 19).unwrap();
 
         z.write_all(b"hello").unwrap();
 
@@ -46,7 +55,7 @@ mod tests {
 
         // I really hope this data is invalid...
         let data = &[1u8, 2u8, 3u8, 4u8, 5u8];
-        let mut dec = decoder::Decoder::new(&data[..]).unwrap();
+        let mut dec = Decoder::new(&data[..]).unwrap();
         assert!(dec.read_to_end(&mut Vec::new()).is_err());
     }
 
@@ -54,14 +63,14 @@ mod tests {
     fn test_incomplete_frame() {
         use std::io::{Read, Write};
 
-        let mut enc = encoder::Encoder::new(Vec::new(), 1).unwrap();
+        let mut enc = Encoder::new(Vec::new(), 1).unwrap();
         enc.write_all(b"This is a regular string").unwrap();
         let mut compressed = enc.finish().unwrap();
 
         let half_size = compressed.len() - 2;
         compressed.truncate(half_size);
 
-        let mut dec = decoder::Decoder::new(&compressed[..]).unwrap();
+        let mut dec = Decoder::new(&compressed[..]).unwrap();
         assert!(dec.read_to_end(&mut Vec::new()).is_err());
     }
 
@@ -81,7 +90,7 @@ mod tests {
         for version in &[5, 6, 7, 8] {
             let filename = format!("assets/example.txt.v{}.zst", version);
             let file = fs::File::open(filename).unwrap();
-            let mut decoder = decoder::Decoder::new(file).unwrap();
+            let mut decoder = Decoder::new(file).unwrap();
 
             let mut buffer = Vec::new();
             decoder.read_to_end(&mut buffer).unwrap();

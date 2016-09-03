@@ -20,7 +20,9 @@ impl Drop for DecoderContext {
     }
 }
 
-/// Allows to decompress multiple blocks of data, re-using the context.
+/// Allows to decompress independently multiple blocks of data.
+///
+/// This reduces memory usage compared to calling `decompress` multiple times.
 #[derive(Default)]
 pub struct Decompressor {
     context: DecoderContext,

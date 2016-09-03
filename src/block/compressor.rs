@@ -20,7 +20,10 @@ impl Drop for EncoderContext {
     }
 }
 
-/// Allows to compress multiple blocks of data, re-using the context.
+/// Allows to compress independently multiple blocks of data.
+///
+/// This reduces memory usage compared to calling `compress` multiple times.
+/// The compressed blocks are still completely independent.
 #[derive(Default)]
 pub struct Compressor {
     context: EncoderContext,

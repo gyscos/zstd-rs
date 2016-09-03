@@ -26,13 +26,12 @@
 extern crate libc;
 
 mod ll;
-mod stream;
 
+pub mod stream;
 pub mod block;
 pub mod dict;
 
-pub use stream::encoder::{AutoFinishEncoder, Encoder};
-pub use stream::decoder::Decoder;
+pub use stream::{Encoder, Decoder};
 
 use std::io;
 use std::ffi::CStr;

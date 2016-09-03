@@ -1,4 +1,4 @@
-//! Methods to compress and decompress individual blocks.
+//! Compress and decompress individual blocks.
 //!
 //! These methods process all the input data at once.
 //! It is therefore best used with relatively small blocks

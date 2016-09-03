@@ -4,15 +4,59 @@
 //!
 //! They are compatible with the `zstd` command-line tool.
 
+use std::io;
+
 mod encoder;
 mod decoder;
 
 pub use self::encoder::{AutoFinishEncoder, Encoder};
 pub use self::decoder::Decoder;
 
+/// Decompress the given data as if using a `Decoder`.
+///
+/// The input data must be in the zstd frame format.
+pub fn decode_all(data: &[u8]) -> io::Result<Vec<u8>> {
+    let mut result = Vec::new();
+    try!(decode_to_buffer(&mut result, data));
+    Ok(result)
+}
+
+/// Decompress the given data as if using a `Decoder`.
+///
+/// Decompressed data will be appended to `destination`.
+pub fn decode_to_buffer(destination: &mut Vec<u8>, source: &[u8])
+                        -> io::Result<()> {
+    let mut decoder = try!(Decoder::new(source));
+    try!(io::copy(&mut decoder, destination));
+    Ok(())
+}
+
+/// Compress all the given data as if using an `Encoder`.
+///
+/// Result will be in the zstd frame format.
+pub fn encode_all(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+    let mut result = Vec::<u8>::new();
+    try!(encode_to_buffer(&mut result, data, level));
+    Ok(result)
+}
+
+/// Compress all the given data as if using an `Encoder`.
+///
+/// Compressed data will be appended to `destination`.
+pub fn encode_to_buffer(destination: &mut Vec<u8>, data: &[u8], level: i32)
+                        -> io::Result<()> {
+    let mut encoder = try!(Encoder::new(destination, level));
+    let mut input = data;
+    try!(io::copy(&mut input, &mut encoder));
+    try!(encoder.finish());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use std::io;
     use super::{Decoder, Encoder};
+    use super::{decode_all, encode_to_buffer};
 
     #[test]
     fn test_end_of_frame() {
@@ -26,10 +70,21 @@ mod tests {
         compressed.push(0);
 
         // Drain zstd stream until end-of-frame.
-        let mut dec = Decoder::new(&compressed[..]).unwrap();
+        let mut dec = Decoder::new(&compressed[..]).unwrap().single_frame();
         let mut buf = Vec::new();
         dec.read_to_end(&mut buf).unwrap();
         assert_eq!(&buf, b"foo");
+    }
+
+    #[test]
+    fn test_concatenated_frames() {
+
+        let mut buffer = Vec::new();
+        encode_to_buffer(&mut buffer, b"foo", 1).unwrap();
+        encode_to_buffer(&mut buffer, b"bar", 2).unwrap();
+        encode_to_buffer(&mut buffer, b"baz", 3).unwrap();
+
+        assert_eq!(&decode_all(&buffer).unwrap(), b"foobarbaz");
     }
 
     #[test]
@@ -44,7 +99,7 @@ mod tests {
         z.flush().unwrap(); // Might corrupt stream
         let buf = z.finish().unwrap();
 
-        let s = ::decode_all(&buf[..]).unwrap();
+        let s = decode_all(&buf[..]).unwrap();
         let s = ::std::str::from_utf8(&s).unwrap();
         assert_eq!(s, "hello");
     }
@@ -56,7 +111,10 @@ mod tests {
         // I really hope this data is invalid...
         let data = &[1u8, 2u8, 3u8, 4u8, 5u8];
         let mut dec = Decoder::new(&data[..]).unwrap();
-        assert!(dec.read_to_end(&mut Vec::new()).is_err());
+        assert_eq!(dec.read_to_end(&mut Vec::new())
+                       .err()
+                       .map(|e| e.kind()),
+                   Some(io::ErrorKind::Other));
     }
 
     #[test]
@@ -71,7 +129,10 @@ mod tests {
         compressed.truncate(half_size);
 
         let mut dec = Decoder::new(&compressed[..]).unwrap();
-        assert!(dec.read_to_end(&mut Vec::new()).is_err());
+        assert_eq!(dec.read_to_end(&mut Vec::new())
+                       .err()
+                       .map(|e| e.kind()),
+                   Some(io::ErrorKind::UnexpectedEof));
     }
 
     #[test]
@@ -95,7 +156,9 @@ mod tests {
             let mut buffer = Vec::new();
             decoder.read_to_end(&mut buffer).unwrap();
 
-            assert!(target == buffer, "Error decompressing legacy version {}", version);
+            assert!(target == buffer,
+                    "Error decompressing legacy version {}",
+                    version);
         }
     }
 }

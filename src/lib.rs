@@ -31,32 +31,10 @@ pub mod stream;
 pub mod block;
 pub mod dict;
 
-pub use stream::{Encoder, Decoder};
+pub use stream::{Encoder, Decoder, encode_all, decode_all};
 
 use std::io;
 use std::ffi::CStr;
-
-
-/// Decompress the given data as if using a `Decoder`.
-///
-/// The input data must be in the zstd frame format.
-pub fn decode_all(data: &[u8]) -> io::Result<Vec<u8>> {
-    let mut result = Vec::new();
-    let mut decoder = try!(Decoder::new(data));
-    try!(io::copy(&mut decoder, &mut result));
-    Ok(result)
-}
-
-/// Compress all the given data as if using an `Encoder`.
-///
-/// Result will be in the zstd frame format.
-pub fn encode_all(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
-    let result = Vec::<u8>::new();
-    let mut encoder = try!(Encoder::new(result, level));
-    let mut input = data;
-    try!(io::copy(&mut input, &mut encoder));
-    encoder.finish()
-}
 
 /// Parse the result code
 ///

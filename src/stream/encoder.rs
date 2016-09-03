@@ -83,12 +83,7 @@ impl<W: Write> Encoder<W> {
     ///
     /// `level`: compression level (1-21)
     pub fn new(writer: W, level: i32) -> io::Result<Self> {
-        let context = EncoderContext::default();
-
-        // Initialize the stream
-        try!(parse_code(unsafe { ll::ZSTD_initCStream(context.s, level) }));
-
-        Encoder::with_context(writer, context)
+        Self::with_dictionary(writer, level, &[])
     }
 
     /// Creates a new encoder, using an existing dictionary.

@@ -6,7 +6,7 @@
 //!   and send the output to another write.
 //! * A [decoder](struct.Decoder.html) to read input data from a `Read`
 //!   and decompress it.
-//! * Convenient methods for common tasks.
+//! * Convenient functions for common tasks.
 //!
 //! # Example
 //!

@@ -89,6 +89,7 @@ pub fn from_files<I, P>(filenames: I, max_size: usize) -> io::Result<Vec<u8>>
 mod tests {
     use std::fs;
     use std::io;
+    use std::io::Read;
 
     #[test]
     fn test_dict_training() {
@@ -105,7 +106,9 @@ mod tests {
         for path in paths {
             let mut buffer = Vec::new();
             let mut file = fs::File::open(path).unwrap();
-            io::copy(&mut file,
+            let mut content = Vec::new();
+            file.read_to_end(&mut content).unwrap();
+            io::copy(&mut &content[..],
                      &mut ::stream::Encoder::with_dictionary(&mut buffer,
                                                              1,
                                                              &dict)
@@ -113,6 +116,14 @@ mod tests {
                          .auto_finish())
                 .unwrap();
 
+            let mut result = Vec::new();
+            io::copy(&mut ::stream::Decoder::with_dictionary(&buffer[..],
+                                                             &dict[..])
+                         .unwrap(),
+                     &mut result)
+                .unwrap();
+
+            assert_eq!(&content, &result);
         }
     }
 }

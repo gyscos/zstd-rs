@@ -12,42 +12,46 @@ mod decoder;
 pub use self::encoder::{AutoFinishEncoder, Encoder};
 pub use self::decoder::Decoder;
 
-/// Decompress the given data as if using a `Decoder`.
+/// Decompress from the given source as if using a `Decoder`.
 ///
 /// The input data must be in the zstd frame format.
-pub fn decode_all(data: &[u8]) -> io::Result<Vec<u8>> {
+pub fn decode_all<R: io::Read>(source: R) -> io::Result<Vec<u8>> {
     let mut result = Vec::new();
-    try!(decode_to_buffer(data, &mut result));
+    try!(copy_decode(source, &mut result));
     Ok(result)
 }
 
-/// Decompress the given data as if using a `Decoder`.
+/// Decompress from the given source as if using a `Decoder`.
 ///
 /// Decompressed data will be appended to `destination`.
-pub fn decode_to_buffer(source: &[u8], destination: &mut Vec<u8>)
-                        -> io::Result<()> {
+pub fn copy_decode<R, W>(source: R, mut destination: W) -> io::Result<()>
+    where R: io::Read,
+          W: io::Write
+{
     let mut decoder = try!(Decoder::new(source));
-    try!(io::copy(&mut decoder, destination));
+    try!(io::copy(&mut decoder, &mut destination));
     Ok(())
 }
 
-/// Compress all the given data as if using an `Encoder`.
+/// Compress all data from the given source as if using an `Encoder`.
 ///
 /// Result will be in the zstd frame format.
-pub fn encode_all(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
     let mut result = Vec::<u8>::new();
-    try!(encode_to_buffer(data, &mut result, level));
+    try!(copy_encode(source, &mut result, level));
     Ok(result)
 }
 
-/// Compress all the given data as if using an `Encoder`.
+/// Compress all data from the given source as if using an `Encoder`.
 ///
 /// Compressed data will be appended to `destination`.
-pub fn encode_to_buffer(data: &[u8], destination: &mut Vec<u8>, level: i32)
-                        -> io::Result<()> {
+pub fn copy_encode<R, W>(mut source: R, destination: W, level: i32)
+                         -> io::Result<()>
+    where R: io::Read,
+          W: io::Write
+{
     let mut encoder = try!(Encoder::new(destination, level));
-    let mut input = data;
-    try!(io::copy(&mut input, &mut encoder));
+    try!(io::copy(&mut source, &mut encoder));
     try!(encoder.finish());
     Ok(())
 }
@@ -56,7 +60,7 @@ pub fn encode_to_buffer(data: &[u8], destination: &mut Vec<u8>, level: i32)
 mod tests {
     use std::io;
     use super::{Decoder, Encoder};
-    use super::{decode_all, encode_to_buffer};
+    use super::{copy_encode, decode_all, encode_all};
 
     #[test]
     fn test_end_of_frame() {
@@ -80,11 +84,11 @@ mod tests {
     fn test_concatenated_frames() {
 
         let mut buffer = Vec::new();
-        encode_to_buffer(b"foo", &mut buffer, 1).unwrap();
-        encode_to_buffer(b"bar", &mut buffer, 2).unwrap();
-        encode_to_buffer(b"baz", &mut buffer, 3).unwrap();
+        copy_encode(&b"foo"[..], &mut buffer, 1).unwrap();
+        copy_encode(&b"bar"[..], &mut buffer, 2).unwrap();
+        copy_encode(&b"baz"[..], &mut buffer, 3).unwrap();
 
-        assert_eq!(&decode_all(&buffer).unwrap(), b"foobarbaz");
+        assert_eq!(&decode_all(&buffer[..]).unwrap(), b"foobarbaz");
     }
 
     #[test]
@@ -159,6 +163,24 @@ mod tests {
             assert!(target == buffer,
                     "Error decompressing legacy version {}",
                     version);
+        }
+    }
+
+    // Check that compressing+decompressing some data gives back the original
+    fn test_full_cycle(input: &[u8], level: i32) {
+        ::test_cycle_unwrap(input,
+                            |data| encode_all(data, level),
+                            |data| decode_all(data));
+    }
+
+    #[test]
+    fn test_ll_source() {
+        // Where could I find some long text?...
+        let data = include_bytes!("../ll.rs");
+        // Test a few compression levels.
+        // TODO: check them all?
+        for level in 1..5 {
+            test_full_cycle(data, level);
         }
     }
 }

@@ -29,7 +29,7 @@ pub fn from_continuous(sample_data: &[u8], sample_sizes: &[usize],
                        max_size: usize)
                        -> io::Result<Vec<u8>> {
     // Complain if the lengths don't add up to the entire data.
-    if sample_sizes.iter().fold(0, |a, b| a + b) != sample_data.len() {
+    if sample_sizes.iter().sum::<usize>() != sample_data.len() {
         return Err(io::Error::new(io::ErrorKind::Other,
                                   "sample sizes don't add up".to_string()));
     }
@@ -51,6 +51,11 @@ pub fn from_continuous(sample_data: &[u8], sample_sizes: &[usize],
 ///
 /// The samples will internaly be copied to a single continuous buffer,
 /// so make sure you have enough memory available.
+///
+/// If you need to stretch your system's limits,
+/// [`from_continuous`] directly uses the given slice.
+///
+/// [`from_continuous`]: ./fn.from_continuous.html
 pub fn from_samples<S: AsRef<[u8]>>(samples: &[S], max_size: usize)
                                     -> io::Result<Vec<u8>> {
     // Copy every sample to a big chunk of memory
@@ -64,8 +69,10 @@ pub fn from_samples<S: AsRef<[u8]>>(samples: &[S], max_size: usize)
 }
 
 /// Train a dict from a list of files.
-pub fn from_files<P: AsRef<path::Path>>(filenames: &[P], max_size: usize)
-                                        -> io::Result<Vec<u8>> {
+pub fn from_files<I, P>(filenames: I, max_size: usize) -> io::Result<Vec<u8>>
+    where P: AsRef<path::Path>,
+          I: IntoIterator<Item = P>
+{
     let mut buffer = Vec::new();
     let mut sizes = Vec::new();
 
@@ -76,4 +83,36 @@ pub fn from_files<P: AsRef<path::Path>>(filenames: &[P], max_size: usize)
     }
 
     from_continuous(&buffer, &sizes, max_size)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::io;
+
+    #[test]
+    fn test_dict_training() {
+        // Train a dictionary
+        let paths: Vec<_> = fs::read_dir("src")
+            .unwrap()
+            .map(|entry| entry.unwrap())
+            .map(|entry| entry.path())
+            .filter(|path| path.to_str().unwrap().ends_with(".rs"))
+            .collect();
+
+        let dict = super::from_files(&paths, 4000).unwrap();
+
+        for path in paths {
+            let mut buffer = Vec::new();
+            let mut file = fs::File::open(path).unwrap();
+            io::copy(&mut file,
+                     &mut ::stream::Encoder::with_dictionary(&mut buffer,
+                                                             1,
+                                                             &dict)
+                         .unwrap()
+                         .auto_finish())
+                .unwrap();
+
+        }
+    }
 }

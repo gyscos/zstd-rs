@@ -31,7 +31,7 @@ pub mod stream;
 pub mod block;
 pub mod dict;
 
-pub use stream::{Encoder, Decoder, encode_all, decode_all};
+pub use stream::{Decoder, Encoder, decode_all, encode_all};
 
 use std::io;
 use std::ffi::CStr;
@@ -53,51 +53,22 @@ fn parse_code(code: libc::size_t) -> Result<usize, io::Error> {
     }
 }
 
+// Some helper functions to write full-cycle tests.
+
 #[cfg(test)]
-fn test_cycle<I1: ?Sized, O1, I2: ?Sized, O2, F, G>(value: &I1, f: F, g: G)
-    where F: FnOnce(&I1) -> O1,
-          G: FnOnce(&I2) -> O2,
-          I1: PartialEq + std::fmt::Debug,
-          O1: std::ops::Deref<Target = I2>,
-          O2: std::ops::Deref<Target = I1>
+fn test_cycle<F, G>(data: &[u8], f: F, g: G)
+    where F: Fn(&[u8]) -> Vec<u8>,
+          G: Fn(&[u8]) -> Vec<u8>
 {
-    let mid = f(value);
-    let end = g(mid.deref());
-    assert_eq!(value, end.deref());
+    let mid = f(data);
+    let end = g(&mid);
+    assert_eq!(data, &end[..]);
 }
 
 #[cfg(test)]
-fn test_cycle_unwrap<I1: ?Sized, O1, I2: ?Sized, O2, E1, E2, F, G>(value: &I1,
-                                                                   f: F, g: G)
-    where F: FnOnce(&I1) -> Result<O1, E1>,
-          G: FnOnce(&I2) -> Result<O2, E2>,
-          I1: PartialEq + std::fmt::Debug,
-          O1: std::ops::Deref<Target = I2>,
-          O2: std::ops::Deref<Target = I1>,
-          E1: std::fmt::Debug,
-          E2: std::fmt::Debug,
+fn test_cycle_unwrap<F, G>(data: &[u8], f: F, g: G)
+    where F: Fn(&[u8]) -> io::Result<Vec<u8>>,
+          G: Fn(&[u8]) -> io::Result<Vec<u8>>
 {
-    test_cycle(value, |data| f(data).unwrap(), |data| g(data).unwrap());
-}
-
-#[cfg(test)]
-mod tests {
-    use {decode_all, encode_all};
-
-    // Check that compressing+decompressing some data gives back the original
-    fn test_full_cycle(input: &[u8], level: i32) {
-        ::test_cycle_unwrap(input, |data| encode_all(data, level), decode_all);
-    }
-
-
-    #[test]
-    fn test_ll_source() {
-        // Where could I find some long text?...
-        let data = include_bytes!("ll.rs");
-        // Test a few compression levels.
-        // TODO: check them all?
-        for level in 1..5 {
-            test_full_cycle(data, level);
-        }
-    }
+    test_cycle(data, |data| f(data).unwrap(), |data| g(data).unwrap())
 }

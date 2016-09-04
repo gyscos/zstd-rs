@@ -76,6 +76,6 @@ This implementation is largely inspired by bozaro's [lz4-rs].
 [zstd]: https://github.com/facebook/zstd
 [lz4-rs]: https://github.com/bozaro/lz4-rs
 [cargo-edit]: https://github.com/killercup/cargo-edit#cargo-add
-[doc]: https://gyscos.github.io/zstd-rs/zstd/index.html
+[doc]: https://docs.rs/zstd
 [stream]: examples/stream.rs
 [submodule]: https://git-scm.com/book/en/v2/Git-Tools-Submodules

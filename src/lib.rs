@@ -6,6 +6,7 @@
 //!   and send the output to another write.
 //! * A [decoder](struct.Decoder.html) to read input data from a `Read`
 //!   and decompress it.
+//! * Convenient methods for common tasks.
 //!
 //! # Example
 //!
@@ -16,8 +17,7 @@
 //!
 //! fn main() {
 //! 	// Uncompress input and print the result.
-//! 	let mut decoder = zstd::Decoder::new(io::stdin()).unwrap();
-//! 	io::copy(&mut decoder, &mut io::stdout()).unwrap();
+//! 	zstd::stream::copy_decode(io::stdin(), io::stdout()).unwrap();
 //! }
 //! ```
 //!

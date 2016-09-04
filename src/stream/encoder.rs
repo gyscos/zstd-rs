@@ -105,11 +105,11 @@ impl<W: Write> Encoder<W> {
         Encoder::with_context(writer, context)
     }
 
-    /// Returns an encoder that will finish the stream on drop.
+    /// Returns a wrapper around `self` that will finish the stream on drop.
     ///
     /// # Panic
     ///
-    /// Panics if an error happens when finishing the stream.
+    /// Panics on drop if an error happens when finishing the stream.
     pub fn auto_finish(self) -> AutoFinishEncoder<W> {
         self.on_finish(|result| {
             result.unwrap();
@@ -140,6 +140,9 @@ impl<W: Write> Encoder<W> {
     /// Finishes the stream. You *need* to call this after writing your stuff.
     ///
     /// This returns the inner writer in case you need it.
+    ///
+    /// **Note**: If you don't want (or can't) call `finish()` manually after writing your data,
+    /// consider using `auto_finish()` to get an `AutoFinishEncoder`.
     pub fn finish(mut self) -> io::Result<W> {
 
         // First, closes the stream.

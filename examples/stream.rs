@@ -29,11 +29,9 @@ fn main() {
 }
 
 fn compress(level: i32) {
-    let mut encoder = zstd::Encoder::new(io::stdout(), level).unwrap().auto_finish();
-    io::copy(&mut io::stdin(), &mut encoder).unwrap();
+    zstd::stream::copy_encode(io::stdin(), io::stdout(), level).unwrap();
 }
 
 fn decompress() {
-    let mut decoder = zstd::Decoder::new(io::stdin()).unwrap();
-    io::copy(&mut decoder, &mut io::stdout()).unwrap();
+    zstd::stream::copy_decode(io::stdin(), io::stdout()).unwrap();
 }

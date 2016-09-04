@@ -48,8 +48,8 @@ impl Compressor {
     ///
     /// Returns the number of bytes written, or an error if something happened
     /// (for instance if the destination buffer was too small).
-    pub fn compress_to_buffer(&mut self, destination: &mut [u8],
-                              source: &[u8], level: i32)
+    pub fn compress_to_buffer(&mut self, source: &[u8],
+                              destination: &mut [u8], level: i32)
                               -> io::Result<usize> {
         let code = unsafe {
             ll::ZSTD_compress_usingDict(self.context.c,
@@ -74,7 +74,7 @@ impl Compressor {
             // Memory may not be initialized, but we won't read it.
             buffer.set_len(buffer_len);
             let len =
-                try!(self.compress_to_buffer(&mut buffer[..], data, lvl));
+                try!(self.compress_to_buffer(data, &mut buffer[..], lvl));
             buffer.set_len(len);
         }
 

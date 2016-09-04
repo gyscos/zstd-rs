@@ -47,8 +47,8 @@ impl Decompressor {
     ///
     /// Returns the number of bytes written, or an error if something happened
     /// (for instance if the destination buffer was too small).
-    pub fn decompress_to_buffer(&mut self, destination: &mut [u8],
-                                source: &[u8])
+    pub fn decompress_to_buffer(&mut self, source: &[u8],
+                                destination: &mut [u8])
                                 -> io::Result<usize> {
         let code = unsafe {
             ll::ZSTD_decompress_usingDict(self.context.c,
@@ -71,7 +71,7 @@ impl Decompressor {
         let mut buffer = Vec::with_capacity(capacity);
         unsafe {
             buffer.set_len(capacity);
-            let len = try!(self.decompress_to_buffer(&mut buffer[..], data));
+            let len = try!(self.decompress_to_buffer(data, &mut buffer[..]));
             buffer.set_len(len);
         }
         Ok(buffer)

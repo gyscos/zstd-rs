@@ -17,14 +17,14 @@ pub use self::decoder::Decoder;
 /// The input data must be in the zstd frame format.
 pub fn decode_all(data: &[u8]) -> io::Result<Vec<u8>> {
     let mut result = Vec::new();
-    try!(decode_to_buffer(&mut result, data));
+    try!(decode_to_buffer(data, &mut result));
     Ok(result)
 }
 
 /// Decompress the given data as if using a `Decoder`.
 ///
 /// Decompressed data will be appended to `destination`.
-pub fn decode_to_buffer(destination: &mut Vec<u8>, source: &[u8])
+pub fn decode_to_buffer(source: &[u8], destination: &mut Vec<u8>)
                         -> io::Result<()> {
     let mut decoder = try!(Decoder::new(source));
     try!(io::copy(&mut decoder, destination));
@@ -36,14 +36,14 @@ pub fn decode_to_buffer(destination: &mut Vec<u8>, source: &[u8])
 /// Result will be in the zstd frame format.
 pub fn encode_all(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     let mut result = Vec::<u8>::new();
-    try!(encode_to_buffer(&mut result, data, level));
+    try!(encode_to_buffer(data, &mut result, level));
     Ok(result)
 }
 
 /// Compress all the given data as if using an `Encoder`.
 ///
 /// Compressed data will be appended to `destination`.
-pub fn encode_to_buffer(destination: &mut Vec<u8>, data: &[u8], level: i32)
+pub fn encode_to_buffer(data: &[u8], destination: &mut Vec<u8>, level: i32)
                         -> io::Result<()> {
     let mut encoder = try!(Encoder::new(destination, level));
     let mut input = data;
@@ -80,9 +80,9 @@ mod tests {
     fn test_concatenated_frames() {
 
         let mut buffer = Vec::new();
-        encode_to_buffer(&mut buffer, b"foo", 1).unwrap();
-        encode_to_buffer(&mut buffer, b"bar", 2).unwrap();
-        encode_to_buffer(&mut buffer, b"baz", 3).unwrap();
+        encode_to_buffer(b"foo", &mut buffer, 1).unwrap();
+        encode_to_buffer(b"bar", &mut buffer, 2).unwrap();
+        encode_to_buffer(b"baz", &mut buffer, 3).unwrap();
 
         assert_eq!(&decode_all(&buffer).unwrap(), b"foobarbaz");
     }

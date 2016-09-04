@@ -16,10 +16,10 @@ use std::io;
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
-pub fn compress_to_buffer(destination: &mut [u8], source: &[u8], level: i32)
+pub fn compress_to_buffer(source: &[u8], destination: &mut [u8], level: i32)
                           -> io::Result<usize> {
 
-    Compressor::new().compress_to_buffer(destination, source, level)
+    Compressor::new().compress_to_buffer(source, destination, level)
 }
 
 /// Compresses a block of data and returns the compressed result.
@@ -31,9 +31,9 @@ pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
-pub fn decompress_to_buffer(destination: &mut [u8], source: &[u8])
+pub fn decompress_to_buffer(source: &[u8], destination: &mut [u8])
                             -> io::Result<usize> {
-    Decompressor::new().decompress_to_buffer(destination, source)
+    Decompressor::new().decompress_to_buffer(source, destination)
 }
 
 /// Decompresses a block of data and returns the decompressed result.

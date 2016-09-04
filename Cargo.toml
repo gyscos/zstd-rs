@@ -20,4 +20,5 @@ libc = "0.2"
 clap = "2.6.0"
 
 [features]
-default = []
+default = ["legacy"]
+legacy = []

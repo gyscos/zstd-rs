@@ -1,6 +1,15 @@
 extern crate gcc;
 extern crate glob;
 
+#[cfg(not(feature = "legacy"))]
+fn set_legacy(_: &mut gcc::Config) {
+}
+
+#[cfg(feature = "legacy")]
+fn set_legacy(config: &mut gcc::Config) {
+    config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
+}
+
 fn main() {
     let mut config = gcc::Config::new();
 
@@ -23,7 +32,7 @@ fn main() {
     config.include("zstd/lib/common");
     config.include("zstd/lib/legacy");
 
-    config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
+    set_legacy(&mut config);
 
     // Compile!
     config.compile("libzstd.a");

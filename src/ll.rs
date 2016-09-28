@@ -219,6 +219,9 @@ extern "C" {
                                      params: ZSTD_parameters,
                                      customMem: ZSTD_customMem)
                                      -> *mut ZSTD_CDict;
+    pub fn ZSTD_resetCStream(zcs: *mut ZSTD_CStream,
+                             pledgedSrcSize: ::libc::c_ulonglong)
+                             -> size_t;
     pub fn ZSTD_sizeofCCtx(cctx: *const ZSTD_CCtx) -> size_t;
     pub fn ZSTD_getParams(compressionLevel: ::libc::c_int,
                           srcSize: ::libc::c_ulonglong, dictSize: size_t)
@@ -237,6 +240,7 @@ extern "C" {
                                   -> size_t;
     pub fn ZSTD_estimateDCtxSize() -> size_t;
     pub fn ZSTD_createDCtx_advanced(customMem: ZSTD_customMem) -> *mut ZSTD_DCtx;
+    pub fn ZSTD_resetDStream(zds: *mut ZSTD_DStream) -> size_t;
     pub fn ZSTD_sizeofDCtx(dctx: *const ZSTD_DCtx) -> size_t;
     pub fn ZSTD_createCStream() -> *mut ZSTD_CStream;
     pub fn ZSTD_freeCStream(zcs: *mut ZSTD_CStream) -> size_t;

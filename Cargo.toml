@@ -2,7 +2,7 @@
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 build = "src/build.rs"
 description = "Binding for the zstd compression library."
-documentation = "https://gyscos.github.io/zstd-rs/zstd/index.html"
+documentation = "https://docs.rs/zstd"
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"

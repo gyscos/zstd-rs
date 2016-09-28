@@ -1,5 +1,4 @@
 use std::io::{self, Read};
-use std::sync::Arc;
 
 use ll;
 use ::parse_code;
@@ -36,7 +35,6 @@ pub struct Decoder<R: Read> {
     // decompression context
     context: DecoderContext,
 
-    dictionary: Arc<Vec<u8>>,
     // `true` if we should stop after the first frame.
     single_frame: bool,
 }
@@ -44,7 +42,7 @@ pub struct Decoder<R: Read> {
 impl<R: Read> Decoder<R> {
     /// Creates a new decoder.
     pub fn new(reader: R) -> io::Result<Self> {
-        Self::with_dictionary(reader, Vec::new())
+        Self::with_dictionary(reader, &[])
     }
 
     /// Sets this `Decoder` to stop after the first frame.
@@ -58,41 +56,32 @@ impl<R: Read> Decoder<R> {
     /// Creates a new decoder, using an existing dictionary.
     ///
     /// The dictionary must be the same as the one used during compression.
-    pub fn with_dictionary<V>(reader: R, dictionary: V) -> io::Result<Self>
-        where V: Into<Vec<u8>>
-    {
-        Self::with_shared_dictionary(reader, Arc::new(dictionary.into()))
-    }
-
-    /// Creates a new decoder, using a shared dictionary.
-    ///
-    /// The dictionary must be the same as the one used during compression.
-    ///
-    /// The dictionary can be shared with other `Decoder`s / `Encoder`s / ...
-    pub fn with_shared_dictionary(reader: R, dictionary: Arc<Vec<u8>>)
+    pub fn with_dictionary(reader: R, dictionary: &[u8])
                                   -> io::Result<Self> {
 
         let buffer_size = unsafe { ll::ZSTD_DStreamInSize() };
 
-        let mut decoder = Decoder {
+        let context = DecoderContext::default();
+        try!(parse_code(unsafe {
+            ll::ZSTD_initDStream_usingDict(context.s,
+                                           dictionary.as_ptr(),
+                                           dictionary.len())
+        }));
+
+        let decoder = Decoder {
             reader: reader,
             buffer: Vec::with_capacity(buffer_size),
-            dictionary: dictionary,
             offset: 0,
-            context: DecoderContext::default(),
+            context: context,
             single_frame: false,
         };
-
-        try!(decoder.init());
 
         Ok(decoder)
     }
 
-    fn init(&mut self) -> io::Result<()> {
+    fn reinit(&mut self) -> io::Result<()> {
         try!(parse_code(unsafe {
-            ll::ZSTD_initDStream_usingDict(self.context.s,
-                                           self.dictionary.as_ptr(),
-                                           self.dictionary.len())
+            ll::ZSTD_resetDStream(self.context.s)
         }));
         Ok(())
     }
@@ -189,7 +178,7 @@ impl<R: Read> Read for Decoder<R> {
                         break;
                     } else {
                         // ?
-                        try!(self.init());
+                        try!(self.reinit());
                     }
                 }
             }

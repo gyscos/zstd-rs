@@ -2,9 +2,9 @@
 //!
 //! This crate provides:
 //!
-//! * An [encoder](struct.Encoder.html) to compress data using zstd
+//! * An [encoder](stream/struct.Encoder.html) to compress data using zstd
 //!   and send the output to another write.
-//! * A [decoder](struct.Decoder.html) to read input data from a `Read`
+//! * A [decoder](stream/struct.Decoder.html) to read input data from a `Read`
 //!   and decompress it.
 //! * Convenient functions for common tasks.
 //!
@@ -31,6 +31,7 @@ pub mod stream;
 pub mod block;
 pub mod dict;
 
+#[doc(no_inline)]
 pub use stream::{Decoder, Encoder, decode_all, encode_all};
 
 use std::io;

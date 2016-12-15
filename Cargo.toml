@@ -6,7 +6,7 @@ documentation = "https://docs.rs/zstd"
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "0.4.1"
+version = "0.4.2"
 exclude = ["assets"]
 
 [build-dependencies]

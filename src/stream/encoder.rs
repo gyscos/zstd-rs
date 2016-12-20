@@ -1,8 +1,7 @@
-use std::io::{self, Write};
+use ll;
 
 use ::parse_code;
-
-use ll;
+use std::io::{self, Write};
 
 struct EncoderContext {
     s: *mut ll::ZSTD_CStream,
@@ -34,6 +33,8 @@ pub struct Encoder<W: Write> {
     writer: W,
     // output buffer
     buffer: Vec<u8>,
+    // offset in the output buffer
+    offset: usize,
 
     // compression context
     context: EncoderContext,
@@ -95,12 +96,12 @@ impl<W: Write> Encoder<W> {
         let context = EncoderContext::default();
 
         // Initialize the stream with an existing dictionary
-        try!(parse_code(unsafe {
+        parse_code(unsafe {
             ll::ZSTD_initCStream_usingDict(context.s,
                                            dictionary.as_ptr(),
                                            dictionary.len(),
                                            level)
-        }));
+        })?;
 
         Encoder::with_context(writer, context)
     }
@@ -133,6 +134,7 @@ impl<W: Write> Encoder<W> {
         Ok(Encoder {
             writer: writer,
             buffer: Vec::with_capacity(buffer_size),
+            offset: 0,
             context: context,
         })
     }
@@ -152,10 +154,10 @@ impl<W: Write> Encoder<W> {
             size: self.buffer.capacity(),
             pos: 0,
         };
-        let remaining = try!(parse_code(unsafe {
+        let remaining = parse_code(unsafe {
             ll::ZSTD_endStream(self.context.s,
                                &mut buffer as *mut ll::ZSTD_outBuffer)
-        }));
+        })?;
         unsafe {
             self.buffer.set_len(buffer.pos);
         }
@@ -165,7 +167,7 @@ impl<W: Write> Encoder<W> {
         }
 
         // Write the end out
-        try!(self.writer.write_all(&self.buffer));
+        self.writer.write_all(&self.buffer)?;
 
         // Return the writer, because why not
         Ok(self.writer)
@@ -179,7 +181,18 @@ impl<W: Write> Encoder<W> {
 
 impl<W: Write> Write for Encoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // How much we've read from this task
+
+
+        if self.offset < self.buffer.len() {
+            // If we still had some things to write, do it first.
+            self.offset += self.writer.write(&self.buffer[self.offset..])?;
+            // Maybe next time!
+            return Err(io::Error::new(io::ErrorKind::Interrupted,
+                                      "Internal buffer full"));
+        }
+
+        // If we get to here, `self.buffer` can safely be discarded.
+
         let mut in_buffer = ll::ZSTD_inBuffer {
             src: buf.as_ptr(),
             size: buf.len(),
@@ -191,22 +204,26 @@ impl<W: Write> Write for Encoder<W> {
             size: self.buffer.capacity(),
             pos: 0,
         };
-        while in_buffer.pos != buf.len() {
-            out_buffer.pos = 0;
-            unsafe {
-                // Compress the given buffer into our output buffer
-                let code = ll::ZSTD_compressStream(self.context.s,
+
+
+        unsafe {
+            // Time to fill our input buffer
+            let code = ll::ZSTD_compressStream(self.context.s,
                                                    &mut out_buffer as *mut ll::ZSTD_outBuffer,
                                                    &mut in_buffer as *mut ll::ZSTD_inBuffer);
-                self.buffer.set_len(out_buffer.pos);
+            // Note: this may very well be empty,
+            // if it doesn't exceed zstd's own buffer
+            self.buffer.set_len(out_buffer.pos);
 
-                // Do we care about the hint?
-                let _ = try!(parse_code(code));
-            }
-
-
-            try!(self.writer.write_all(&self.buffer));
+            // Do we care about the hint?
+            let _ = parse_code(code)?;
         }
+
+
+        // This is the first time he sees this buffer.
+        // Remember his delicate touch.
+        self.offset = self.writer.write(&self.buffer)?;
+
         Ok(in_buffer.pos)
     }
 
@@ -221,10 +238,10 @@ impl<W: Write> Write for Encoder<W> {
                 ll::ZSTD_flushStream(self.context.s,
                                      &mut buffer as *mut ll::ZSTD_outBuffer);
             self.buffer.set_len(buffer.pos);
-            let _ = try!(parse_code(code));
+            let _ = parse_code(code)?;
         }
 
-        try!(self.writer.write_all(&self.buffer));
+        self.writer.write_all(&self.buffer)?;
         Ok(())
     }
 }

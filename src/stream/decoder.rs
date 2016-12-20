@@ -1,7 +1,6 @@
-use std::io::{self, Read};
-
 use ll;
 use ::parse_code;
+use std::io::{self, Read};
 
 struct DecoderContext {
     s: *mut ll::ZSTD_DStream,
@@ -56,17 +55,16 @@ impl<R: Read> Decoder<R> {
     /// Creates a new decoder, using an existing dictionary.
     ///
     /// The dictionary must be the same as the one used during compression.
-    pub fn with_dictionary(reader: R, dictionary: &[u8])
-                                  -> io::Result<Self> {
+    pub fn with_dictionary(reader: R, dictionary: &[u8]) -> io::Result<Self> {
 
         let buffer_size = unsafe { ll::ZSTD_DStreamInSize() };
 
         let context = DecoderContext::default();
-        try!(parse_code(unsafe {
+        parse_code(unsafe {
             ll::ZSTD_initDStream_usingDict(context.s,
                                            dictionary.as_ptr(),
                                            dictionary.len())
-        }));
+        })?;
 
         let decoder = Decoder {
             reader: reader,
@@ -80,9 +78,7 @@ impl<R: Read> Decoder<R> {
     }
 
     fn reinit(&mut self) -> io::Result<()> {
-        try!(parse_code(unsafe {
-            ll::ZSTD_resetDStream(self.context.s)
-        }));
+        parse_code(unsafe { ll::ZSTD_resetDStream(self.context.s) })?;
         Ok(())
     }
 
@@ -110,7 +106,7 @@ impl<R: Read> Decoder<R> {
         }
 
         // And FILL IT!
-        let read = try!(self.reader.read(&mut self.buffer));
+        let read = self.reader.read(&mut self.buffer)?;
         unsafe {
             self.buffer.set_len(read);
         }
@@ -147,7 +143,7 @@ impl<R: Read> Read for Decoder<R> {
             let mut input_exhausted = false;
 
             if in_buffer.pos == in_buffer.size {
-                input_exhausted = !try!(self.refill_buffer(&mut in_buffer));
+                input_exhausted = !self.refill_buffer(&mut in_buffer)?;
             }
 
             let res = unsafe {
@@ -155,7 +151,7 @@ impl<R: Read> Read for Decoder<R> {
                     ll::ZSTD_decompressStream(self.context.s,
                                               &mut out_buffer as *mut ll::ZSTD_outBuffer,
                                               &mut in_buffer as *mut ll::ZSTD_inBuffer);
-                try!(parse_code(code))
+                parse_code(code)?
             };
 
             if res > 1 && input_exhausted {
@@ -172,13 +168,13 @@ impl<R: Read> Read for Decoder<R> {
                     break;
                 } else {
                     if in_buffer.pos == in_buffer.size &&
-                       !try!(self.refill_buffer(&mut in_buffer)) {
+                       !self.refill_buffer(&mut in_buffer)? {
                         // we're out.
                         in_buffer.pos = self.buffer.capacity() + 1;
                         break;
                     } else {
                         // ?
-                        try!(self.reinit());
+                        self.reinit()?;
                     }
                 }
             }

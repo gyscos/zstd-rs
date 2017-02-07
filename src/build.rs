@@ -17,6 +17,7 @@ fn main() {
                   "zstd/lib/compress/*.c",
                   "zstd/lib/decompress/*.c",
                   "zstd/lib/legacy/*.c",
+                  "zstd/lib/deprecated/*.c",
                   "zstd/lib/dictBuilder/*.c"];
 
     for pattern in globs {

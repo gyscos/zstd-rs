@@ -55,6 +55,33 @@ fn decompress() {
 }
 ```
 
+# Compile it yourself
+
+`zstd` is included as a submodule. To get everything during your clone, use:
+
+```
+git clone https://github.com/gyscos/zstd-rs --recursive
+```
+
+Or, if you cloned it without the `--recursive` flag,
+call this from inside the repository:
+
+```
+git submodule update --init
+```
+
+Then, running `cargo build` should take care
+of building the C library and linking to it.
+
+# Build-time bindgen
+
+This library includes a pre-generated `bindings.rs` file.
+You can also generate new bindings at build-time, using the `bindgen` feature:
+
+```
+cargo build --features bindgen
+```
+
 # TODO
 
 * Benchmarks, optimizations, ...

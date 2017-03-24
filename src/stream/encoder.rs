@@ -57,6 +57,19 @@ impl<W: Write> AutoFinishEncoder<W> {
             on_finish: Some(Box::new(on_finish)),
         }
     }
+
+    /// Acquires a reference to the underlying writer.
+    pub fn get_ref(&self) -> &W {
+        self.encoder.as_ref().unwrap().get_ref()
+    }
+
+    /// Acquires a mutable reference to the underlying writer.
+    ///
+    /// Note that mutation of the writer may result in surprising results if
+    /// this encoder is continued to be used.
+    pub fn get_mut(&mut self) -> &mut W {
+        self.encoder.as_mut().unwrap().get_mut()
+    }
 }
 
 impl<W: Write> Drop for AutoFinishEncoder<W> {
@@ -137,6 +150,19 @@ impl<W: Write> Encoder<W> {
             offset: 0,
             context: context,
         })
+    }
+
+    /// Acquires a reference to the underlying writer.
+    pub fn get_ref(&self) -> &W {
+        &self.writer
+    }
+
+    /// Acquires a mutable reference to the underlying writer.
+    ///
+    /// Note that mutation of the writer may result in surprising results if
+    /// this encoder is continued to be used.
+    pub fn get_mut(&mut self) -> &mut W {
+        &mut self.writer
     }
 
     /// Finishes the stream. You *need* to call this after writing your stuff.

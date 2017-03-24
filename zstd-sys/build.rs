@@ -15,6 +15,7 @@ fn generate_bindings() {
         .header("zstd.h")
         .generate_comments(false) //< remove this when it works
         .hide_type("max_align_t")
+        .use_core()
         .ctypes_prefix("::libc")
         .clang_arg("-DZSTD_STATIC_LINKING_ONLY")
         .generate()

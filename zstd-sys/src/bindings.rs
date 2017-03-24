@@ -148,9 +148,9 @@ pub struct ZSTD_inBuffer_s {
 }
 #[test]
 fn bindgen_test_layout_ZSTD_inBuffer_s() {
-    assert_eq!(::std::mem::size_of::<ZSTD_inBuffer_s>() , 24usize , concat ! (
-               "Size of: " , stringify ! ( ZSTD_inBuffer_s ) ));
-    assert_eq! (::std::mem::align_of::<ZSTD_inBuffer_s>() , 8usize , concat !
+    assert_eq!(::core::mem::size_of::<ZSTD_inBuffer_s>() , 24usize , concat !
+               ( "Size of: " , stringify ! ( ZSTD_inBuffer_s ) ));
+    assert_eq! (::core::mem::align_of::<ZSTD_inBuffer_s>() , 8usize , concat !
                 ( "Alignment of " , stringify ! ( ZSTD_inBuffer_s ) ));
     assert_eq! (unsafe {
                 & ( * ( 0 as * const ZSTD_inBuffer_s ) ) . src as * const _ as
@@ -181,10 +181,10 @@ pub struct ZSTD_outBuffer_s {
 }
 #[test]
 fn bindgen_test_layout_ZSTD_outBuffer_s() {
-    assert_eq!(::std::mem::size_of::<ZSTD_outBuffer_s>() , 24usize , concat !
+    assert_eq!(::core::mem::size_of::<ZSTD_outBuffer_s>() , 24usize , concat !
                ( "Size of: " , stringify ! ( ZSTD_outBuffer_s ) ));
-    assert_eq! (::std::mem::align_of::<ZSTD_outBuffer_s>() , 8usize , concat !
-                ( "Alignment of " , stringify ! ( ZSTD_outBuffer_s ) ));
+    assert_eq! (::core::mem::align_of::<ZSTD_outBuffer_s>() , 8usize , concat
+                ! ( "Alignment of " , stringify ! ( ZSTD_outBuffer_s ) ));
     assert_eq! (unsafe {
                 & ( * ( 0 as * const ZSTD_outBuffer_s ) ) . dst as * const _
                 as usize } , 0usize , concat ! (
@@ -291,10 +291,10 @@ pub struct ZSTD_compressionParameters {
 }
 #[test]
 fn bindgen_test_layout_ZSTD_compressionParameters() {
-    assert_eq!(::std::mem::size_of::<ZSTD_compressionParameters>() , 28usize ,
-               concat ! (
+    assert_eq!(::core::mem::size_of::<ZSTD_compressionParameters>() , 28usize
+               , concat ! (
                "Size of: " , stringify ! ( ZSTD_compressionParameters ) ));
-    assert_eq! (::std::mem::align_of::<ZSTD_compressionParameters>() , 4usize
+    assert_eq! (::core::mem::align_of::<ZSTD_compressionParameters>() , 4usize
                 , concat ! (
                 "Alignment of " , stringify ! ( ZSTD_compressionParameters )
                 ));
@@ -353,10 +353,10 @@ pub struct ZSTD_frameParameters {
 }
 #[test]
 fn bindgen_test_layout_ZSTD_frameParameters() {
-    assert_eq!(::std::mem::size_of::<ZSTD_frameParameters>() , 12usize ,
+    assert_eq!(::core::mem::size_of::<ZSTD_frameParameters>() , 12usize ,
                concat ! ( "Size of: " , stringify ! ( ZSTD_frameParameters )
                ));
-    assert_eq! (::std::mem::align_of::<ZSTD_frameParameters>() , 4usize ,
+    assert_eq! (::core::mem::align_of::<ZSTD_frameParameters>() , 4usize ,
                 concat ! (
                 "Alignment of " , stringify ! ( ZSTD_frameParameters ) ));
     assert_eq! (unsafe {
@@ -386,9 +386,9 @@ pub struct ZSTD_parameters {
 }
 #[test]
 fn bindgen_test_layout_ZSTD_parameters() {
-    assert_eq!(::std::mem::size_of::<ZSTD_parameters>() , 40usize , concat ! (
-               "Size of: " , stringify ! ( ZSTD_parameters ) ));
-    assert_eq! (::std::mem::align_of::<ZSTD_parameters>() , 4usize , concat !
+    assert_eq!(::core::mem::size_of::<ZSTD_parameters>() , 40usize , concat !
+               ( "Size of: " , stringify ! ( ZSTD_parameters ) ));
+    assert_eq! (::core::mem::align_of::<ZSTD_parameters>() , 4usize , concat !
                 ( "Alignment of " , stringify ! ( ZSTD_parameters ) ));
     assert_eq! (unsafe {
                 & ( * ( 0 as * const ZSTD_parameters ) ) . cParams as * const
@@ -405,12 +405,13 @@ impl Clone for ZSTD_parameters {
     fn clone(&self) -> Self { *self }
 }
 pub type ZSTD_allocFunction =
-    ::std::option::Option<unsafe extern "C" fn(opaque: *mut ::libc::c_void,
-                                               size: usize)
-                              -> *mut ::libc::c_void>;
+    ::core::option::Option<unsafe extern "C" fn(opaque: *mut ::libc::c_void,
+                                                size: usize)
+                               -> *mut ::libc::c_void>;
 pub type ZSTD_freeFunction =
-    ::std::option::Option<unsafe extern "C" fn(opaque: *mut ::libc::c_void,
-                                               address: *mut ::libc::c_void)>;
+    ::core::option::Option<unsafe extern "C" fn(opaque: *mut ::libc::c_void,
+                                                address:
+                                                    *mut ::libc::c_void)>;
 #[repr(C)]
 #[derive(Debug, Copy)]
 pub struct ZSTD_customMem {
@@ -420,10 +421,10 @@ pub struct ZSTD_customMem {
 }
 #[test]
 fn bindgen_test_layout_ZSTD_customMem() {
-    assert_eq!(::std::mem::size_of::<ZSTD_customMem>() , 24usize , concat ! (
+    assert_eq!(::core::mem::size_of::<ZSTD_customMem>() , 24usize , concat ! (
                "Size of: " , stringify ! ( ZSTD_customMem ) ));
-    assert_eq! (::std::mem::align_of::<ZSTD_customMem>() , 8usize , concat ! (
-                "Alignment of " , stringify ! ( ZSTD_customMem ) ));
+    assert_eq! (::core::mem::align_of::<ZSTD_customMem>() , 8usize , concat !
+                ( "Alignment of " , stringify ! ( ZSTD_customMem ) ));
     assert_eq! (unsafe {
                 & ( * ( 0 as * const ZSTD_customMem ) ) . customAlloc as *
                 const _ as usize } , 0usize , concat ! (
@@ -673,10 +674,10 @@ pub struct ZSTD_frameParams {
 }
 #[test]
 fn bindgen_test_layout_ZSTD_frameParams() {
-    assert_eq!(::std::mem::size_of::<ZSTD_frameParams>() , 24usize , concat !
+    assert_eq!(::core::mem::size_of::<ZSTD_frameParams>() , 24usize , concat !
                ( "Size of: " , stringify ! ( ZSTD_frameParams ) ));
-    assert_eq! (::std::mem::align_of::<ZSTD_frameParams>() , 8usize , concat !
-                ( "Alignment of " , stringify ! ( ZSTD_frameParams ) ));
+    assert_eq! (::core::mem::align_of::<ZSTD_frameParams>() , 8usize , concat
+                ! ( "Alignment of " , stringify ! ( ZSTD_frameParams ) ));
     assert_eq! (unsafe {
                 & ( * ( 0 as * const ZSTD_frameParams ) ) . frameContentSize
                 as * const _ as usize } , 0usize , concat ! (

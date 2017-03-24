@@ -31,4 +31,4 @@ cargo build --features bindgen
 ```
 
 [zstd]: https://github.com/facebook/zstd
-[zstd-rs]: https://github/com/gyscos/zstd-rs
+[zstd-rs]: https://github.com/gyscos/zstd-rs

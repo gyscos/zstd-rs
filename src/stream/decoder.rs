@@ -87,6 +87,19 @@ impl<R: Read> Decoder<R> {
         unsafe { ll::ZSTD_DStreamOutSize() }
     }
 
+    /// Acquire a reference to the underlying reader.
+    pub fn get_ref(&self) -> &R {
+        &self.reader
+    }
+
+    /// Acquire a mutable reference to the underlying reader.
+    ///
+    /// Note that mutation of the reader may result in surprising results if
+    /// this decoder is continued to be used.
+    pub fn get_mut(&mut self) -> &mut R {
+        &mut self.reader
+    }
+
     /// Return the inner `Read`.
     ///
     /// Calling `finish()` is not *required* after reading a stream -

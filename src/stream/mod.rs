@@ -9,8 +9,8 @@ use std::io;
 mod encoder;
 mod decoder;
 
-pub use self::encoder::{AutoFinishEncoder, Encoder};
 pub use self::decoder::Decoder;
+pub use self::encoder::{AutoFinishEncoder, Encoder};
 
 /// Decompress from the given source as if using a `Decoder`.
 ///
@@ -58,9 +58,9 @@ pub fn copy_encode<R, W>(mut source: R, destination: W, level: i32)
 
 #[cfg(test)]
 mod tests {
-    use std::io;
     use super::{Decoder, Encoder};
     use super::{copy_encode, decode_all, encode_all};
+    use std::io;
 
     #[test]
     fn test_end_of_frame() {
@@ -115,9 +115,7 @@ mod tests {
         // I really hope this data is invalid...
         let data = &[1u8, 2u8, 3u8, 4u8, 5u8];
         let mut dec = Decoder::new(&data[..]).unwrap();
-        assert_eq!(dec.read_to_end(&mut Vec::new())
-                       .err()
-                       .map(|e| e.kind()),
+        assert_eq!(dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
                    Some(io::ErrorKind::Other));
     }
 
@@ -133,9 +131,7 @@ mod tests {
         compressed.truncate(half_size);
 
         let mut dec = Decoder::new(&compressed[..]).unwrap();
-        assert_eq!(dec.read_to_end(&mut Vec::new())
-                       .err()
-                       .map(|e| e.kind()),
+        assert_eq!(dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
                    Some(io::ErrorKind::UnexpectedEof));
     }
 
@@ -176,7 +172,7 @@ mod tests {
     #[test]
     fn test_ll_source() {
         // Where could I find some long text?...
-        let data = include_bytes!("../ll.rs");
+        let data = include_bytes!("../../zstd-sys/src/bindings.rs");
         // Test a few compression levels.
         // TODO: check them all?
         for level in 1..5 {

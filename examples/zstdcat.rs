@@ -1,9 +1,9 @@
 extern crate zstd;
 extern crate clap;
 
+use clap::{App, Arg};
 use std::fs;
 use std::io;
-use clap::{App, Arg};
 
 fn main() {
     // This will be a simple application:

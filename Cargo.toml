@@ -1,6 +1,5 @@
 [package]
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
-build = "src/build.rs"
 description = "Binding for the zstd compression library."
 documentation = "https://docs.rs/zstd"
 keywords = ["zstd", "zstandard", "compression"]
@@ -8,22 +7,19 @@ categories = ["compression", "api-bindings"]
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "0.4.4"
+version = "0.4.5"
 exclude = ["assets"]
 
 [badges]
 travis-ci = { repository = "gyscos/zstd-rs" }
 
-[build-dependencies]
-gcc = "0.3.28"
-glob = "0.2.11"
-
 [dependencies]
 libc = "0.2"
+zstd-sys = { version = "1.1.4", default-features = false }
 
 [dev-dependencies]
 clap = "2.6.0"
 
 [features]
 default = ["legacy"]
-legacy = []
+legacy = ["zstd-sys/legacy"]

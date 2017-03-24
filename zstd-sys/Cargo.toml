@@ -1,0 +1,21 @@
+[package]
+authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
+name = "zstd-sys"
+version = "1.1.4"
+description = "Low-level bindings for the zstd compression library."
+keywords = ["zstd", "zstandard", "compression"]
+categories = ["api-bindings", "compression"]
+repository = "https://github.com/gyscos/zstd-rs"
+license = "MIT/Apache-2.0"
+
+[build-dependencies]
+bindgen = { version = "0.22.1", optional = true }
+gcc = "0.3.45"
+glob = "0.2.11"
+
+[dependencies]
+libc = "0.2.21"
+
+[features]
+default = ["legacy"]
+legacy = []

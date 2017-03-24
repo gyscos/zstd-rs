@@ -25,17 +25,17 @@
 #![deny(missing_docs)]
 extern crate libc;
 
-mod ll;
+extern crate zstd_sys;
 
 pub mod stream;
 pub mod block;
 pub mod dict;
 
-#[doc(no_inline)]
-pub use stream::{Decoder, Encoder, decode_all, encode_all};
+use std::ffi::CStr;
 
 use std::io;
-use std::ffi::CStr;
+#[doc(no_inline)]
+pub use stream::{Decoder, Encoder, decode_all, encode_all};
 
 /// Parse the result code
 ///
@@ -43,10 +43,10 @@ use std::ffi::CStr;
 /// or the error message otherwise.
 fn parse_code(code: libc::size_t) -> Result<usize, io::Error> {
     unsafe {
-        if ll::ZSTD_isError(code) == 0 {
+        if zstd_sys::ZSTD_isError(code) == 0 {
             Ok(code as usize)
         } else {
-            let msg = CStr::from_ptr(ll::ZSTD_getErrorName(code));
+            let msg = CStr::from_ptr(zstd_sys::ZSTD_getErrorName(code));
             let error = io::Error::new(io::ErrorKind::Other,
                                        msg.to_str().unwrap().to_string());
             Err(error)

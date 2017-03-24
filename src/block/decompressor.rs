@@ -1,21 +1,22 @@
-use ll;
-use ::parse_code;
+use libc::c_void;
+use parse_code;
 
 use std::io;
+use zstd_sys;
 
 struct DecoderContext {
-    c: *mut ll::ZSTD_DCtx,
+    c: *mut zstd_sys::ZSTD_DCtx,
 }
 
 impl Default for DecoderContext {
     fn default() -> Self {
-        DecoderContext { c: unsafe { ll::ZSTD_createDCtx() } }
+        DecoderContext { c: unsafe { zstd_sys::ZSTD_createDCtx() } }
     }
 }
 
 impl Drop for DecoderContext {
     fn drop(&mut self) {
-        let code = unsafe { ll::ZSTD_freeDCtx(self.c) };
+        let code = unsafe { zstd_sys::ZSTD_freeDCtx(self.c) };
         parse_code(code).unwrap();
     }
 }
@@ -51,13 +52,16 @@ impl Decompressor {
                                 destination: &mut [u8])
                                 -> io::Result<usize> {
         let code = unsafe {
-            ll::ZSTD_decompress_usingDict(self.context.c,
-                                          destination.as_mut_ptr(),
-                                          destination.len(),
-                                          source.as_ptr(),
-                                          source.len(),
-                                          self.dict.as_ptr(),
-                                          self.dict.len())
+            let destination_ptr = destination.as_mut_ptr() as *mut c_void;
+            let source_ptr = source.as_ptr() as *const c_void;
+            let dict_ptr = self.dict.as_ptr() as *const c_void;
+            zstd_sys::ZSTD_decompress_usingDict(self.context.c,
+                                                destination_ptr,
+                                                destination.len(),
+                                                source_ptr,
+                                                source.len(),
+                                                dict_ptr,
+                                                self.dict.len())
         };
         parse_code(code)
     }

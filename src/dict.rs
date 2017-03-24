@@ -14,12 +14,13 @@
 //! [`Encoder::with_dictionary`]: ../struct.Encoder.html#method.with_dictionary
 //! [`Decoder::with_dictionary`]: ../struct.Decoder.html#method.with_dictionary
 
-use ll;
-use ::parse_code;
+use libc::{c_uint, c_void};
+use parse_code;
+use std::fs;
 
 use std::io::{self, Read};
 use std::path;
-use std::fs;
+use zstd_sys;
 
 /// Train a dictionary from a big continuous chunk of data.
 ///
@@ -36,11 +37,14 @@ pub fn from_continuous(sample_data: &[u8], sample_sizes: &[usize],
 
     let mut result = Vec::with_capacity(max_size);
     unsafe {
-        let code = ll::ZDICT_trainFromBuffer(result.as_mut_ptr(),
-                                             result.capacity(),
-                                             sample_data.as_ptr(),
-                                             sample_sizes.as_ptr(),
-                                             sample_sizes.len());
+        let result_ptr = result.as_mut_ptr() as *mut c_void;
+        let sample_ptr = sample_data.as_ptr() as *const c_void;
+        let code = zstd_sys::ZDICT_trainFromBuffer(result_ptr,
+                                                   result.capacity(),
+                                                   sample_ptr,
+                                                   sample_sizes.as_ptr(),
+                                                   sample_sizes.len() as
+                                                   c_uint);
         let written = try!(parse_code(code));
         result.set_len(written);
     }
@@ -112,16 +116,16 @@ mod tests {
                      &mut ::stream::Encoder::with_dictionary(&mut buffer,
                                                              1,
                                                              &dict)
-                         .unwrap()
-                         .auto_finish())
-                .unwrap();
+                                  .unwrap()
+                                  .auto_finish())
+                    .unwrap();
 
             let mut result = Vec::new();
             io::copy(&mut ::stream::Decoder::with_dictionary(&buffer[..],
                                                              &dict[..])
-                         .unwrap(),
+                                  .unwrap(),
                      &mut result)
-                .unwrap();
+                    .unwrap();
 
             assert_eq!(&content, &result);
         }

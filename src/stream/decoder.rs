@@ -1,20 +1,21 @@
-use ll;
-use ::parse_code;
+use libc::c_void;
+use parse_code;
 use std::io::{self, Read};
+use zstd_sys;
 
 struct DecoderContext {
-    s: *mut ll::ZSTD_DStream,
+    s: *mut zstd_sys::ZSTD_DStream,
 }
 
 impl Default for DecoderContext {
     fn default() -> Self {
-        DecoderContext { s: unsafe { ll::ZSTD_createDStream() } }
+        DecoderContext { s: unsafe { zstd_sys::ZSTD_createDStream() } }
     }
 }
 
 impl Drop for DecoderContext {
     fn drop(&mut self) {
-        let code = unsafe { ll::ZSTD_freeDStream(self.s) };
+        let code = unsafe { zstd_sys::ZSTD_freeDStream(self.s) };
         parse_code(code).unwrap();
     }
 }
@@ -57,12 +58,12 @@ impl<R: Read> Decoder<R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_dictionary(reader: R, dictionary: &[u8]) -> io::Result<Self> {
 
-        let buffer_size = unsafe { ll::ZSTD_DStreamInSize() };
+        let buffer_size = unsafe { zstd_sys::ZSTD_DStreamInSize() };
 
         let context = DecoderContext::default();
         parse_code(unsafe {
-            ll::ZSTD_initDStream_usingDict(context.s,
-                                           dictionary.as_ptr(),
+            zstd_sys::ZSTD_initDStream_usingDict(context.s,
+                                           dictionary.as_ptr() as *const c_void,
                                            dictionary.len())
         })?;
 
@@ -78,13 +79,13 @@ impl<R: Read> Decoder<R> {
     }
 
     fn reinit(&mut self) -> io::Result<()> {
-        parse_code(unsafe { ll::ZSTD_resetDStream(self.context.s) })?;
+        parse_code(unsafe { zstd_sys::ZSTD_resetDStream(self.context.s) })?;
         Ok(())
     }
 
     /// Recommendation for the size of the output buffer.
     pub fn recommended_output_size() -> usize {
-        unsafe { ll::ZSTD_DStreamOutSize() }
+        unsafe { zstd_sys::ZSTD_DStreamOutSize() }
     }
 
     /// Acquire a reference to the underlying reader.
@@ -108,7 +109,7 @@ impl<R: Read> Decoder<R> {
         self.reader
     }
 
-    fn refill_buffer(&mut self, in_buffer: &mut ll::ZSTD_inBuffer)
+    fn refill_buffer(&mut self, in_buffer: &mut zstd_sys::ZSTD_inBuffer)
                      -> io::Result<bool> {
 
         // We need moar data!
@@ -134,8 +135,8 @@ impl<R: Read> Decoder<R> {
 impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 
-        let mut in_buffer = ll::ZSTD_inBuffer {
-            src: self.buffer.as_ptr(),
+        let mut in_buffer = zstd_sys::ZSTD_inBuffer {
+            src: self.buffer.as_ptr() as *const c_void,
             size: self.buffer.len(),
             pos: self.offset,
         };
@@ -146,8 +147,8 @@ impl<R: Read> Read for Decoder<R> {
             return Ok(0);
         }
 
-        let mut out_buffer = ll::ZSTD_outBuffer {
-            dst: buf.as_mut_ptr(),
+        let mut out_buffer = zstd_sys::ZSTD_outBuffer {
+            dst: buf.as_mut_ptr() as *mut c_void,
             size: buf.len(),
             pos: 0,
         };
@@ -161,9 +162,9 @@ impl<R: Read> Read for Decoder<R> {
 
             let res = unsafe {
                 let code =
-                    ll::ZSTD_decompressStream(self.context.s,
-                                              &mut out_buffer as *mut ll::ZSTD_outBuffer,
-                                              &mut in_buffer as *mut ll::ZSTD_inBuffer);
+                    zstd_sys::ZSTD_decompressStream(self.context.s,
+                                              &mut out_buffer as *mut zstd_sys::ZSTD_outBuffer,
+                                              &mut in_buffer as *mut zstd_sys::ZSTD_inBuffer);
                 parse_code(code)?
             };
 

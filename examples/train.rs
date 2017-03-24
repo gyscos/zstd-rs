@@ -2,9 +2,9 @@ extern crate zstd;
 #[macro_use]
 extern crate clap;
 
-use std::io;
 
 use clap::{App, Arg};
+use std::io;
 
 // This program trains a dictionary from one or more files,
 // to make future compression of similar small files more efficient.
@@ -17,14 +17,14 @@ fn main() {
         .author("Alexandre Bury <alexandre.bury@gmail.com>")
         .about("A zstd dict trainer")
         .arg(Arg::with_name("MAX_SIZE")
-             .help("Maximum dictionary size in bytes")
-             .short("s")
-             .long("max_size")
-             .takes_value(true))
+                 .help("Maximum dictionary size in bytes")
+                 .short("s")
+                 .long("max_size")
+                 .takes_value(true))
         .arg(Arg::with_name("FILE")
-             .help("Files to use as input")
-             .required(true)
-             .multiple(true))
+                 .help("Files to use as input")
+                 .required(true)
+                 .multiple(true))
         .get_matches();
 
     let size = value_t!(matches, "MAX_SIZE", usize).unwrap_or(110 * 1024);

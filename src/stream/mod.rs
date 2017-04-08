@@ -108,6 +108,95 @@ mod tests {
         assert_eq!(s, "hello");
     }
 
+    #[derive(Debug)]
+    struct WriteWithReject {
+        inner: Vec<u8>,
+        reject: bool,
+    }
+
+    impl WriteWithReject {
+        fn new() -> Self {
+            WriteWithReject {
+                inner: Vec::new(),
+                reject: false,
+            }
+        }
+
+        fn reject(&mut self) {
+            self.reject = true;
+        }
+
+        fn accept(&mut self) {
+            self.reject = false;
+        }
+
+        fn into_inner(self) -> Vec<u8> {
+            self.inner
+        }
+    }
+
+    impl io::Write for WriteWithReject {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.reject {
+                return Err(io::Error::new(io::ErrorKind::WouldBlock, "reject"));
+            }
+            self.inner.write(buf)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            if self.reject {
+                return Err(io::Error::new(io::ErrorKind::WouldBlock, "reject"));
+            }
+            self.inner.flush()
+        }
+    }
+
+    #[test]
+    fn test_try_finish() {
+        use std::io::Write;
+        let mut z = setup_try_finish();
+
+        z.get_mut().accept();
+
+        // flush() should continue to work even though write() doesn't.
+        z.flush().unwrap();
+
+        let buf = match z.try_finish() {
+            Ok(buf) => buf.into_inner(),
+            Err((_z, e)) => panic!("try_finish failed with {:?}", e),
+        };
+
+        println!("{:?}", buf);
+
+        // Make sure the multiple try_finish calls didn't screw up the internal
+        // buffer and continued to produce valid compressed data.
+        assert_eq!(&decode_all(&buf[..]).unwrap(), b"hello");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_write_after_try_finish() {
+        use std::io::Write;
+        let mut z = setup_try_finish();
+        z.write_all(b"hello world").unwrap();
+    }
+
+    fn setup_try_finish() -> Encoder<WriteWithReject> {
+        use std::io::Write;
+
+        let buf = WriteWithReject::new();
+        let mut z = Encoder::new(buf, 19).unwrap();
+
+        z.write_all(b"hello").unwrap();
+
+        z.get_mut().reject();
+
+        let (z, err) = z.try_finish().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+
+        z
+    }
+
     #[test]
     fn test_invalid_frame() {
         use std::io::Read;

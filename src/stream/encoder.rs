@@ -205,9 +205,9 @@ impl<W: Write> Encoder<W> {
             // Need to flush?
             panic!("Need to flush, but I'm lazy.");
         }
+        self.offset = 0;
 
-        // Write the end out
-        self.writer.write_all(&self.buffer)?;
+        self.write_from_offset()?;
 
         // Return the writer, because why not
         Ok(self.writer)
@@ -216,6 +216,18 @@ impl<W: Write> Encoder<W> {
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
         unsafe { zstd_sys::ZSTD_CStreamInSize() }
+    }
+
+    /// write_all, except keep track of partial writes for non-blocking IO.
+    fn write_from_offset(&mut self) -> io::Result<()> {
+        while self.offset < self.buffer.len() {
+            match self.writer.write(&self.buffer[self.offset..]) {
+                Ok(n) => self.offset += n,
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {},
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
     }
 }
 
@@ -284,8 +296,9 @@ impl<W: Write> Write for Encoder<W> {
             self.buffer.set_len(buffer.pos);
             let _ = parse_code(code)?;
         }
+        self.offset = 0;
 
-        self.writer.write_all(&self.buffer)?;
+        self.write_from_offset()?;
         Ok(())
     }
 }

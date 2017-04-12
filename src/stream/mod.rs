@@ -60,6 +60,7 @@ pub fn copy_encode<R, W>(mut source: R, destination: W, level: i32)
 mod tests {
     use super::{Decoder, Encoder};
     use super::{copy_encode, decode_all, encode_all};
+    use std::cmp;
     use std::io;
 
     #[test]
@@ -109,42 +110,42 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct WriteWithReject {
+    pub struct WritePartial {
         inner: Vec<u8>,
-        reject: bool,
+        accept: Option<usize>,
     }
 
-    impl WriteWithReject {
-        fn new() -> Self {
-            WriteWithReject {
+    impl WritePartial {
+        pub fn new() -> Self {
+            WritePartial {
                 inner: Vec::new(),
-                reject: false,
+                accept: Some(0),
             }
         }
 
-        fn reject(&mut self) {
-            self.reject = true;
+        /// Make the writer only accept a certain number of bytes per write call.
+        /// If `bytes` is Some(0), accept an arbitrary number of bytes.
+        /// If `bytes` is None, reject with WouldBlock.
+        pub fn accept(&mut self, bytes: Option<usize>) {
+            self.accept = bytes;
         }
 
-        fn accept(&mut self) {
-            self.reject = false;
-        }
-
-        fn into_inner(self) -> Vec<u8> {
+        pub fn into_inner(self) -> Vec<u8> {
             self.inner
         }
     }
 
-    impl io::Write for WriteWithReject {
+    impl io::Write for WritePartial {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            if self.reject {
-                return Err(io::Error::new(io::ErrorKind::WouldBlock, "reject"));
+            match self.accept {
+                None => Err(io::Error::new(io::ErrorKind::WouldBlock, "reject")),
+                Some(0) => self.inner.write(buf),
+                Some(n) => self.inner.write(&buf[..cmp::min(n, buf.len())]),
             }
-            self.inner.write(buf)
         }
 
         fn flush(&mut self) -> io::Result<()> {
-            if self.reject {
+            if self.accept.is_none() {
                 return Err(io::Error::new(io::ErrorKind::WouldBlock, "reject"));
             }
             self.inner.flush()
@@ -156,7 +157,7 @@ mod tests {
         use std::io::Write;
         let mut z = setup_try_finish();
 
-        z.get_mut().accept();
+        z.get_mut().accept(Some(0));
 
         // flush() should continue to work even though write() doesn't.
         z.flush().unwrap();
@@ -165,8 +166,6 @@ mod tests {
             Ok(buf) => buf.into_inner(),
             Err((_z, e)) => panic!("try_finish failed with {:?}", e),
         };
-
-        println!("{:?}", buf);
 
         // Make sure the multiple try_finish calls didn't screw up the internal
         // buffer and continued to produce valid compressed data.
@@ -181,15 +180,15 @@ mod tests {
         z.write_all(b"hello world").unwrap();
     }
 
-    fn setup_try_finish() -> Encoder<WriteWithReject> {
+    fn setup_try_finish() -> Encoder<WritePartial> {
         use std::io::Write;
 
-        let buf = WriteWithReject::new();
+        let buf = WritePartial::new();
         let mut z = Encoder::new(buf, 19).unwrap();
 
         z.write_all(b"hello").unwrap();
 
-        z.get_mut().reject();
+        z.get_mut().accept(None);
 
         let (z, err) = z.try_finish().unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::WouldBlock);

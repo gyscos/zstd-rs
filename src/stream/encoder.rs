@@ -220,8 +220,13 @@ impl<W: Write> Encoder<W> {
     }
 
     fn do_finish(&mut self) -> io::Result<()> {
-        if self.state != EncoderState::StreamEnd {
+        if self.state == EncoderState::Accepting {
+            // Write any data pending in `self.buffer`.
+            self.write_from_offset()?;
             self.state = EncoderState::Finished;
+        }
+
+        if self.state == EncoderState::Finished {
             // First, closes the stream.
             let mut buffer = zstd_sys::ZSTD_outBuffer {
                 dst: self.buffer.as_mut_ptr() as *mut c_void,
@@ -321,6 +326,8 @@ impl<W: Write> Write for Encoder<W> {
 
     fn flush(&mut self) -> io::Result<()> {
         if self.state == EncoderState::Accepting {
+            self.write_from_offset()?;
+
             let mut buffer = zstd_sys::ZSTD_outBuffer {
                 dst: self.buffer.as_mut_ptr() as *mut c_void,
                 size: self.buffer.capacity(),
@@ -339,5 +346,57 @@ impl<W: Write> Write for Encoder<W> {
 
         self.write_from_offset()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use stream::decode_all;
+    use stream::tests::WritePartial;
+    use super::Encoder;
+
+    /// Test that flush after a partial write works successfully without
+    /// corrupting the frame. This test is in this module because it checks
+    /// internal implementation details.
+    #[test]
+    fn test_partial_write_flush() {
+        use std::io::Write;
+
+        let (input, mut z) = setup_partial_write();
+
+        // flush shouldn't corrupt the stream
+        z.flush().unwrap();
+
+        let buf = z.finish().unwrap().into_inner();
+        assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
+    }
+
+    /// Test that finish after a partial write works successfully without
+    /// corrupting the frame. This test is in this module because it checks
+    /// internal implementation details.
+    #[test]
+    fn test_partial_write_finish() {
+        let (input, z) = setup_partial_write();
+
+        // finish shouldn't corrupt the stream
+        let buf = z.finish().unwrap().into_inner();
+        assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
+    }
+
+    fn setup_partial_write() -> (Vec<u8>, Encoder<WritePartial>) {
+        use std::io::Write;
+
+        let mut buf = WritePartial::new();
+        buf.accept(Some(1));
+        let mut z = Encoder::new(buf, 1).unwrap();
+
+        // Fill in enough data to make sure the buffer gets written out.
+        let input = "b".repeat(128 * 1024).into_bytes();
+        z.write(&input).unwrap();
+
+        // At this point, the internal buffer in z should have some data.
+        assert_ne!(z.offset, z.buffer.len());
+
+        (input, z)
     }
 }

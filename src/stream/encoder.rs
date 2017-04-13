@@ -309,7 +309,8 @@ impl<W: Write> Write for Encoder<W> {
 
         // This is the first time he sees this buffer.
         // Remember his delicate touch.
-        self.offset = self.writer.write(&self.buffer)?;
+        self.offset = 0;
+        self.write_from_offset()?;
 
         Ok(in_buffer.pos)
     }

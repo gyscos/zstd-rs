@@ -277,13 +277,8 @@ impl<W: Write> Write for Encoder<W> {
             panic!("write called after try_finish attempted");
         }
 
-        if self.offset < self.buffer.len() {
-            // If we still had some things to write, do it first.
-            self.offset += self.writer.write(&self.buffer[self.offset..])?;
-            // Maybe next time!
-            return Err(io::Error::new(io::ErrorKind::Interrupted,
-                                      "Internal buffer full"));
-        }
+        // Write any data pending in `self.buffer`.
+        self.write_from_offset()?;
 
         // If we get to here, `self.buffer` can safely be discarded.
 
@@ -319,7 +314,8 @@ impl<W: Write> Write for Encoder<W> {
 
         // This is the first time he sees this buffer.
         // Remember his delicate touch.
-        self.offset = self.writer.write(&self.buffer)?;
+        self.offset = 0;
+        self.write_from_offset()?;
 
         Ok(in_buffer.pos)
     }

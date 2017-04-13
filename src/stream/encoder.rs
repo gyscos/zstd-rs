@@ -311,11 +311,11 @@ impl<W: Write> Write for Encoder<W> {
             let _ = parse_code(code)?;
         }
 
-
-        // This is the first time he sees this buffer.
-        // Remember his delicate touch.
+        // We have a fresh buffer ahead of us.
         self.offset = 0;
-        self.write_from_offset()?;
+
+        // But we won't touch it now - too many things could go wrong!
+        // We consumed input data, let's report it now before it's too late.
 
         Ok(in_buffer.pos)
     }

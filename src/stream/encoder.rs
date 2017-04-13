@@ -277,47 +277,45 @@ impl<W: Write> Write for Encoder<W> {
             panic!("write called after try_finish attempted");
         }
 
-        // Write any data pending in `self.buffer`.
-        self.write_from_offset()?;
+        loop {
+            // Write any data pending in `self.buffer`.
+            self.write_from_offset()?;
 
-        // If we get to here, `self.buffer` can safely be discarded.
+            // If we get to here, `self.buffer` can safely be discarded.
 
-        let mut in_buffer = zstd_sys::ZSTD_inBuffer {
-            src: buf.as_ptr() as *const c_void,
-            size: buf.len(),
-            pos: 0,
-        };
+            let mut in_buffer = zstd_sys::ZSTD_inBuffer {
+                src: buf.as_ptr() as *const c_void,
+                size: buf.len(),
+                pos: 0,
+            };
 
-        let mut out_buffer = zstd_sys::ZSTD_outBuffer {
-            dst: self.buffer.as_mut_ptr() as *mut c_void,
-            size: self.buffer.capacity(),
-            pos: 0,
-        };
+            let mut out_buffer = zstd_sys::ZSTD_outBuffer {
+                dst: self.buffer.as_mut_ptr() as *mut c_void,
+                size: self.buffer.capacity(),
+                pos: 0,
+            };
 
+            unsafe {
+                // Time to fill our input buffer
+                let code =
+                    zstd_sys::ZSTD_compressStream(self.context.s,
+                                                  &mut out_buffer as
+                                                  *mut zstd_sys::ZSTD_outBuffer,
+                                                  &mut in_buffer as
+                                                  *mut zstd_sys::ZSTD_inBuffer);
+                // Note: this may very well be empty,
+                // if it doesn't exceed zstd's own buffer
+                self.buffer.set_len(out_buffer.pos);
 
-        unsafe {
-            // Time to fill our input buffer
-            let code =
-                zstd_sys::ZSTD_compressStream(self.context.s,
-                                              &mut out_buffer as
-                                              *mut zstd_sys::ZSTD_outBuffer,
-                                              &mut in_buffer as
-                                              *mut zstd_sys::ZSTD_inBuffer);
-            // Note: this may very well be empty,
-            // if it doesn't exceed zstd's own buffer
-            self.buffer.set_len(out_buffer.pos);
+                // Do we care about the hint?
+                let _ = parse_code(code)?;
+            }
+            self.offset = 0;
 
-            // Do we care about the hint?
-            let _ = parse_code(code)?;
+            if in_buffer.pos > 0 || buf.len() == 0 {
+                return Ok(in_buffer.pos)
+            }
         }
-
-        // We have a fresh buffer ahead of us.
-        self.offset = 0;
-
-        // But we won't touch it now - too many things could go wrong!
-        // We consumed input data, let's report it now before it's too late.
-
-        Ok(in_buffer.pos)
     }
 
     fn flush(&mut self) -> io::Result<()> {

@@ -13,9 +13,9 @@ fn main() {
         .author("Yann Collet (zstd), Alexandre Bury (zstd-rs)")
         .about("Decompress FILEs to standard output.")
         .arg(Arg::with_name("FILE")
-            .index(1)
-            .multiple(true)
-            .help("Files to decompress. With no file, or when given -, \
+                 .index(1)
+                 .multiple(true)
+                 .help("Files to decompress. With no file, or when given -, \
                    read standard input."))
         .get_matches();
 

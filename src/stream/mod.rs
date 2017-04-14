@@ -138,7 +138,9 @@ mod tests {
     impl io::Write for WritePartial {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
             match self.accept {
-                None => Err(io::Error::new(io::ErrorKind::WouldBlock, "reject")),
+                None => {
+                    Err(io::Error::new(io::ErrorKind::WouldBlock, "reject"))
+                }
                 Some(0) => self.inner.write(buf),
                 Some(n) => self.inner.write(&buf[..cmp::min(n, buf.len())]),
             }
@@ -146,7 +148,8 @@ mod tests {
 
         fn flush(&mut self) -> io::Result<()> {
             if self.accept.is_none() {
-                return Err(io::Error::new(io::ErrorKind::WouldBlock, "reject"));
+                return Err(io::Error::new(io::ErrorKind::WouldBlock,
+                                          "reject"));
             }
             self.inner.flush()
         }
@@ -210,7 +213,8 @@ mod tests {
         assert_eq!(z.write(&input).unwrap(), 128 * 1024);
 
         // The next write would fail since the buffer still has some data in it.
-        assert_eq!(z.write(b"abc").unwrap_err().kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(z.write(b"abc").unwrap_err().kind(),
+                   io::ErrorKind::WouldBlock);
 
         z.get_mut().accept(Some(0));
 

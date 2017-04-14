@@ -72,10 +72,7 @@ impl<W: Write> AutoFinishEncoder<W> {
 
     /// Acquires a reference to the underlying writer.
     pub fn get_ref(&self) -> &W {
-        self.encoder
-            .as_ref()
-            .unwrap()
-            .get_ref()
+        self.encoder.as_ref().unwrap().get_ref()
     }
 
     /// Acquires a mutable reference to the underlying writer.
@@ -83,19 +80,13 @@ impl<W: Write> AutoFinishEncoder<W> {
     /// Note that mutation of the writer may result in surprising results if
     /// this encoder is continued to be used.
     pub fn get_mut(&mut self) -> &mut W {
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .get_mut()
+        self.encoder.as_mut().unwrap().get_mut()
     }
 }
 
 impl<W: Write> Drop for AutoFinishEncoder<W> {
     fn drop(&mut self) {
-        let result = self.encoder
-            .take()
-            .unwrap()
-            .finish();
+        let result = self.encoder.take().unwrap().finish();
         if let Some(mut on_finish) = self.on_finish.take() {
             on_finish(result);
         }
@@ -104,18 +95,12 @@ impl<W: Write> Drop for AutoFinishEncoder<W> {
 
 impl<W: Write> Write for AutoFinishEncoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .write(buf)
+        self.encoder.as_mut().unwrap().write(buf)
     }
 
 
     fn flush(&mut self) -> io::Result<()> {
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .flush()
+        self.encoder.as_mut().unwrap().flush()
     }
 }
 
@@ -215,7 +200,7 @@ impl<W: Write> Encoder<W> {
     pub fn try_finish(mut self) -> Result<W, (Self, io::Error)> {
         match self.do_finish() {
             Ok(()) => Ok(self.writer),
-            Err(e) => Err((self, e))
+            Err(e) => Err((self, e)),
         }
     }
 
@@ -263,7 +248,7 @@ impl<W: Write> Encoder<W> {
         while self.offset < self.buffer.len() {
             match self.writer.write(&self.buffer[self.offset..]) {
                 Ok(n) => self.offset += n,
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {},
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => (),
                 Err(e) => return Err(e),
             }
         }
@@ -313,7 +298,7 @@ impl<W: Write> Write for Encoder<W> {
             self.offset = 0;
 
             if in_buffer.pos > 0 || buf.len() == 0 {
-                return Ok(in_buffer.pos)
+                return Ok(in_buffer.pos);
             }
         }
     }
@@ -345,9 +330,9 @@ impl<W: Write> Write for Encoder<W> {
 
 #[cfg(test)]
 mod tests {
+    use super::Encoder;
     use stream::decode_all;
     use stream::tests::WritePartial;
-    use super::Encoder;
 
     /// Test that flush after a partial write works successfully without
     /// corrupting the frame. This test is in this module because it checks

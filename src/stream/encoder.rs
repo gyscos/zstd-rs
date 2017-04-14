@@ -296,7 +296,7 @@ impl<W: Write> Write for Encoder<W> {
 
 
         unsafe {
-            // Time to fill our input buffer
+            // Time to fill our output buffer
             let code =
                 zstd_sys::ZSTD_compressStream(self.context.s,
                                               &mut out_buffer as

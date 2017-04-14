@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::str::FromStr;
 
 fn main() {
-    match env::args().skip(1).next() {
+    match env::args().nth(1) {
         None => {
             writeln!(&mut io::stderr(),
                      "Invalid option. Usage: `stream [-d|-1..-21]`")
@@ -13,7 +13,7 @@ fn main() {
         }
         Some(ref option) if option == "-d" => decompress(),
         Some(ref option) => {
-            if option.starts_with("-") {
+            if option.starts_with('-') {
                 let level = match i32::from_str(&option[1..]) {
                     Ok(level) => level,
                     Err(e) => panic!("Error parsing compression level: {}", e),

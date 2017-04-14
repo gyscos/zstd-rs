@@ -109,6 +109,7 @@ impl<R: Read> Decoder<R> {
         self.reader
     }
 
+    // Attemps to refill the input buffer.
     fn refill_buffer(&mut self, in_buffer: &mut zstd_sys::ZSTD_inBuffer)
                      -> io::Result<bool> {
 
@@ -154,11 +155,8 @@ impl<R: Read> Read for Decoder<R> {
         };
         while out_buffer.pos != buf.len() {
 
-            let mut input_exhausted = false;
-
-            if in_buffer.pos == in_buffer.size {
-                input_exhausted = !self.refill_buffer(&mut in_buffer)?;
-            }
+            let input_exhausted = in_buffer.pos == in_buffer.size &&
+                                  !self.refill_buffer(&mut in_buffer)?;
 
             let res = unsafe {
                 let code =
@@ -175,21 +173,19 @@ impl<R: Read> Read for Decoder<R> {
             }
 
             if res == 0 {
-                // Remember that we've reached the end of the current frame,
-                // so we don't try to read the next one.
-                if self.single_frame {
+                // This means that the current frame ended.
+
+                // Remember it, so we don't try to read the next one.
+                // Also bail if there's no more input to decopress.
+                if self.single_frame ||
+                   (in_buffer.pos == in_buffer.size &&
+                    !self.refill_buffer(&mut in_buffer)?) {
+                    // We're out.
                     in_buffer.pos = self.buffer.capacity() + 1;
                     break;
                 } else {
-                    if in_buffer.pos == in_buffer.size &&
-                       !self.refill_buffer(&mut in_buffer)? {
-                        // we're out.
-                        in_buffer.pos = self.buffer.capacity() + 1;
-                        break;
-                    } else {
-                        // ?
-                        self.reinit()?;
-                    }
+                    // Start a new frame baby!
+                    self.reinit()?;
                 }
             }
         }

@@ -197,6 +197,29 @@ mod tests {
     }
 
     #[test]
+    fn test_failing_write() {
+        use std::io::Write;
+
+        let mut buf = WritePartial::new();
+        buf.accept(None);
+        let mut z = Encoder::new(buf, 1).unwrap();
+
+        // Fill in enough data to make sure the buffer gets written out.
+        let input = "b".repeat(128 * 1024).into_bytes();
+        // This should work even though the inner writer rejects writes.
+        assert_eq!(z.write(&input).unwrap(), 128 * 1024);
+
+        // The next write would fail since the buffer still has some data in it.
+        assert_eq!(z.write(b"abc").unwrap_err().kind(), io::ErrorKind::WouldBlock);
+
+        z.get_mut().accept(Some(0));
+
+        // This shouldn't have led to any corruption.
+        let buf = z.finish().unwrap().into_inner();
+        assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
+    }
+
+    #[test]
     fn test_invalid_frame() {
         use std::io::Read;
 

@@ -4,6 +4,11 @@ use parse_code;
 use std::io::{self, Write};
 use zstd_sys;
 
+#[cfg(feature = "tokio")]
+use futures::Poll;
+#[cfg(feature = "tokio")]
+use tokio_io::AsyncWrite;
+
 struct EncoderContext {
     s: *mut zstd_sys::ZSTD_CStream,
 }
@@ -325,6 +330,14 @@ impl<W: Write> Write for Encoder<W> {
 
         self.write_from_offset()?;
         Ok(())
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl <W: AsyncWrite> AsyncWrite for Encoder<W> {
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        try_nb!(self.do_finish());
+        self.writer.shutdown()
     }
 }
 

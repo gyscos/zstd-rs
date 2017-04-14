@@ -31,6 +31,13 @@ pub mod stream;
 pub mod block;
 pub mod dict;
 
+#[cfg(feature = "tokio")]
+#[macro_use]
+extern crate tokio_io;
+#[cfg(feature = "tokio")]
+extern crate futures;
+
+
 use std::ffi::CStr;
 
 use std::io;

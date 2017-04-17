@@ -3,6 +3,10 @@ use parse_code;
 use std::io::{self, Read};
 use zstd_sys;
 
+#[cfg(feature = "tokio")]
+use tokio_io::AsyncRead;
+
+
 struct DecoderContext {
     s: *mut zstd_sys::ZSTD_DStream,
 }
@@ -191,5 +195,12 @@ impl<R: Read> Read for Decoder<R> {
         }
         self.offset = in_buffer.pos;
         Ok(out_buffer.pos)
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl<R: AsyncRead> AsyncRead for Decoder<R> {
+    unsafe fn prepare_uninitialized_buffer(&self, _buf: &mut [u8]) -> bool {
+        false
     }
 }

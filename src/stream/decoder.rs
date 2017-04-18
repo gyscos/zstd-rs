@@ -204,3 +204,30 @@ impl<R: AsyncRead> AsyncRead for Decoder<R> {
         false
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "tokio")]
+mod tests {
+    use std::io::{Cursor, Result};
+    use tokio_io::{AsyncWrite, AsyncRead, io};
+    use futures::Future;
+
+    #[test]
+    fn test_async_read() {
+        use stream::encode_all;
+
+        let source = "abc".repeat(10).into_bytes();
+        let encoded = encode_all(&source[..], 1).unwrap();
+        let writer = test_async_read_worker(&encoded[..], Cursor::new(Vec::new())).unwrap();
+        let output = writer.into_inner();
+        assert_eq!(source, output);
+    }
+
+    fn test_async_read_worker<R: AsyncRead, W: AsyncWrite>(r: R, w: W) -> Result<W> {
+        use super::Decoder;
+
+        let decoder = Decoder::new(r).unwrap();
+        let (_, _, w) = try!(io::copy(decoder, w).wait());
+        Ok(w)
+    }
+}

@@ -347,33 +347,6 @@ mod tests {
     use stream::decode_all;
     use stream::tests::WritePartial;
 
-    #[cfg(feature = "tokio")]
-    mod async_tests {
-        use std::io::{Cursor, Result};
-        use tokio_io::{AsyncWrite, AsyncRead, io};
-        use futures::Future;
-
-        #[test]
-        fn test_async_write() {
-            use stream::decode_all;
-
-            let source = "abc".repeat(10).into_bytes();
-            let writer = test_async_write_worker(&source[..], Cursor::new(Vec::new())).unwrap();
-            let encoded_output = writer.into_inner();
-            let decoded = decode_all(&encoded_output[..]).unwrap();
-            assert_eq!(source, &decoded[..]);
-        }
-
-        fn test_async_write_worker<R: AsyncRead, W: AsyncWrite>(r: R, w: W) -> Result<W> {
-            use super::Encoder;
-
-            let encoder = Encoder::new(w, 1).unwrap();
-            let (_, _, encoder) = try!(io::copy(r, encoder).wait());
-            let w = try!(encoder.finish());
-            Ok(w)
-        }
-    }
-
     /// Test that flush after a partial write works successfully without
     /// corrupting the frame. This test is in this module because it checks
     /// internal implementation details.
@@ -417,5 +390,33 @@ mod tests {
         assert_ne!(z.offset, z.buffer.len());
 
         (input, z)
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "tokio")]
+mod async_tests {
+    use std::io::{self, Cursor};
+    use tokio_io::{AsyncWrite, AsyncRead, io as tokio_io};
+    use futures::Future;
+
+    #[test]
+    fn test_async_write() {
+        use stream::decode_all;
+
+        let source = "abc".repeat(10).into_bytes();
+        let writer = test_async_write_worker(&source[..], Cursor::new(Vec::new())).unwrap();
+        let encoded_output = writer.into_inner();
+        let decoded = decode_all(&encoded_output[..]).unwrap();
+        assert_eq!(source, &decoded[..]);
+    }
+
+    fn test_async_write_worker<R: AsyncRead, W: AsyncWrite>(r: R, w: W) -> io::Result<W> {
+        use super::Encoder;
+
+        let encoder = Encoder::new(w, 1).unwrap();
+        let (_, _, encoder) = try!(tokio_io::copy(r, encoder).wait());
+        let w = try!(encoder.finish());
+        Ok(w)
     }
 }

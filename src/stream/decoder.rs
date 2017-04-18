@@ -6,7 +6,6 @@ use zstd_sys;
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncRead;
 
-
 struct DecoderContext {
     s: *mut zstd_sys::ZSTD_DStream,
 }
@@ -24,7 +23,6 @@ impl Drop for DecoderContext {
     }
 }
 
-
 /// A decoder that decompress input data from another `Read`.
 ///
 /// This allows to read a stream of compressed data
@@ -41,6 +39,9 @@ pub struct Decoder<R: Read> {
 
     // `true` if we should stop after the first frame.
     single_frame: bool,
+
+    // 'false' if end of frame was not yet reached
+    end_of_frame: bool,
 }
 
 impl<R: Read> Decoder<R> {
@@ -77,6 +78,7 @@ impl<R: Read> Decoder<R> {
             offset: 0,
             context: context,
             single_frame: false,
+            end_of_frame: false,
         };
 
         Ok(decoder)
@@ -84,6 +86,7 @@ impl<R: Read> Decoder<R> {
 
     fn reinit(&mut self) -> io::Result<()> {
         parse_code(unsafe { zstd_sys::ZSTD_resetDStream(self.context.s) })?;
+        self.end_of_frame = false;
         Ok(())
     }
 
@@ -125,7 +128,15 @@ impl<R: Read> Decoder<R> {
         }
 
         // And FILL IT!
-        let read = self.reader.read(&mut self.buffer)?;
+        let read = self.reader.read(&mut self.buffer).map_err(|err| {
+            unsafe {
+                // in case of error reset buffer length and offset in buffer to zero
+                // so subsequent read attempt will try to refill the buffer
+                self.offset = 0;
+                self.buffer.set_len(0);
+            }
+            err
+        })?;
         unsafe {
             self.buffer.set_len(read);
         }
@@ -135,10 +146,24 @@ impl<R: Read> Decoder<R> {
 
         Ok(read > 0)
     }
+
+    fn mark_completed(&mut self) {
+        self.offset = self.buffer.capacity() + 1;
+    }
+
+    fn is_completed(&self) -> bool {
+        return self.offset == self.buffer.capacity() + 1;
+    }
 }
 
 impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+
+        if self.is_completed() {
+            // If we've reached the end of the frame before,
+            // don't even try to read more.
+            return Ok(0);
+        }
 
         let mut in_buffer = zstd_sys::ZSTD_inBuffer {
             src: self.buffer.as_ptr() as *const c_void,
@@ -146,54 +171,64 @@ impl<R: Read> Read for Decoder<R> {
             pos: self.offset,
         };
 
-        if self.offset > self.buffer.capacity() {
-            // If we've reached the end of the frame before,
-            // don't even try to read more.
-            return Ok(0);
-        }
-
         let mut out_buffer = zstd_sys::ZSTD_outBuffer {
             dst: buf.as_mut_ptr() as *mut c_void,
             size: buf.len(),
             pos: 0,
         };
-        while out_buffer.pos != buf.len() {
 
-            let input_exhausted = in_buffer.pos == in_buffer.size &&
-                                  !self.refill_buffer(&mut in_buffer)?;
+        loop {
+            if out_buffer.pos == buf.len() {
+                // receiver buffer is filled
+                // remember last written position
+                self.offset = in_buffer.pos;
+                break;
+            }
+            if self.single_frame && self.end_of_frame {
+                self.mark_completed();
+                break;
+            }
 
-            let res = unsafe {
+            let input_exhausted = 
+                in_buffer.pos == in_buffer.size && 
+                match self.refill_buffer(&mut in_buffer) {
+                    Ok(n) => !n,
+                    Err(ref err) if out_buffer.pos > 0 && err.kind() == io::ErrorKind::WouldBlock => {
+                        // if we get here then:
+                        // - inner buffer is empty
+                        // - we've already written something to the receiver buffer
+                        // in this case we need to report all data that was already in out_buffer
+                        break;
+                    },
+                    Err(e) => return Err(e)
+                };
+
+            if self.end_of_frame {
+                if input_exhausted {
+                    self.mark_completed();
+                    break;
+                }
+                else {
+                    self.reinit()?;
+                }
+            }
+
+            // save value of end_of_frame in case if next call to refill_buffer will fail
+            self.end_of_frame = unsafe {
                 let code =
                     zstd_sys::ZSTD_decompressStream(self.context.s,
                                               &mut out_buffer as *mut zstd_sys::ZSTD_outBuffer,
                                               &mut in_buffer as *mut zstd_sys::ZSTD_inBuffer);
-                parse_code(code)?
+                let res = parse_code(code)?;
+                res == 0
             };
 
-            if res > 1 && input_exhausted {
+            if !self.end_of_frame && input_exhausted {
                 // zstd keeps asking for more, but we're short on data!
                 return Err(io::Error::new(io::ErrorKind::UnexpectedEof,
                                           "incomplete frame"));
             }
-
-            if res == 0 {
-                // This means that the current frame ended.
-
-                // Remember it, so we don't try to read the next one.
-                // Also bail if there's no more input to decopress.
-                if self.single_frame ||
-                   (in_buffer.pos == in_buffer.size &&
-                    !self.refill_buffer(&mut in_buffer)?) {
-                    // We're out.
-                    in_buffer.pos = self.buffer.capacity() + 1;
-                    break;
-                } else {
-                    // Start a new frame baby!
-                    self.reinit()?;
-                }
-            }
         }
-        self.offset = in_buffer.pos;
         Ok(out_buffer.pos)
     }
 }
@@ -207,27 +242,66 @@ impl<R: AsyncRead> AsyncRead for Decoder<R> {
 
 #[cfg(test)]
 #[cfg(feature = "tokio")]
-mod tests {
-    use std::io::{Cursor, Result};
-    use tokio_io::{AsyncWrite, AsyncRead, io};
-    use futures::Future;
+mod async_tests {
+    use std::io::{self, Cursor};
+    use tokio_io::{AsyncWrite, AsyncRead, io as tokio_io};
+    use futures::{Future, task};
+
+    struct BlockingReader<T: AsyncRead> {
+        block: bool,
+        reader: T,
+    }
+
+    impl<T: AsyncRead> BlockingReader<T> {
+        fn new(reader: T)-> BlockingReader<T> {
+            BlockingReader { block: false, reader: reader }
+        }
+    }
+
+    impl<T: AsyncRead> AsyncRead for BlockingReader<T> {
+    }
+
+    impl<T: AsyncRead> io::Read for BlockingReader<T> {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.block {
+                self.block = false;
+                task::park().unpark();
+                Err(io::Error::from(io::ErrorKind::WouldBlock))
+            }
+            else {
+                self.block = true;
+                self.reader.read(buf)
+            }
+        }
+    }
 
     #[test]
     fn test_async_read() {
         use stream::encode_all;
 
-        let source = "abc".repeat(10).into_bytes();
+        let source = "abc".repeat(1024 * 10).into_bytes();
         let encoded = encode_all(&source[..], 1).unwrap();
         let writer = test_async_read_worker(&encoded[..], Cursor::new(Vec::new())).unwrap();
         let output = writer.into_inner();
         assert_eq!(source, output);
     }
 
-    fn test_async_read_worker<R: AsyncRead, W: AsyncWrite>(r: R, w: W) -> Result<W> {
+    #[test]
+    fn test_async_read_block() {
+        use stream::encode_all;
+
+        let source = "abc".repeat(1024 * 10).into_bytes();
+        let encoded = encode_all(&source[..], 1).unwrap();
+        let writer = test_async_read_worker(BlockingReader::new(&encoded[..]), Cursor::new(Vec::new())).unwrap();
+        let output = writer.into_inner();
+        assert_eq!(source, output);
+    }
+
+    fn test_async_read_worker<R: AsyncRead, W: AsyncWrite>(r: R, w: W) -> io::Result<W> {
         use super::Decoder;
 
         let decoder = Decoder::new(r).unwrap();
-        let (_, _, w) = try!(io::copy(decoder, w).wait());
+        let (_, _, w) = try!(tokio_io::copy(decoder, w).wait());
         Ok(w)
     }
 }

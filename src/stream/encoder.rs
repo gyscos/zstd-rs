@@ -398,25 +398,88 @@ mod tests {
 mod async_tests {
     use std::io::{self, Cursor};
     use tokio_io::{AsyncWrite, AsyncRead, io as tokio_io};
-    use futures::Future;
+    use futures::{Future, Poll, task, executor};
+
+    struct BlockingWriter<T: AsyncWrite> {
+        block: bool,
+        writer: T,
+    }
+
+    impl<T: AsyncWrite> BlockingWriter<T> {
+        fn new(writer: T)-> BlockingWriter<T> {
+            BlockingWriter { block: false, writer: writer }
+        }
+
+        fn into_inner(self)-> T {
+            self.writer
+        }
+    }
+
+    impl<T: AsyncWrite> AsyncWrite for BlockingWriter<T> {
+        fn shutdown(&mut self) -> Poll<(), io::Error> {
+            self.writer.shutdown()
+        }
+    }
+
+    impl<T: AsyncWrite> io::Write for BlockingWriter<T> {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.block {
+                self.block = false;
+                task::park().unpark();
+                Err(io::Error::from(io::ErrorKind::WouldBlock))
+            }
+            else {
+                self.block = true;
+                self.writer.write(buf)
+            }
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_async_write() {
         use stream::decode_all;
 
-        let source = "abc".repeat(10).into_bytes();
-        let writer = test_async_write_worker(&source[..], Cursor::new(Vec::new())).unwrap();
-        let encoded_output = writer.into_inner();
+        let source = "abc".repeat(1024 * 100).into_bytes();
+        let encoded_output = test_async_write_worker(&source[..], Cursor::new(Vec::new()), |w| { w.into_inner() });
         let decoded = decode_all(&encoded_output[..]).unwrap();
         assert_eq!(source, &decoded[..]);
     }
 
-    fn test_async_write_worker<R: AsyncRead, W: AsyncWrite>(r: R, w: W) -> io::Result<W> {
+    #[test]
+    fn test_async_write_block() {
+        use stream::decode_all;
+
+        let source = "abc".repeat(1024 * 100).into_bytes();
+        let encoded_output = test_async_write_worker(&source[..], BlockingWriter::new(Cursor::new(Vec::new())), |w| { w.into_inner().into_inner() });
+        let decoded = decode_all(&encoded_output[..]).unwrap();
+        assert_eq!(source, &decoded[..]);
+    }
+
+    fn test_async_write_worker<R: AsyncRead, W: AsyncWrite, Res, F: FnOnce(W) -> Res>(r: R, w: W, map: F) -> Res {
         use super::Encoder;
 
         let encoder = Encoder::new(w, 1).unwrap();
-        let (_, _, encoder) = try!(tokio_io::copy(r, encoder).wait());
-        let w = try!(encoder.finish());
-        Ok(w)
+        let copy_future =
+            tokio_io::copy(r, encoder)
+            .map(|(_, _, encoder)| {
+                let mut e = encoder;
+                loop {
+                    e = match e.try_finish() {
+                        Ok(v) => return Ok(map(v)),
+                        Err((encoder, err)) => {
+                            if err.kind() == io::ErrorKind::WouldBlock {
+                                encoder
+                            }
+                            else {
+                                return Err(err);
+                            }
+                        }
+                    }
+                }
+            });
+        executor::spawn(copy_future).wait_future().unwrap().unwrap()
     }
 }

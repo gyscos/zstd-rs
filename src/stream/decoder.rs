@@ -23,6 +23,19 @@ impl Drop for DecoderContext {
     }
 }
 
+#[derive(PartialEq, Copy, Clone)]
+enum RefillBufferHint {
+    None,
+    FailIfEmpty,
+    EndOfFrame,
+}
+
+enum DecoderState {
+    Completed,
+    Active,
+    RefillBuffer(RefillBufferHint),
+}
+
 /// A decoder that decompress input data from another `Read`.
 ///
 /// This allows to read a stream of compressed data
@@ -40,8 +53,8 @@ pub struct Decoder<R: Read> {
     // `true` if we should stop after the first frame.
     single_frame: bool,
 
-    // 'false' if end of frame was not yet reached
-    end_of_frame: bool,
+    // current state of the decoder
+    state: DecoderState,
 }
 
 impl<R: Read> Decoder<R> {
@@ -78,7 +91,7 @@ impl<R: Read> Decoder<R> {
             offset: 0,
             context: context,
             single_frame: false,
-            end_of_frame: false,
+            state: DecoderState::RefillBuffer(RefillBufferHint::None),
         };
 
         Ok(decoder)
@@ -86,7 +99,6 @@ impl<R: Read> Decoder<R> {
 
     fn reinit(&mut self) -> io::Result<()> {
         parse_code(unsafe { zstd_sys::ZSTD_resetDStream(self.context.s) })?;
-        self.end_of_frame = false;
         Ok(())
     }
 
@@ -128,43 +140,116 @@ impl<R: Read> Decoder<R> {
         }
 
         // And FILL IT!
-        let read = self.reader.read(&mut self.buffer).map_err(|err| {
-            unsafe {
-                // in case of error reset buffer length and offset in buffer to zero
-                // so subsequent read attempt will try to refill the buffer
-                self.offset = 0;
-                self.buffer.set_len(0);
-            }
-            err
-        })?;
+        let read = self.reader.read(&mut self.buffer)?;
         unsafe {
             self.buffer.set_len(read);
         }
+
+        self.offset = 0;
         in_buffer.pos = 0;
         in_buffer.size = read;
-        // So we can't read anything: input is exhausted.
 
+        // So we can't read anything: input is exhausted.
         Ok(read > 0)
     }
+}
 
-    fn mark_completed(&mut self) {
-        self.offset = self.buffer.capacity() + 1;
+impl<R: Read> Decoder<R> {
+    /// This function handles buffer_refill state of the read operation
+    /// It returns true if read operation should be stopped and false otherwise
+    fn handle_refill(&mut self, hint: RefillBufferHint, 
+        in_buffer: &mut zstd_sys::ZSTD_inBuffer, out_buffer: &mut zstd_sys::ZSTD_outBuffer)-> Result<bool, io::Error> {
+
+        let refilled = match self.refill_buffer(in_buffer) {
+            Err(ref err) if out_buffer.pos > 0 && err.kind() == io::ErrorKind::WouldBlock => {
+                // underlying reader was blocked but we've already put some data into the output buffer
+                // we need to stop this read operation so data won' be lost
+                return Ok(true);
+            },
+            otherwise => otherwise
+        }?;
+
+        match hint {
+            RefillBufferHint::None => {
+                // can read again
+                self.state = DecoderState::Active
+            },
+            RefillBufferHint::FailIfEmpty => {
+                if refilled {
+                    // can read again
+                    self.state = DecoderState::Active;
+                }
+                else {
+                    // zstd keeps asking for more, but we're short on data!
+                    return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "incomplete frame"));
+                }
+            },
+            RefillBufferHint::EndOfFrame => {
+                // at the end of frame
+                if refilled {
+                    // has more data - start new frame
+                    self.reinit()?;
+                    self.state = DecoderState::Active;
+                }
+                else {
+                    // no more data - we are done
+                    self.state = DecoderState::Completed;
+                    return Ok(true);
+                }
+            }
+        }
+
+        return Ok(false);
     }
 
-    fn is_completed(&self) -> bool {
-        return self.offset == self.buffer.capacity() + 1;
+    /// This function handles Active state in the read operation - main read loop.
+    /// It returns true if read operation should be stopped and false otherwise
+    fn handle_active(&mut self, in_buffer: &mut zstd_sys::ZSTD_inBuffer, out_buffer: &mut zstd_sys::ZSTD_outBuffer) -> Result<bool, io::Error> {
+
+        while out_buffer.pos < out_buffer.size {
+            if in_buffer.pos == in_buffer.size {
+                self.state = DecoderState::RefillBuffer(RefillBufferHint::None);
+                // refill buffer and continue reading
+                return Ok(false);
+            }
+
+            let is_end_of_frame = unsafe {
+                let code =
+                    zstd_sys::ZSTD_decompressStream(self.context.s,
+                                            out_buffer as *mut zstd_sys::ZSTD_outBuffer,
+                                            in_buffer as *mut zstd_sys::ZSTD_inBuffer);
+                let res = parse_code(code)?;
+                res == 0
+            };
+
+            self.offset = in_buffer.pos;
+
+            if in_buffer.pos == in_buffer.size {
+                let hint = 
+                    if is_end_of_frame { 
+                        RefillBufferHint::EndOfFrame 
+                    } 
+                    else { 
+                        RefillBufferHint::FailIfEmpty 
+                    };
+                // refill buffer and continue
+                self.state = DecoderState::RefillBuffer(hint);
+                return Ok(false);
+            }
+            if is_end_of_frame && self.single_frame {
+                // at the end of frame and we know that this frame is the only one
+                // stop
+                self.state = DecoderState::Completed;
+                return Ok(true);
+            }
+        }
+        return Ok(true);
     }
 }
 
 impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-
-        if self.is_completed() {
-            // If we've reached the end of the frame before,
-            // don't even try to read more.
-            return Ok(0);
-        }
-
+        
         let mut in_buffer = zstd_sys::ZSTD_inBuffer {
             src: self.buffer.as_ptr() as *const c_void,
             size: self.buffer.len(),
@@ -178,58 +263,23 @@ impl<R: Read> Read for Decoder<R> {
         };
 
         loop {
-            if out_buffer.pos == buf.len() {
-                // receiver buffer is filled
-                // remember last written position
-                self.offset = in_buffer.pos;
-                break;
-            }
-            if self.single_frame && self.end_of_frame {
-                self.mark_completed();
-                break;
-            }
-
-            let input_exhausted = 
-                in_buffer.pos == in_buffer.size && 
-                match self.refill_buffer(&mut in_buffer) {
-                    Ok(n) => !n,
-                    Err(ref err) if out_buffer.pos > 0 && err.kind() == io::ErrorKind::WouldBlock => {
-                        // if we get here then:
-                        // - inner buffer is empty
-                        // - we've already written something to the receiver buffer
-                        // in this case we need to report all data that was already in out_buffer
-                        break;
-                    },
-                    Err(e) => return Err(e)
-                };
-
-            if self.end_of_frame {
-                if input_exhausted {
-                    self.mark_completed();
-                    break;
-                }
-                else {
-                    self.reinit()?;
-                }
-            }
-
-            // save value of end_of_frame in case if next call to refill_buffer will fail
-            self.end_of_frame = unsafe {
-                let code =
-                    zstd_sys::ZSTD_decompressStream(self.context.s,
-                                              &mut out_buffer as *mut zstd_sys::ZSTD_outBuffer,
-                                              &mut in_buffer as *mut zstd_sys::ZSTD_inBuffer);
-                let res = parse_code(code)?;
-                res == 0
+            let should_stop = match self.state {
+                DecoderState::Completed => {
+                    return Ok(0);
+                },
+                DecoderState::RefillBuffer(action) => {
+                    self.handle_refill(action, &mut in_buffer, &mut out_buffer)?
+                },
+                DecoderState::Active => {
+                    self.handle_active(&mut in_buffer, &mut out_buffer)?
+                },
             };
-
-            if !self.end_of_frame && input_exhausted {
-                // zstd keeps asking for more, but we're short on data!
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof,
-                                          "incomplete frame"));
+            if should_stop {
+                break;
             }
         }
-        Ok(out_buffer.pos)
+
+        return Ok(out_buffer.pos);
     }
 }
 

@@ -216,7 +216,7 @@ impl<R: Read> Decoder<R> {
             }
         }
 
-        return Ok(false);
+        Ok(false)
     }
 
     /// This function handles Active state in the read operation - main read loop.
@@ -260,7 +260,7 @@ impl<R: Read> Decoder<R> {
                 return Ok(true);
             }
         }
-        return Ok(true);
+        Ok(true)
     }
 }
 

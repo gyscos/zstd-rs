@@ -23,10 +23,18 @@ impl Drop for DecoderContext {
     }
 }
 
+// Extra bit of information that is stored along RefillBuffer state.
+// It describes the context in which refill was requested.
 #[derive(PartialEq, Copy, Clone)]
 enum RefillBufferHint {
+    // refill was requested during regular read operation,
+    // no extra actions are required
     None,
+    // we've reached the end of buffer and zstd wants more data
+    // in this circumstances refill must return more data, otherwise this is an error
     FailIfEmpty,
+    // we've reached the end of current frame,
+    // if refill brings more data we'll start new frame and complete reading otherwise
     EndOfFrame,
 }
 

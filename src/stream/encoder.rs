@@ -458,28 +458,44 @@ mod async_tests {
         assert_eq!(source, &decoded[..]);
     }
 
-    fn test_async_write_worker<R: AsyncRead, W: AsyncWrite, Res, F: FnOnce(W) -> Res>(r: R, w: W, map: F) -> Res {
+    struct Finish<W: AsyncWrite> {
+        encoder: Option<super::Encoder<W>>,
+    }
+
+    impl<W: AsyncWrite> Future for Finish<W> {
+        type Item = W;
+        type Error = io::Error;
+
+        fn poll(&mut self) -> Poll<W, io::Error> {
+            use futures::Async;
+
+            match self.encoder.take().unwrap().try_finish() {
+                Ok(v) => {
+                    return Ok(v.into())
+                },
+                Err((encoder, err)) => {
+                    if err.kind() == io::ErrorKind::WouldBlock {
+                        self.encoder = Some(encoder);
+                        return Ok(Async::NotReady);
+                    }
+                    else {
+                        return Err(err)
+                    }
+                },
+            };
+        }
+    }
+
+    fn test_async_write_worker<R: AsyncRead, W: AsyncWrite, Res, F: FnOnce(W) -> Res>(r: R, w: W, f: F) -> Res {
         use super::Encoder;
 
         let encoder = Encoder::new(w, 1).unwrap();
         let copy_future =
             tokio_io::copy(r, encoder)
-            .map(|(_, _, encoder)| {
-                let mut e = encoder;
-                loop {
-                    e = match e.try_finish() {
-                        Ok(v) => return Ok(map(v)),
-                        Err((encoder, err)) => {
-                            if err.kind() == io::ErrorKind::WouldBlock {
-                                encoder
-                            }
-                            else {
-                                return Err(err);
-                            }
-                        }
-                    }
-                }
-            });
-        executor::spawn(copy_future).wait_future().unwrap().unwrap()
+            .and_then(| (_, _, encoder) | { 
+                Finish { encoder: Some (encoder) } 
+            })
+            .map(f);
+        executor::spawn(copy_future).wait_future().unwrap()
     }
 }

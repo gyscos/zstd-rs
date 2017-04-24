@@ -148,7 +148,7 @@ impl<R: Read> Decoder<R> {
         }
 
         // And FILL IT!
-        let read = self.reader.read(&mut self.buffer)?;
+        let read = self.read_with_retry()?;
         unsafe {
             self.buffer.set_len(read);
         }
@@ -159,6 +159,15 @@ impl<R: Read> Decoder<R> {
 
         // So we can't read anything: input is exhausted.
         Ok(read > 0)
+    }
+
+    fn read_with_retry(&mut self) -> Result<usize, io::Error> {
+        loop {
+            match self.reader.read(&mut self.buffer) {
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {},
+                otherwise => return otherwise
+            }
+        }
     }
 }
 
@@ -333,6 +342,32 @@ mod async_tests {
         }
     }
 
+    struct InterruptingReader<T: AsyncRead> {
+        counter: u8,
+        reader: T,
+    }
+
+    impl<T: AsyncRead> InterruptingReader<T> {
+        fn new(reader: T)-> InterruptingReader<T> {
+            InterruptingReader { counter: 5, reader: reader }
+        }
+    }
+
+    impl<T: AsyncRead> AsyncRead for InterruptingReader<T> {
+    }
+
+    impl<T: AsyncRead> io::Read for InterruptingReader<T> {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.counter > 0 {
+                self.counter = self.counter  - 1;
+                Err(io::Error::from(io::ErrorKind::Interrupted))
+            }
+            else {
+                self.reader.read(buf)
+            }
+        }
+    }
+
     #[test]
     fn test_async_read() {
         use stream::encode_all;
@@ -351,6 +386,17 @@ mod async_tests {
         let source = "abc".repeat(1024 * 10).into_bytes();
         let encoded = encode_all(&source[..], 1).unwrap();
         let writer = test_async_read_worker(BlockingReader::new(&encoded[..]), Cursor::new(Vec::new())).unwrap();
+        let output = writer.into_inner();
+        assert_eq!(source, output);
+    }
+
+    #[test]
+    fn test_async_read_interrupt() {
+        use stream::encode_all;
+
+        let source = "abc".repeat(1024 * 10).into_bytes();
+        let encoded = encode_all(&source[..], 1).unwrap();
+        let writer = test_async_read_worker(InterruptingReader::new(&encoded[..]), Cursor::new(Vec::new())).unwrap();
         let output = writer.into_inner();
         assert_eq!(source, output);
     }

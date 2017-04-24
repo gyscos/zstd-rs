@@ -249,7 +249,7 @@ impl<R: Read> Decoder<R> {
 
 impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        
+
         let mut in_buffer = zstd_sys::ZSTD_inBuffer {
             src: self.buffer.as_ptr() as *const c_void,
             size: self.buffer.len(),

@@ -1,7 +1,13 @@
+
+
+#[cfg(feature = "tokio")]
+use futures::Poll;
 use libc::c_void;
 
 use parse_code;
 use std::io::{self, Write};
+#[cfg(feature = "tokio")]
+use tokio_io::AsyncWrite;
 use zstd_sys;
 
 struct EncoderContext {
@@ -36,9 +42,11 @@ enum EncoderState {
 /// This allows to compress a stream of data
 /// (good for files or heavy network stream).
 ///
-/// Don't forget to call `finish()` before dropping it!
+/// Don't forget to call [`finish()`] before dropping it!
 ///
 /// Note: The zstd library has its own internal input buffer (~128kb).
+///
+/// [`finish()`]: #method.finish
 pub struct Encoder<W: Write> {
     // output writer (compressed data)
     writer: W,
@@ -176,21 +184,28 @@ impl<W: Write> Encoder<W> {
         &mut self.writer
     }
 
-    /// Finishes the stream. You *need* to call this after writing your stuff.
+    /// **Required**: Finishes the stream.
+    ///
+    /// You *need* to finish the stream when you're done writing, either with
+    /// this method or with [`try_finish(self)`](#method.try_finish).
     ///
     /// This returns the inner writer in case you need it.
     ///
     /// To get back `self` in case an error happened, use `try_finish`.
     ///
-    /// **Note**: If you don't want (or can't) call `finish()` manually after writing your data,
-    /// consider using `auto_finish()` to get an `AutoFinishEncoder`.
+    /// **Note**: If you don't want (or can't) call `finish()` manually after
+    ///           writing your data, consider using `auto_finish()` to get an
+    ///           `AutoFinishEncoder`.
     pub fn finish(mut self) -> io::Result<W> {
         self.do_finish()?;
         // Return the writer, because why not
         Ok(self.writer)
     }
 
-    /// Attempts to finish the stream. You *need* to call this after writing your stuff.
+    /// **Required**: Attempts to finish the stream.
+    ///
+    /// You *need* to finish the stream when you're done writing, either with
+    /// this method or with [`finish(self)`](#method.finish).
     ///
     /// This returns the inner writer if the finish was successful, or the
     /// object plus an error if it wasn't.
@@ -297,7 +312,7 @@ impl<W: Write> Write for Encoder<W> {
             }
             self.offset = 0;
 
-            if in_buffer.pos > 0 || buf.len() == 0 {
+            if in_buffer.pos > 0 || buf.is_empty() {
                 return Ok(in_buffer.pos);
             }
         }
@@ -325,6 +340,14 @@ impl<W: Write> Write for Encoder<W> {
 
         self.write_from_offset()?;
         Ok(())
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl<W: AsyncWrite> AsyncWrite for Encoder<W> {
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        try_nb!(self.do_finish());
+        self.writer.shutdown()
     }
 }
 
@@ -377,5 +400,115 @@ mod tests {
         assert_ne!(z.offset, z.buffer.len());
 
         (input, z)
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "tokio")]
+mod async_tests {
+    use futures::{Future, Poll, task, executor};
+    use std::io::{self, Cursor};
+    use tokio_io::{AsyncWrite, AsyncRead, io as tokio_io};
+
+    struct BlockingWriter<T: AsyncWrite> {
+        block: bool,
+        writer: T,
+    }
+
+    impl<T: AsyncWrite> BlockingWriter<T> {
+        fn new(writer: T) -> BlockingWriter<T> {
+            BlockingWriter {
+                block: false,
+                writer: writer,
+            }
+        }
+
+        fn into_inner(self) -> T {
+            self.writer
+        }
+    }
+
+    impl<T: AsyncWrite> AsyncWrite for BlockingWriter<T> {
+        fn shutdown(&mut self) -> Poll<(), io::Error> {
+            self.writer.shutdown()
+        }
+    }
+
+    impl<T: AsyncWrite> io::Write for BlockingWriter<T> {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.block {
+                self.block = false;
+                task::park().unpark();
+                Err(io::Error::from(io::ErrorKind::WouldBlock))
+            } else {
+                self.block = true;
+                self.writer.write(buf)
+            }
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_async_write() {
+        use stream::decode_all;
+
+        let source = "abc".repeat(1024 * 100).into_bytes();
+        let encoded_output = test_async_write_worker(&source[..],
+                                                     Cursor::new(Vec::new()),
+                                                     |w| w.into_inner());
+        let decoded = decode_all(&encoded_output[..]).unwrap();
+        assert_eq!(source, &decoded[..]);
+    }
+
+    #[test]
+    fn test_async_write_block() {
+        use stream::decode_all;
+
+        let source = "abc".repeat(1024 * 100).into_bytes();
+        let encoded_output = test_async_write_worker(&source[..], BlockingWriter::new(Cursor::new(Vec::new())), |w| { w.into_inner().into_inner() });
+        let decoded = decode_all(&encoded_output[..]).unwrap();
+        assert_eq!(source, &decoded[..]);
+    }
+
+    struct Finish<W: AsyncWrite> {
+        encoder: Option<super::Encoder<W>>,
+    }
+
+    impl<W: AsyncWrite> Future for Finish<W> {
+        type Item = W;
+        type Error = io::Error;
+
+        fn poll(&mut self) -> Poll<W, io::Error> {
+            use futures::Async;
+
+            match self.encoder.take().unwrap().try_finish() {
+                Ok(v) => return Ok(v.into()),
+                Err((encoder, err)) => {
+                    if err.kind() == io::ErrorKind::WouldBlock {
+                        self.encoder = Some(encoder);
+                        return Ok(Async::NotReady);
+                    } else {
+                        return Err(err);
+                    }
+                }
+            };
+        }
+    }
+
+    fn test_async_write_worker<R: AsyncRead,
+                               W: AsyncWrite,
+                               Res,
+                               F: FnOnce(W) -> Res>
+        (r: R, w: W, f: F)
+         -> Res {
+        use super::Encoder;
+
+        let encoder = Encoder::new(w, 1).unwrap();
+        let copy_future = tokio_io::copy(r, encoder)
+            .and_then(|(_, _, encoder)| Finish { encoder: Some(encoder) })
+            .map(f);
+        executor::spawn(copy_future).wait_future().unwrap()
     }
 }

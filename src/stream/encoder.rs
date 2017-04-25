@@ -312,7 +312,7 @@ impl<W: Write> Write for Encoder<W> {
             }
             self.offset = 0;
 
-            if in_buffer.pos > 0 || buf.len() == 0 {
+            if in_buffer.pos > 0 || buf.is_empty() {
                 return Ok(in_buffer.pos);
             }
         }

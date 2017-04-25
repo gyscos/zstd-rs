@@ -23,7 +23,7 @@ impl Drop for DecoderContext {
     }
 }
 
-/// Extra bit of information that is stored along RefillBuffer state.
+/// Extra bit of information that is stored along `RefillBuffer` state.
 /// It describes the context in which refill was requested.
 #[derive(PartialEq, Copy, Clone)]
 enum RefillBufferHint {
@@ -317,7 +317,7 @@ impl<R: Read> Read for Decoder<R> {
             }
         }
 
-        return Ok(out_buffer.pos);
+        Ok(out_buffer.pos)
     }
 }
 

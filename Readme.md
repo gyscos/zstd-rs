@@ -55,6 +55,12 @@ fn decompress() {
 }
 ```
 
+# Asynchronous support
+
+You can use this library to wrap non-blocking writer/readers:
+add the `tokio` feature, and `stream::Encoder` and `stream::Decoder`
+will implement `AsyncWrite` and `AsyncRead`, respectively.
+
 # Compile it yourself
 
 `zstd` is included as a submodule. To get everything during your clone, use:

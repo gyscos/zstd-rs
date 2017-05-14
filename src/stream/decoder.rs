@@ -139,9 +139,9 @@ impl<R: Read> Decoder<R> {
 
     // Attemps to refill the input buffer.
     //
-    // Returns `true` if we were able to read something.
+    // Returns the number of bytes read.
     fn refill_buffer(&mut self, in_buffer: &mut zstd_sys::ZSTD_inBuffer)
-                     -> io::Result<bool> {
+                     -> io::Result<usize> {
         // At this point it's safe to discard anything in `self.buffer`.
         // (in_buffer HAS to point to self.buffer)
 
@@ -163,7 +163,7 @@ impl<R: Read> Decoder<R> {
         in_buffer.size = read;
 
         // If we can't read anything, it means input is exhausted.
-        Ok(read > 0)
+        Ok(read)
     }
 
     // Read and retry on Interrupted errors.
@@ -195,7 +195,8 @@ impl<R: Read> Decoder<R> {
                 // We need to stop this read operation so data won' be lost.
                 return Ok(true);
             }
-            otherwise => otherwise,
+            // We are refilled if we were able to read anything
+            otherwise => otherwise.map(|read| read > 0),
         }?;
 
         match hint {
@@ -301,17 +302,20 @@ impl<R: Read> Read for Decoder<R> {
         };
 
         loop {
-            let should_stop = match self.state {
-                DecoderState::Completed => {
-                    return Ok(0);
-                }
-                DecoderState::RefillBuffer(action) => {
-                    self.handle_refill(action, &mut in_buffer, &mut out_buffer)?
-                }
-                DecoderState::Active => {
-                    self.handle_active(&mut in_buffer, &mut out_buffer)?
-                }
-            };
+            let should_stop =
+                match self.state {
+                    DecoderState::Completed => {
+                        return Ok(0);
+                    }
+                    DecoderState::RefillBuffer(action) => {
+                        self.handle_refill(action,
+                                           &mut in_buffer,
+                                           &mut out_buffer)?
+                    }
+                    DecoderState::Active => {
+                        self.handle_active(&mut in_buffer, &mut out_buffer)?
+                    }
+                };
             if should_stop {
                 break;
             }

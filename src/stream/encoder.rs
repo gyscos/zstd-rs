@@ -354,8 +354,9 @@ impl<W: AsyncWrite> AsyncWrite for Encoder<W> {
 #[cfg(test)]
 mod tests {
     use super::Encoder;
+    use partial_io::{PartialOp, PartialWrite};
+    use std::iter;
     use stream::decode_all;
-    use stream::tests::WritePartial;
 
     /// Test that flush after a partial write works successfully without
     /// corrupting the frame. This test is in this module because it checks
@@ -385,11 +386,11 @@ mod tests {
         assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
     }
 
-    fn setup_partial_write() -> (Vec<u8>, Encoder<WritePartial>) {
+    fn setup_partial_write() -> (Vec<u8>, Encoder<PartialWrite<Vec<u8>>>) {
         use std::io::Write;
 
-        let mut buf = WritePartial::new();
-        buf.accept(Some(1));
+        let buf = PartialWrite::new(Vec::new(),
+                                    iter::repeat(PartialOp::Limited(1)));
         let mut z = Encoder::new(buf, 1).unwrap();
 
         // Fill in enough data to make sure the buffer gets written out.

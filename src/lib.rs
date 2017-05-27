@@ -25,7 +25,11 @@
 #![deny(missing_docs)]
 extern crate libc;
 
+#[cfg(test)]
+extern crate partial_io;
+
 extern crate zstd_sys;
+
 
 pub mod stream;
 pub mod block;

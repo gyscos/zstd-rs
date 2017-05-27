@@ -302,20 +302,19 @@ impl<R: Read> Read for Decoder<R> {
         };
 
         loop {
-            let should_stop =
-                match self.state {
-                    DecoderState::Completed => {
-                        return Ok(0);
-                    }
-                    DecoderState::RefillBuffer(action) => {
+            let should_stop = match self.state {
+                DecoderState::Completed => {
+                    return Ok(0);
+                }
+                DecoderState::RefillBuffer(action) => {
                         self.handle_refill(action,
                                            &mut in_buffer,
                                            &mut out_buffer)?
                     }
-                    DecoderState::Active => {
-                        self.handle_active(&mut in_buffer, &mut out_buffer)?
-                    }
-                };
+                DecoderState::Active => {
+                    self.handle_active(&mut in_buffer, &mut out_buffer)?
+                }
+            };
             if should_stop {
                 break;
             }

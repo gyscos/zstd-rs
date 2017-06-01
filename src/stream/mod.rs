@@ -60,8 +60,11 @@ pub fn copy_encode<R, W>(mut source: R, destination: W, level: i32)
 mod tests {
     use super::{Decoder, Encoder};
     use super::{copy_encode, decode_all, encode_all};
-    use std::cmp;
+
+    use partial_io::{PartialOp, PartialWrite};
+
     use std::io;
+    use std::iter;
 
     #[test]
     fn test_end_of_frame() {
@@ -109,58 +112,12 @@ mod tests {
         assert_eq!(s, "hello");
     }
 
-    #[derive(Debug)]
-    pub struct WritePartial {
-        inner: Vec<u8>,
-        accept: Option<usize>,
-    }
-
-    impl WritePartial {
-        pub fn new() -> Self {
-            WritePartial {
-                inner: Vec::new(),
-                accept: Some(0),
-            }
-        }
-
-        /// Make the writer only accept a certain number of bytes per write call.
-        /// If `bytes` is Some(0), accept an arbitrary number of bytes.
-        /// If `bytes` is None, reject with WouldBlock.
-        pub fn accept(&mut self, bytes: Option<usize>) {
-            self.accept = bytes;
-        }
-
-        pub fn into_inner(self) -> Vec<u8> {
-            self.inner
-        }
-    }
-
-    impl io::Write for WritePartial {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            match self.accept {
-                None => {
-                    Err(io::Error::new(io::ErrorKind::WouldBlock, "reject"))
-                }
-                Some(0) => self.inner.write(buf),
-                Some(n) => self.inner.write(&buf[..cmp::min(n, buf.len())]),
-            }
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            if self.accept.is_none() {
-                return Err(io::Error::new(io::ErrorKind::WouldBlock,
-                                          "reject"));
-            }
-            self.inner.flush()
-        }
-    }
-
     #[test]
     fn test_try_finish() {
         use std::io::Write;
         let mut z = setup_try_finish();
 
-        z.get_mut().accept(Some(0));
+        z.get_mut().set_ops(iter::repeat(PartialOp::Unlimited));
 
         // flush() should continue to work even though write() doesn't.
         z.flush().unwrap();
@@ -183,15 +140,17 @@ mod tests {
         z.write_all(b"hello world").unwrap();
     }
 
-    fn setup_try_finish() -> Encoder<WritePartial> {
+    fn setup_try_finish() -> Encoder<PartialWrite<Vec<u8>>> {
         use std::io::Write;
 
-        let buf = WritePartial::new();
+        let buf = PartialWrite::new(Vec::new(),
+                                    iter::repeat(PartialOp::Unlimited));
         let mut z = Encoder::new(buf, 19).unwrap();
 
         z.write_all(b"hello").unwrap();
 
-        z.get_mut().accept(None);
+        z.get_mut()
+            .set_ops(iter::repeat(PartialOp::Err(io::ErrorKind::WouldBlock)));
 
         let (z, err) = z.try_finish().unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
@@ -203,8 +162,7 @@ mod tests {
     fn test_failing_write() {
         use std::io::Write;
 
-        let mut buf = WritePartial::new();
-        buf.accept(None);
+        let buf = PartialWrite::new(Vec::new(), iter::repeat(PartialOp::Err(io::ErrorKind::WouldBlock)));
         let mut z = Encoder::new(buf, 1).unwrap();
 
         // Fill in enough data to make sure the buffer gets written out.
@@ -216,7 +174,7 @@ mod tests {
         assert_eq!(z.write(b"abc").unwrap_err().kind(),
                    io::ErrorKind::WouldBlock);
 
-        z.get_mut().accept(Some(0));
+        z.get_mut().set_ops(iter::repeat(PartialOp::Unlimited));
 
         // This shouldn't have led to any corruption.
         let buf = z.finish().unwrap().into_inner();

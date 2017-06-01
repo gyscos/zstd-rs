@@ -21,6 +21,7 @@ futures = { version = "0.1", optional = true }
 
 [dev-dependencies]
 clap = "2.6.0"
+partial-io = "^0.2.1"
 
 [features]
 default = ["legacy"]

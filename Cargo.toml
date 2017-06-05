@@ -22,9 +22,10 @@ futures = { version = "0.1", optional = true }
 [dev-dependencies]
 clap = "2.6.0"
 partial-io = "^0.2.1"
+quickcheck = "0.4"
 
 [features]
 default = ["legacy"]
 legacy = ["zstd-sys/legacy"]
 bindgen = ["zstd-sys/bindgen"]
-tokio = ["tokio-io", "futures"]
+tokio = ["tokio-io", "futures", "partial-io/quickcheck", "partial-io/tokio"]

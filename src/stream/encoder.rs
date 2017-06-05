@@ -407,49 +407,12 @@ mod tests {
 #[cfg(test)]
 #[cfg(feature = "tokio")]
 mod async_tests {
-    use futures::{Future, Poll, task, executor};
+    use futures::{Future, Poll, executor};
+    use partial_io::{GenInterruptedWouldBlock, PartialAsyncWrite,
+                     PartialWithErrors};
+    use quickcheck::quickcheck;
     use std::io::{self, Cursor};
     use tokio_io::{AsyncWrite, AsyncRead, io as tokio_io};
-
-    struct BlockingWriter<T: AsyncWrite> {
-        block: bool,
-        writer: T,
-    }
-
-    impl<T: AsyncWrite> BlockingWriter<T> {
-        fn new(writer: T) -> BlockingWriter<T> {
-            BlockingWriter {
-                block: false,
-                writer: writer,
-            }
-        }
-
-        fn into_inner(self) -> T {
-            self.writer
-        }
-    }
-
-    impl<T: AsyncWrite> AsyncWrite for BlockingWriter<T> {
-        fn shutdown(&mut self) -> Poll<(), io::Error> {
-            self.writer.shutdown()
-        }
-    }
-
-    impl<T: AsyncWrite> io::Write for BlockingWriter<T> {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            if self.block {
-                self.block = false;
-                task::park().unpark();
-                Err(io::Error::from(io::ErrorKind::WouldBlock))
-            } else {
-                self.block = true;
-                self.writer.write(buf)
-            }
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
 
     #[test]
     fn test_async_write() {
@@ -464,13 +427,22 @@ mod async_tests {
     }
 
     #[test]
-    fn test_async_write_block() {
-        use stream::decode_all;
+    fn test_async_write_partial() {
+        quickcheck(test as fn(_) -> _);
 
-        let source = "abc".repeat(1024 * 100).into_bytes();
-        let encoded_output = test_async_write_worker(&source[..], BlockingWriter::new(Cursor::new(Vec::new())), |w| { w.into_inner().into_inner() });
-        let decoded = decode_all(&encoded_output[..]).unwrap();
-        assert_eq!(source, &decoded[..]);
+        fn test(encode_ops: PartialWithErrors<GenInterruptedWouldBlock>) {
+            use stream::decode_all;
+
+            let source = "abc".repeat(1024 * 100).into_bytes();
+            let writer = PartialAsyncWrite::new(Cursor::new(Vec::new()),
+                                                encode_ops);
+            let encoded_output =
+                test_async_write_worker(&source[..],
+                                        writer,
+                                        |w| w.into_inner().into_inner());
+            let decoded = decode_all(&encoded_output[..]).unwrap();
+            assert_eq!(source, &decoded[..]);
+        }
     }
 
     struct Finish<W: AsyncWrite> {

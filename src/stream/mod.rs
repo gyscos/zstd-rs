@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn test_ll_source() {
         // Where could I find some long text?...
-        let data = include_bytes!("../../zstd-sys/src/bindings.rs");
+        let data = include_bytes!("../../zstd-safe/zstd-sys/src/bindings.rs");
         // Test a few compression levels.
         // TODO: check them all?
         for level in 1..5 {

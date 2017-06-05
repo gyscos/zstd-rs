@@ -14,13 +14,12 @@
 //! [`Encoder::with_dictionary`]: ../struct.Encoder.html#method.with_dictionary
 //! [`Decoder::with_dictionary`]: ../struct.Decoder.html#method.with_dictionary
 
-use libc::{c_uint, c_void};
 use parse_code;
 use std::fs;
 
 use std::io::{self, Read};
 use std::path;
-use zstd_sys;
+use zstd_safe;
 
 /// Train a dictionary from a big continuous chunk of data.
 ///
@@ -37,15 +36,10 @@ pub fn from_continuous(sample_data: &[u8], sample_sizes: &[usize],
 
     let mut result = Vec::with_capacity(max_size);
     unsafe {
-        let result_ptr = result.as_mut_ptr() as *mut c_void;
-        let sample_ptr = sample_data.as_ptr() as *const c_void;
-        let code = zstd_sys::ZDICT_trainFromBuffer(result_ptr,
-                                                   result.capacity(),
-                                                   sample_ptr,
-                                                   sample_sizes.as_ptr(),
-                                                   sample_sizes.len() as
-                                                   c_uint);
-        let written = try!(parse_code(code));
+        result.set_len(max_size);
+        let written = parse_code(zstd_safe::train_from_buffer(&mut result,
+                                                              sample_data,
+                                                              sample_sizes))?;
         result.set_len(written);
     }
     Ok(result)

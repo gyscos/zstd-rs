@@ -1,0 +1,13 @@
+extern crate zstd_sys;
+
+
+pub fn versionNumber() -> u32 {
+    unsafe { zstd_sys::ZSTD_versionNumber() as u32 }
+}
+
+pub fn compress(dst: &mut [u8],
+                     src: &[u8],
+                     compressionLevel: u32) -> usize {
+    unsafe { zstd_sys::ZSTD_compress(dst.as_mut_ptr(), dst.len(), src.as_ptr(), src.len(), compressionLevel) as usize }
+
+}

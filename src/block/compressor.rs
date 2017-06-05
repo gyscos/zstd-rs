@@ -1,25 +1,7 @@
-use libc::c_void;
 use parse_code;
 
 use std::io;
-use zstd_sys;
-
-struct EncoderContext {
-    c: *mut zstd_sys::ZSTD_CCtx,
-}
-
-impl Default for EncoderContext {
-    fn default() -> Self {
-        EncoderContext { c: unsafe { zstd_sys::ZSTD_createCCtx() } }
-    }
-}
-
-impl Drop for EncoderContext {
-    fn drop(&mut self) {
-        let code = unsafe { zstd_sys::ZSTD_freeCCtx(self.c) };
-        parse_code(code).unwrap();
-    }
-}
+use zstd_safe;
 
 /// Allows to compress independently multiple blocks of data.
 ///
@@ -27,7 +9,7 @@ impl Drop for EncoderContext {
 /// The compressed blocks are still completely independent.
 #[derive(Default)]
 pub struct Compressor {
-    context: EncoderContext,
+    context: zstd_safe::CCtx,
     dict: Vec<u8>,
 }
 
@@ -40,7 +22,7 @@ impl Compressor {
     /// Creates a new zstd compressor, using the given dictionary.
     pub fn with_dict(dict: Vec<u8>) -> Self {
         Compressor {
-            context: EncoderContext::default(),
+            context: zstd_safe::create_cctx(),
             dict: dict,
         }
     }
@@ -52,17 +34,12 @@ impl Compressor {
     pub fn compress_to_buffer(&mut self, source: &[u8],
                               destination: &mut [u8], level: i32)
                               -> io::Result<usize> {
-        let code = unsafe {
-            zstd_sys::ZSTD_compress_usingDict(self.context.c,
-                                              destination.as_mut_ptr() as
-                                              *mut c_void,
-                                              destination.len(),
-                                              source.as_ptr() as *mut c_void,
-                                              source.len(),
-                                              self.dict.as_ptr() as
-                                              *mut c_void,
-                                              self.dict.len(),
-                                              level)
+        let code = {
+            zstd_safe::compress_using_dict(&mut self.context,
+                                           destination,
+                                           source,
+                                           &self.dict[..],
+                                           level)
         };
         parse_code(code)
     }
@@ -70,7 +47,7 @@ impl Compressor {
     /// Compresses a block of data and returns the compressed result.
     pub fn compress(&mut self, data: &[u8], lvl: i32) -> io::Result<Vec<u8>> {
         // We allocate a big buffer, slightly larger than the input data.
-        let buffer_len = unsafe { zstd_sys::ZSTD_compressBound(data.len()) };
+        let buffer_len = zstd_safe::compress_bound(data.len());
         let mut buffer = Vec::with_capacity(buffer_len);
         unsafe {
             // Use all capacity.

@@ -28,7 +28,7 @@ extern crate libc;
 #[cfg(test)]
 extern crate partial_io;
 
-extern crate zstd_sys;
+extern crate zstd_safe;
 
 
 pub mod stream;
@@ -43,8 +43,6 @@ extern crate futures;
 #[cfg(all(test, feature = "tokio"))]
 extern crate quickcheck;
 
-use std::ffi::CStr;
-
 use std::io;
 #[doc(no_inline)]
 pub use stream::{Decoder, Encoder, decode_all, encode_all};
@@ -54,15 +52,13 @@ pub use stream::{Decoder, Encoder, decode_all, encode_all};
 /// Returns the number of bytes written if the code represents success,
 /// or the error message otherwise.
 fn parse_code(code: libc::size_t) -> Result<usize, io::Error> {
-    unsafe {
-        if zstd_sys::ZSTD_isError(code) == 0 {
-            Ok(code as usize)
-        } else {
-            let msg = CStr::from_ptr(zstd_sys::ZSTD_getErrorName(code));
-            let error = io::Error::new(io::ErrorKind::Other,
-                                       msg.to_str().unwrap().to_string());
-            Err(error)
-        }
+    if zstd_safe::is_error(code) == 0 {
+        Ok(code as usize)
+    } else {
+        let msg = zstd_safe::get_error_name(code);
+        let error = io::Error::new(io::ErrorKind::Other,
+                                   msg.to_str().unwrap().to_string());
+        Err(error)
     }
 }
 

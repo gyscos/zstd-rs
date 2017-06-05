@@ -1,27 +1,9 @@
-use libc::c_void;
 use parse_code;
 use std::io::{self, Read};
 
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncRead;
-use zstd_sys;
-
-struct DecoderContext {
-    s: *mut zstd_sys::ZSTD_DStream,
-}
-
-impl Default for DecoderContext {
-    fn default() -> Self {
-        DecoderContext { s: unsafe { zstd_sys::ZSTD_createDStream() } }
-    }
-}
-
-impl Drop for DecoderContext {
-    fn drop(&mut self) {
-        let code = unsafe { zstd_sys::ZSTD_freeDStream(self.s) };
-        parse_code(code).unwrap();
-    }
-}
+use zstd_safe;
 
 /// Extra bit of information that is stored along `RefillBuffer` state.
 /// It describes the context in which refill was requested.
@@ -56,7 +38,7 @@ pub struct Decoder<R: Read> {
     // we already read everything in the buffer up to that point
     offset: usize,
     // decompression context
-    context: DecoderContext,
+    context: zstd_safe::DStream,
 
     // `true` if we should stop after the first frame.
     single_frame: bool,
@@ -84,14 +66,11 @@ impl<R: Read> Decoder<R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_dictionary(reader: R, dictionary: &[u8]) -> io::Result<Self> {
 
-        let buffer_size = unsafe { zstd_sys::ZSTD_DStreamInSize() };
+        let buffer_size = zstd_safe::dstream_in_size();
 
-        let context = DecoderContext::default();
-        parse_code(unsafe {
-            zstd_sys::ZSTD_initDStream_usingDict(context.s,
-                                           dictionary.as_ptr() as *const c_void,
-                                           dictionary.len())
-        })?;
+        let mut context = zstd_safe::create_dstream();
+        parse_code(zstd_safe::init_dstream_using_dict(&mut context,
+                                                      dictionary))?;
 
         let decoder = Decoder {
             reader: reader,
@@ -107,13 +86,13 @@ impl<R: Read> Decoder<R> {
 
     // Prepares the context for another stream, whith minimal re-allocation.
     fn reinit(&mut self) -> io::Result<()> {
-        parse_code(unsafe { zstd_sys::ZSTD_resetDStream(self.context.s) })?;
+        parse_code(zstd_safe::reset_dstream(&mut self.context))?;
         Ok(())
     }
 
     /// Recommendation for the size of the output buffer.
     pub fn recommended_output_size() -> usize {
-        unsafe { zstd_sys::ZSTD_DStreamOutSize() }
+        zstd_safe::dstream_out_size()
     }
 
     /// Acquire a reference to the underlying reader.
@@ -140,10 +119,8 @@ impl<R: Read> Decoder<R> {
     // Attemps to refill the input buffer.
     //
     // Returns the number of bytes read.
-    fn refill_buffer(&mut self, in_buffer: &mut zstd_sys::ZSTD_inBuffer)
-                     -> io::Result<usize> {
+    fn refill_buffer(&mut self) -> io::Result<usize> {
         // At this point it's safe to discard anything in `self.buffer`.
-        // (in_buffer HAS to point to self.buffer)
 
         // We need moar data!
         // Make a nice clean buffer
@@ -159,8 +136,6 @@ impl<R: Read> Decoder<R> {
         }
 
         self.offset = 0;
-        in_buffer.pos = 0;
-        in_buffer.size = read;
 
         // If we can't read anything, it means input is exhausted.
         Ok(read)
@@ -182,12 +157,11 @@ impl<R: Read> Decoder<R> {
     ///
     /// It returns true if read operation should be stopped and false otherwise
     fn handle_refill(&mut self, hint: RefillBufferHint,
-                     in_buffer: &mut zstd_sys::ZSTD_inBuffer,
-                     out_buffer: &mut zstd_sys::ZSTD_outBuffer)
+                     out_buffer: &mut zstd_safe::OutBuffer)
                      -> Result<bool, io::Error> {
 
         // refilled = false if we reached the end of the input.
-        let refilled = match self.refill_buffer(in_buffer) {
+        let refilled = match self.refill_buffer() {
             Err(ref err) if out_buffer.pos > 0 &&
                             err.kind() == io::ErrorKind::WouldBlock => {
                 // The underlying reader was blocked, but we've already
@@ -234,13 +208,17 @@ impl<R: Read> Decoder<R> {
     /// This function handles Active state in the read operation - main read loop.
     ///
     /// It returns true if read operation should be stopped and false otherwise
-    fn handle_active(&mut self, in_buffer: &mut zstd_sys::ZSTD_inBuffer,
-                     out_buffer: &mut zstd_sys::ZSTD_outBuffer)
+    fn handle_active(&mut self, out_buffer: &mut zstd_safe::OutBuffer)
                      -> Result<bool, io::Error> {
 
+        let mut in_buffer = zstd_safe::InBuffer {
+            src: &self.buffer,
+            pos: self.offset,
+        };
+
         // As long as we can keep writing...
-        while out_buffer.pos < out_buffer.size {
-            if in_buffer.pos == in_buffer.size {
+        while out_buffer.pos < out_buffer.dst.len() {
+            if in_buffer.pos == in_buffer.src.len() {
                 self.state =
                     DecoderState::RefillBuffer(RefillBufferHint::None);
                 // refill buffer and continue reading
@@ -248,11 +226,10 @@ impl<R: Read> Decoder<R> {
             }
 
             // Let's use the hint from ZSTD to detect end of frames.
-            let is_end_of_frame = unsafe {
-                let code =
-                    zstd_sys::ZSTD_decompressStream(self.context.s,
-                                            out_buffer as *mut zstd_sys::ZSTD_outBuffer,
-                                            in_buffer as *mut zstd_sys::ZSTD_inBuffer);
+            let is_end_of_frame = {
+                let code = zstd_safe::decompress_stream(&mut self.context,
+                                                        out_buffer,
+                                                        &mut in_buffer);
                 let res = parse_code(code)?;
                 res == 0
             };
@@ -268,7 +245,7 @@ impl<R: Read> Decoder<R> {
                 return Ok(true);
             }
 
-            if in_buffer.pos == in_buffer.size {
+            if in_buffer.pos == in_buffer.src.len() {
                 let hint = if is_end_of_frame {
                     // If the frame is over, it's fine to stop there.
                     RefillBufferHint::EndOfFrame
@@ -289,17 +266,8 @@ impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 
         // Self-contained buffer pointer, size and offset
-        let mut in_buffer = zstd_sys::ZSTD_inBuffer {
-            src: self.buffer.as_ptr() as *const c_void,
-            size: self.buffer.len(),
-            pos: self.offset,
-        };
 
-        let mut out_buffer = zstd_sys::ZSTD_outBuffer {
-            dst: buf.as_mut_ptr() as *mut c_void,
-            size: buf.len(),
-            pos: 0,
-        };
+        let mut out_buffer = zstd_safe::OutBuffer { dst: buf, pos: 0 };
 
         loop {
             let should_stop = match self.state {
@@ -307,13 +275,9 @@ impl<R: Read> Read for Decoder<R> {
                     return Ok(0);
                 }
                 DecoderState::RefillBuffer(action) => {
-                        self.handle_refill(action,
-                                           &mut in_buffer,
-                                           &mut out_buffer)?
-                    }
-                DecoderState::Active => {
-                    self.handle_active(&mut in_buffer, &mut out_buffer)?
+                    self.handle_refill(action, &mut out_buffer)?
                 }
+                DecoderState::Active => self.handle_active(&mut out_buffer)?,
             };
             if should_stop {
                 break;

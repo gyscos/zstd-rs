@@ -1,32 +1,14 @@
-use libc::c_void;
 use parse_code;
 
 use std::io;
-use zstd_sys;
-
-struct DecoderContext {
-    c: *mut zstd_sys::ZSTD_DCtx,
-}
-
-impl Default for DecoderContext {
-    fn default() -> Self {
-        DecoderContext { c: unsafe { zstd_sys::ZSTD_createDCtx() } }
-    }
-}
-
-impl Drop for DecoderContext {
-    fn drop(&mut self) {
-        let code = unsafe { zstd_sys::ZSTD_freeDCtx(self.c) };
-        parse_code(code).unwrap();
-    }
-}
+use zstd_safe;
 
 /// Allows to decompress independently multiple blocks of data.
 ///
 /// This reduces memory usage compared to calling `decompress` multiple times.
 #[derive(Default)]
 pub struct Decompressor {
-    context: DecoderContext,
+    context: zstd_safe::DCtx,
     dict: Vec<u8>,
 }
 
@@ -39,7 +21,7 @@ impl Decompressor {
     /// Creates a new zstd decompressor, using the given dictionary.
     pub fn with_dict(dict: Vec<u8>) -> Self {
         Decompressor {
-            context: DecoderContext::default(),
+            context: zstd_safe::create_dctx(),
             dict: dict,
         }
     }
@@ -51,17 +33,11 @@ impl Decompressor {
     pub fn decompress_to_buffer(&mut self, source: &[u8],
                                 destination: &mut [u8])
                                 -> io::Result<usize> {
-        let code = unsafe {
-            let destination_ptr = destination.as_mut_ptr() as *mut c_void;
-            let source_ptr = source.as_ptr() as *const c_void;
-            let dict_ptr = self.dict.as_ptr() as *const c_void;
-            zstd_sys::ZSTD_decompress_usingDict(self.context.c,
-                                                destination_ptr,
-                                                destination.len(),
-                                                source_ptr,
-                                                source.len(),
-                                                dict_ptr,
-                                                self.dict.len())
+        let code = {
+            zstd_safe::decompress_using_dict(&mut self.context,
+                                             destination,
+                                             source,
+                                             &self.dict)
         };
         parse_code(code)
     }

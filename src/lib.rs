@@ -57,7 +57,7 @@ fn parse_code(code: libc::size_t) -> Result<usize, io::Error> {
     } else {
         let msg = zstd_safe::get_error_name(code);
         let error = io::Error::new(io::ErrorKind::Other,
-                                   msg.to_str().unwrap().to_string());
+                                   msg.to_string());
         Err(error)
     }
 }

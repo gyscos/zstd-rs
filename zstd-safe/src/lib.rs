@@ -1,3 +1,4 @@
+#![no_std]
 //! Minimal safe wrapper around zstd-sys.
 //!
 //! This crates provides a minimal translation of the zstd-sys methods.
@@ -29,9 +30,11 @@ extern crate libc;
 
 
 
-use std::marker::PhantomData;
-use std::ops::Deref;
-use std::ops::DerefMut;
+use core::str;
+use core::slice;
+use core::marker::PhantomData;
+use core::ops::Deref;
+use core::ops::DerefMut;
 
 fn ptr_void(src: &[u8]) -> *const libc::c_void {
     src.as_ptr() as *const libc::c_void
@@ -156,8 +159,17 @@ impl Drop for CCtx {
     }
 }
 
-pub fn get_error_name(code: usize) -> &'static std::ffi::CStr {
-    unsafe { std::ffi::CStr::from_ptr(zstd_sys::ZSTD_getErrorName(code)) }
+pub fn get_error_name(code: usize) -> &'static str {
+    unsafe {
+        // We are getting a *const char from zstd
+        let name = zstd_sys::ZSTD_getErrorName(code);
+        // To be safe, we need to compute right now its length
+        let len = libc::strlen(name);
+        // Cast it to a slice
+        let slice = slice::from_raw_parts(name as *mut u8, len);
+        // And hope it's still text.
+        str::from_utf8(slice).expect("bad error message from zstd")
+    }
 }
 
 /// `ZSTD_compressCCtx()`

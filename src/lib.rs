@@ -40,7 +40,8 @@ pub mod dict;
 extern crate tokio_io;
 #[cfg(feature = "tokio")]
 extern crate futures;
-
+#[cfg(all(test, feature = "tokio"))]
+extern crate quickcheck;
 
 use std::ffi::CStr;
 

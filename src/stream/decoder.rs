@@ -334,65 +334,12 @@ impl<R: AsyncRead> AsyncRead for Decoder<R> {
 #[cfg(test)]
 #[cfg(feature = "tokio")]
 mod async_tests {
-    use futures::{Future, task};
+    use futures::Future;
+    use partial_io::{GenInterruptedWouldBlock, PartialAsyncRead,
+                     PartialWithErrors};
+    use quickcheck::quickcheck;
     use std::io::{self, Cursor};
     use tokio_io::{AsyncWrite, AsyncRead, io as tokio_io};
-
-    struct BlockingReader<T: AsyncRead> {
-        block: bool,
-        reader: T,
-    }
-
-    impl<T: AsyncRead> BlockingReader<T> {
-        fn new(reader: T) -> BlockingReader<T> {
-            BlockingReader {
-                block: false,
-                reader: reader,
-            }
-        }
-    }
-
-    impl<T: AsyncRead> AsyncRead for BlockingReader<T> {}
-
-    impl<T: AsyncRead> io::Read for BlockingReader<T> {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            if self.block {
-                self.block = false;
-                task::park().unpark();
-                Err(io::Error::from(io::ErrorKind::WouldBlock))
-            } else {
-                self.block = true;
-                self.reader.read(buf)
-            }
-        }
-    }
-
-    struct InterruptingReader<T: AsyncRead> {
-        counter: u8,
-        reader: T,
-    }
-
-    impl<T: AsyncRead> InterruptingReader<T> {
-        fn new(reader: T) -> InterruptingReader<T> {
-            InterruptingReader {
-                counter: 5,
-                reader: reader,
-            }
-        }
-    }
-
-    impl<T: AsyncRead> AsyncRead for InterruptingReader<T> {}
-
-    impl<T: AsyncRead> io::Read for InterruptingReader<T> {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            if self.counter > 0 {
-                self.counter = self.counter - 1;
-                Err(io::Error::from(io::ErrorKind::Interrupted))
-            } else {
-                self.reader.read(buf)
-            }
-        }
-    }
 
     #[test]
     fn test_async_read() {
@@ -408,30 +355,21 @@ mod async_tests {
     }
 
     #[test]
-    fn test_async_read_block() {
-        use stream::encode_all;
+    fn test_async_read_partial() {
+        quickcheck(test as fn(_) -> _);
 
-        let source = "abc".repeat(1024 * 10).into_bytes();
-        let encoded = encode_all(&source[..], 1).unwrap();
-        let writer = test_async_read_worker(BlockingReader::new(&encoded[..]),
-                                            Cursor::new(Vec::new()))
-                .unwrap();
-        let output = writer.into_inner();
-        assert_eq!(source, output);
-    }
+        fn test(encode_ops: PartialWithErrors<GenInterruptedWouldBlock>) {
+            use stream::encode_all;
 
-    #[test]
-    fn test_async_read_interrupt() {
-        use stream::encode_all;
-
-        let source = "abc".repeat(1024 * 10).into_bytes();
-        let encoded = encode_all(&source[..], 1).unwrap();
-        let writer = test_async_read_worker(InterruptingReader::new(&encoded
-                                                                         [..]),
-                                            Cursor::new(Vec::new()))
-                .unwrap();
-        let output = writer.into_inner();
-        assert_eq!(source, output);
+            let source = "abc".repeat(1024 * 10).into_bytes();
+            let encoded = encode_all(&source[..], 1).unwrap();
+            let reader = PartialAsyncRead::new(&encoded[..], encode_ops);
+            let writer = test_async_read_worker(reader,
+                                                Cursor::new(Vec::new()))
+                    .unwrap();
+            let output = writer.into_inner();
+            assert_eq!(source, output);
+        }
     }
 
     fn test_async_read_worker<R: AsyncRead, W: AsyncWrite>

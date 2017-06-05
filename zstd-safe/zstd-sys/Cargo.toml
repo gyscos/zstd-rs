@@ -8,6 +8,7 @@ keywords = ["zstd", "zstandard", "compression"]
 categories = ["api-bindings", "compression"]
 repository = "https://github.com/gyscos/zstd-rs"
 license = "MIT/Apache-2.0"
+readme = "Readme.md"
 
 [build-dependencies]
 bindgen = { version = "0.25", optional = true }

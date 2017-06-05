@@ -7,6 +7,7 @@ keywords = ["zstd", "zstandard", "compression"]
 categories = ["api-bindings", "compression"]
 repository = "https://github.com/gyscos/zstd-rs"
 license = "MIT/Apache-2.0"
+readme = "Readme.md"
 
 [dependencies]
 zstd-sys = { path="zstd-sys", version = "1.2", default-features = false }

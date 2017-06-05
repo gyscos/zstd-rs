@@ -9,6 +9,7 @@ name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "0.4.10"
 exclude = ["assets"]
+readme = "Readme.md"
 
 [badges]
 travis-ci = { repository = "gyscos/zstd-rs" }

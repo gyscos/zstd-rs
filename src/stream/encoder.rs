@@ -347,6 +347,12 @@ impl<W: AsyncWrite> AsyncWrite for Encoder<W> {
     }
 }
 
+fn _assert_traits() {
+    fn _assert_send<T: Send>(_: T) {}
+
+    _assert_send(Encoder::new(Vec::new(), 1));
+}
+
 #[cfg(test)]
 mod tests {
     use super::Encoder;

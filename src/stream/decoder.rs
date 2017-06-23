@@ -295,6 +295,14 @@ impl<R: AsyncRead> AsyncRead for Decoder<R> {
     }
 }
 
+fn _assert_traits() {
+    use std::io::Cursor;
+
+    fn _assert_send<T: Send>(_: T) {}
+
+    _assert_send(Decoder::new(Cursor::new(Vec::new())));
+}
+
 #[cfg(test)]
 #[cfg(feature = "tokio")]
 mod async_tests {

@@ -159,6 +159,9 @@ impl Drop for CCtx {
     }
 }
 
+unsafe impl Send for CCtx {}
+// CCtx can't be shared across threads, so it does not implement Sync.
+
 pub fn get_error_name(code: usize) -> &'static str {
     unsafe {
         // We are getting a *const char from zstd
@@ -207,6 +210,9 @@ impl Drop for DCtx {
         }
     }
 }
+
+unsafe impl Send for DCtx {}
+// DCtx can't be shared across threads, so it does not implement Sync.
 
 /// `ZSTD_decompressDCtx()`
 ///
@@ -296,6 +302,9 @@ impl<'a> Drop for CDict<'a> {
     }
 }
 
+unsafe impl<'a> Send for CDict<'a> {}
+unsafe impl<'a> Sync for CDict<'a> {}
+
 /// `ZSTD_compress_usingCDict()`
 ///
 /// Compression using a digested Dictionary.
@@ -342,6 +351,9 @@ impl<'a> Drop for DDict<'a> {
     }
 }
 
+unsafe impl<'a> Send for DDict<'a> {}
+unsafe impl<'a> Sync for DDict<'a> {}
+
 /// `ZSTD_decompress_usingDDict()`
 ///
 /// Decompression using a digested Dictionary.
@@ -379,6 +391,10 @@ impl Drop for CStream {
         }
     }
 }
+
+unsafe impl Send for CStream {}
+// CStream can't be shared across threads, so it does not implement Sync.
+
 pub fn init_cstream(zcs: &mut CStream, compression_level: i32) -> usize {
     unsafe { zstd_sys::ZSTD_initCStream(zcs.0, compression_level) }
 }
@@ -522,6 +538,9 @@ impl Drop for DStream {
         }
     }
 }
+
+unsafe impl Send for DStream {}
+// DStream can't be shared across threads, so it does not implement Sync.
 
 pub fn init_dstream(zds: &mut DStream) -> usize {
     unsafe { zstd_sys::ZSTD_initDStream(zds.0) }

@@ -57,3 +57,9 @@ impl Decompressor {
         Ok(buffer)
     }
 }
+
+fn _assert_traits() {
+    fn _assert_send<T: Send>(_: T) {}
+
+    _assert_send(Decompressor::new());
+}

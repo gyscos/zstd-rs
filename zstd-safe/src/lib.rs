@@ -2,6 +2,9 @@
 //! Minimal safe wrapper around zstd-sys.
 //!
 //! This crates provides a minimal translation of the zstd-sys methods.
+//! For a more comfortable high-level library, see the [zstd] crate.
+//!
+//! [zstd]: https://crates.io/crates/zstd
 //!
 //! # Introduction
 //!

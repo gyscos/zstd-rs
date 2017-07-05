@@ -1,7 +1,7 @@
 # zstd-sys
 
 This is the low-level auto-generated binding to the [zstd] library.
-You probably don't want to use this library directly; instead, look at [zstd-rs].
+You probably don't want to use this library directly; instead, look at [zstd-rs] or [zstd-safe].
 
 # Compile it yourself
 
@@ -32,3 +32,4 @@ cargo build --features bindgen
 
 [zstd]: https://github.com/facebook/zstd
 [zstd-rs]: https://github.com/gyscos/zstd-rs
+[zstd-safe]: https://github.com/gyscos/zstd-rs/tree/master/zstd-safe

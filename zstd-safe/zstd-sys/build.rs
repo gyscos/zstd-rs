@@ -11,7 +11,6 @@ fn generate_bindings() {
     use std::path::PathBuf;
 
     let bindings = bindgen::Builder::default()
-        .no_unstable_rust()
         .header("zstd.h")
         .generate_comments(false) //< remove this when it works
         .hide_type("max_align_t")

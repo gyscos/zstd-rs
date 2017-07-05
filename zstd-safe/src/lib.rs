@@ -830,8 +830,8 @@ pub fn train_from_buffer(dict_buffer: &mut [u8], samples_buffer: &[u8],
                                         samples_sizes.len() as u32)
     }
 }
-pub fn get_block_size_max(cctx: &mut CCtx) -> usize {
-    unsafe { zstd_sys::ZSTD_getBlockSizeMax(cctx.0) }
+pub fn get_block_size(cctx: &mut CCtx) -> usize {
+    unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0) }
 }
 pub fn compress_block(cctx: &mut CCtx, dst: &mut [u8], src: &[u8]) -> usize {
     unsafe {

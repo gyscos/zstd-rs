@@ -24,6 +24,7 @@ pub const ZSTD_FRAMEHEADERSIZE_MAX: ::libc::c_uint = 18;
 pub const ZSTD_FRAMEHEADERSIZE_MIN: ::libc::c_uint = 6;
 pub const ZSTD_BLOCKSIZELOG_MAX: ::libc::c_uint = 17;
 pub const ZSTD_BLOCKSIZE_MAX: ::libc::c_uint = 131072;
+pub const ZSTDMT_SECTION_SIZE_MIN: ::libc::c_uint = 1048576;
 pub type wchar_t = ::libc::c_int;
 extern "C" {
     pub fn ZSTD_versionNumber() -> ::libc::c_uint;
@@ -1354,4 +1355,98 @@ extern "C" {
 }
 extern "C" {
     pub fn ZDICT_getErrorName(errorCode: usize) -> *const ::libc::c_char;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZSTDMT_CCtx_s {
+    _unused: [u8; 0],
+}
+pub type ZSTDMT_CCtx = ZSTDMT_CCtx_s;
+extern "C" {
+    pub fn ZSTDMT_createCCtx(nbThreads: ::libc::c_uint) -> *mut ZSTDMT_CCtx;
+}
+extern "C" {
+    pub fn ZSTDMT_createCCtx_advanced(nbThreads: ::libc::c_uint,
+                                      cMem: ZSTD_customMem)
+     -> *mut ZSTDMT_CCtx;
+}
+extern "C" {
+    pub fn ZSTDMT_freeCCtx(mtctx: *mut ZSTDMT_CCtx) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_sizeof_CCtx(mtctx: *mut ZSTDMT_CCtx) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_compressCCtx(mtctx: *mut ZSTDMT_CCtx,
+                               dst: *mut ::libc::c_void, dstCapacity: usize,
+                               src: *const ::libc::c_void, srcSize: usize,
+                               compressionLevel: ::libc::c_int) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_initCStream(mtctx: *mut ZSTDMT_CCtx,
+                              compressionLevel: ::libc::c_int) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_resetCStream(mtctx: *mut ZSTDMT_CCtx,
+                               pledgedSrcSize: ::libc::c_ulonglong) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_compressStream(mtctx: *mut ZSTDMT_CCtx,
+                                 output: *mut ZSTD_outBuffer,
+                                 input: *mut ZSTD_inBuffer) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_flushStream(mtctx: *mut ZSTDMT_CCtx,
+                              output: *mut ZSTD_outBuffer) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_endStream(mtctx: *mut ZSTDMT_CCtx,
+                            output: *mut ZSTD_outBuffer) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_compress_advanced(mtctx: *mut ZSTDMT_CCtx,
+                                    dst: *mut ::libc::c_void,
+                                    dstCapacity: usize,
+                                    src: *const ::libc::c_void,
+                                    srcSize: usize, cdict: *const ZSTD_CDict,
+                                    params: ZSTD_parameters,
+                                    overlapRLog: ::libc::c_uint) -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_initCStream_advanced(mtctx: *mut ZSTDMT_CCtx,
+                                       dict: *const ::libc::c_void,
+                                       dictSize: usize,
+                                       params: ZSTD_parameters,
+                                       pledgedSrcSize: ::libc::c_ulonglong)
+     -> usize;
+}
+extern "C" {
+    pub fn ZSTDMT_initCStream_usingCDict(mtctx: *mut ZSTDMT_CCtx,
+                                         cdict: *const ZSTD_CDict,
+                                         fparams: ZSTD_frameParameters,
+                                         pledgedSrcSize: ::libc::c_ulonglong)
+     -> usize;
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSDTMT_parameter {
+    ZSTDMT_p_sectionSize = 0,
+    ZSTDMT_p_overlapSectionLog = 1,
+}
+extern "C" {
+    pub fn ZSTDMT_setMTCtxParameter(mtctx: *mut ZSTDMT_CCtx,
+                                    parameter: ZSDTMT_parameter,
+                                    value: ::libc::c_uint) -> usize;
+}
+extern "C" {
+    /*! ZSTDMT_compressStream_generic() :
+ *  Combines ZSTDMT_compressStream() with ZSTDMT_flushStream() or ZSTDMT_endStream()
+ *  depending on flush directive.
+ * @return : minimum amount of data still to be flushed
+ *           0 if fully flushed
+ *           or an error code */
+    pub fn ZSTDMT_compressStream_generic(mtctx: *mut ZSTDMT_CCtx,
+                                         output: *mut ZSTD_outBuffer,
+                                         input: *mut ZSTD_inBuffer,
+                                         endOp: ZSTD_EndDirective) -> usize;
 }

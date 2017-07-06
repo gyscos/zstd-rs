@@ -33,11 +33,11 @@ extern crate libc;
 
 
 
-use core::str;
-use core::slice;
 use core::marker::PhantomData;
 use core::ops::Deref;
 use core::ops::DerefMut;
+use core::slice;
+use core::str;
 
 fn ptr_void(src: &[u8]) -> *const libc::c_void {
     src.as_ptr() as *const libc::c_void
@@ -142,7 +142,7 @@ pub fn is_error(code: usize) -> u32 {
     unsafe { zstd_sys::ZSTD_isError(code) as u32 }
 }
 
-pub struct CCtx(*mut zstd_sys::ZSTD_CCtx_s);
+pub struct CCtx(*mut zstd_sys::ZSTD_CCtx);
 
 impl Default for CCtx {
     fn default() -> Self {
@@ -514,6 +514,7 @@ pub fn end_stream(zcs: &mut CStream, output: &mut OutBuffer) -> usize {
     let mut output = output.wrap();
     unsafe { zstd_sys::ZSTD_endStream(zcs.0, ptr_mut(&mut output)) }
 }
+
 pub fn cstream_in_size() -> usize {
     unsafe { zstd_sys::ZSTD_CStreamInSize() }
 }
@@ -856,4 +857,78 @@ pub fn decompress_block(dctx: &mut DCtx, dst: &mut [u8], src: &[u8]) -> usize {
 }
 pub fn insert_block(dctx: &mut DCtx, block: &[u8]) -> usize {
     unsafe { zstd_sys::ZSTD_insertBlock(dctx.0, ptr_void(block), block.len()) }
+}
+
+
+/// Multi-threading methods.
+#[cfg(feature = "zstdmt")]
+pub mod mt {
+    use super::{ptr_void, ptr_mut, ptr_mut_void, InBuffer, OutBuffer};
+    use super::libc;
+    use super::zstd_sys;
+
+    pub struct CCtx(*mut zstd_sys::ZSTDMT_CCtx);
+
+    pub fn create_cctx(n_threads: u32) -> CCtx {
+        CCtx(unsafe { zstd_sys::ZSTDMT_createCCtx(n_threads) })
+    }
+
+    impl Drop for CCtx {
+        fn drop(&mut self) {
+            unsafe {
+                zstd_sys::ZSTDMT_freeCCtx(self.0);
+            }
+        }
+    }
+
+    pub fn sizeof_cctx(cctx: &CCtx) -> usize {
+        unsafe { zstd_sys::ZSTDMT_sizeof_CCtx(cctx.0) }
+    }
+
+    pub fn compress_cctx(mtctx: &mut CCtx, dst: &mut [u8], src: &[u8],
+                         compression_level: i32)
+                         -> usize {
+        unsafe {
+            zstd_sys::ZSTDMT_compressCCtx(mtctx.0,
+                                          ptr_mut_void(dst),
+                                          dst.len(),
+                                          ptr_void(src),
+                                          src.len(),
+                                          compression_level)
+        }
+    }
+
+    pub fn init_cstream(mtctx: &mut CCtx, compression_level: i32) -> usize {
+        unsafe { zstd_sys::ZSTDMT_initCStream(mtctx.0, compression_level) }
+    }
+
+    pub fn reset_cstream(mtctx: &mut CCtx, pledged_src_size: u64) -> usize {
+        unsafe {
+            zstd_sys::ZSTDMT_resetCStream(mtctx.0,
+                                          pledged_src_size as
+                                          libc::c_ulonglong)
+        }
+    }
+
+    pub fn compress_stream(mtctx: &mut CCtx, output: &mut OutBuffer,
+                           input: &mut InBuffer)
+                           -> usize {
+        let mut output = output.wrap();
+        let mut input = input.wrap();
+        unsafe {
+            zstd_sys::ZSTDMT_compressStream(mtctx.0,
+                                            ptr_mut(&mut output),
+                                            ptr_mut(&mut input))
+        }
+    }
+
+    pub fn flush_stream(mtctx: &mut CCtx, output: &mut OutBuffer) -> usize {
+        let mut output = output.wrap();
+        unsafe { zstd_sys::ZSTDMT_flushStream(mtctx.0, ptr_mut(&mut output)) }
+    }
+
+    pub fn end_stream(mtctx: &mut CCtx, output: &mut OutBuffer) -> usize {
+        let mut output = output.wrap();
+        unsafe { zstd_sys::ZSTDMT_endStream(mtctx.0, ptr_mut(&mut output)) }
+    }
 }

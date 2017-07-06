@@ -26,18 +26,24 @@ fn generate_bindings() {
 }
 
 #[cfg(not(feature = "bindgen"))]
-fn generate_bindings() {
-
-}
+fn generate_bindings() {}
 
 
 #[cfg(not(feature = "legacy"))]
-fn set_legacy(_: &mut gcc::Config) {}
+fn set_legacy(_config: &mut gcc::Config) {}
 
 #[cfg(feature = "legacy")]
 fn set_legacy(config: &mut gcc::Config) {
     config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
 }
+
+#[cfg(feature = "zstdmt")]
+fn set_pthread(config: &mut gcc::Config) {
+    config.flag("-pthread");
+}
+
+#[cfg(not(feature = "zstdmt"))]
+fn set_pthread(_config: &mut gcc::Config) {}
 
 fn compile_zstd() {
     let mut config = gcc::Config::new();
@@ -62,6 +68,7 @@ fn compile_zstd() {
     config.include("zstd/lib/common");
     config.include("zstd/lib/legacy");
 
+    set_pthread(&mut config);
     set_legacy(&mut config);
 
     // Compile!

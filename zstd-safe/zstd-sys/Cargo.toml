@@ -21,3 +21,4 @@ libc = "0.2.21"
 [features]
 default = ["legacy"]
 legacy = []
+zstdmt = []

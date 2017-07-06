@@ -1,5 +1,6 @@
 #include "zstd/lib/zstd.h"
 #include "zstd/lib/dictBuilder/zdict.h"
+#include "zstd/lib/compress/zstdmt_compress.h"
 
 /* This file is used to generate bindings for both headers.
  * Just run the following command to generate the bindings:

@@ -36,6 +36,8 @@ pub fn copy_decode<R, W>(source: R, mut destination: W) -> io::Result<()>
 /// Compress all data from the given source as if using an `Encoder`.
 ///
 /// Result will be in the zstd frame format.
+///
+/// A level of `0` uses zstd's default (currently `3`).
 pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
     let mut result = Vec::<u8>::new();
     try!(copy_encode(source, &mut result, level));
@@ -45,6 +47,8 @@ pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
 /// Compress all data from the given source as if using an `Encoder`.
 ///
 /// Compressed data will be appended to `destination`.
+///
+/// A level of `0` uses zstd's default (currently `3`).
 pub fn copy_encode<R, W>(mut source: R, destination: W, level: i32)
                          -> io::Result<()>
     where R: io::Read,

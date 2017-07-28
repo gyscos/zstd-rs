@@ -31,6 +31,8 @@ impl Compressor {
     ///
     /// Returns the number of bytes written, or an error if something happened
     /// (for instance if the destination buffer was too small).
+    ///
+    /// A level of `0` uses zstd's default (currently `3`).
     pub fn compress_to_buffer(&mut self, source: &[u8],
                               destination: &mut [u8], level: i32)
                               -> io::Result<usize> {
@@ -45,7 +47,9 @@ impl Compressor {
     }
 
     /// Compresses a block of data and returns the compressed result.
-    pub fn compress(&mut self, data: &[u8], lvl: i32) -> io::Result<Vec<u8>> {
+    ///
+    /// A level of `0` uses zstd's default (currently `3`).
+    pub fn compress(&mut self, data: &[u8], level: i32) -> io::Result<Vec<u8>> {
         // We allocate a big buffer, slightly larger than the input data.
         let buffer_len = zstd_safe::compress_bound(data.len());
         let mut buffer = Vec::with_capacity(buffer_len);
@@ -54,7 +58,7 @@ impl Compressor {
             // Memory may not be initialized, but we won't read it.
             buffer.set_len(buffer_len);
             let len =
-                try!(self.compress_to_buffer(data, &mut buffer[..], lvl));
+                try!(self.compress_to_buffer(data, &mut buffer[..], level));
             buffer.set_len(len);
         }
 

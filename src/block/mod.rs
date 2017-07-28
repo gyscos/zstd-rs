@@ -16,6 +16,8 @@ use std::io;
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
+///
+/// A level of `0` uses zstd's default (currently `3`).
 pub fn compress_to_buffer(source: &[u8], destination: &mut [u8], level: i32)
                           -> io::Result<usize> {
 
@@ -23,6 +25,8 @@ pub fn compress_to_buffer(source: &[u8], destination: &mut [u8], level: i32)
 }
 
 /// Compresses a block of data and returns the compressed result.
+///
+/// A level of `0` uses zstd's default (currently `3`).
 pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     Compressor::new().compress(data, level)
 }

@@ -12,11 +12,10 @@ fn main() {
         .version("0.1")
         .author("Yann Collet (zstd), Alexandre Bury (zstd-rs)")
         .about("Decompress FILEs to standard output.")
-        .arg(Arg::with_name("FILE")
-                 .index(1)
-                 .multiple(true)
-                 .help("Files to decompress. With no file, or when given -, \
-                   read standard input."))
+        .arg(Arg::with_name("FILE").index(1).multiple(true).help(
+            "Files to decompress. With no file, or when given -, \
+             read standard input.",
+        ))
         .get_matches();
 
     // If nothign was given, act as if `-` was there.
@@ -35,15 +34,13 @@ fn main() {
 fn decompress_file(file: &str) -> io::Result<()> {
     match file {
         "-" => decompress_from(io::stdin()),
-        other => {
-            decompress_from(io::BufReader::new(try!(fs::File::open(other))))
-        }
+        other => decompress_from(io::BufReader::new(fs::File::open(other)?)),
     }
 }
 
 // Decompress from a `Reader` into stdout
 fn decompress_from<R: io::Read>(r: R) -> io::Result<()> {
-    let mut decoder = try!(zstd::Decoder::new(r));
-    try!(io::copy(&mut decoder, &mut io::stdout()));
+    let mut decoder = zstd::Decoder::new(r)?;
+    io::copy(&mut decoder, &mut io::stdout())?;
     Ok(())
 }

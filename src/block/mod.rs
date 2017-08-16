@@ -18,8 +18,11 @@ use std::io;
 /// (for instance if the destination buffer was too small).
 ///
 /// A level of `0` uses zstd's default (currently `3`).
-pub fn compress_to_buffer(source: &[u8], destination: &mut [u8], level: i32)
-                          -> io::Result<usize> {
+pub fn compress_to_buffer(
+    source: &[u8],
+    destination: &mut [u8],
+    level: i32,
+) -> io::Result<usize> {
 
     Compressor::new().compress_to_buffer(source, destination, level)
 }
@@ -35,8 +38,10 @@ pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
 ///
 /// Returns the number of bytes written, or an error if something happened
 /// (for instance if the destination buffer was too small).
-pub fn decompress_to_buffer(source: &[u8], destination: &mut [u8])
-                            -> io::Result<usize> {
+pub fn decompress_to_buffer(
+    source: &[u8],
+    destination: &mut [u8],
+) -> io::Result<usize> {
     Decompressor::new().decompress_to_buffer(source, destination)
 }
 
@@ -69,8 +74,10 @@ mod tests {
                     ramps pabst farm-to-table art party kombucha artisan \
                     fanny pack. Flannel salvia ennui viral leggings selfies.";
 
-        ::test_cycle_unwrap(text.as_bytes(),
-                            |data| compress(data, 1),
-                            |data| decompress(data, text.len()));
+        ::test_cycle_unwrap(
+            text.as_bytes(),
+            |data| compress(data, 1),
+            |data| decompress(data, text.len()),
+        );
     }
 }

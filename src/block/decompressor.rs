@@ -30,28 +30,35 @@ impl Decompressor {
     ///
     /// Returns the number of bytes written, or an error if something happened
     /// (for instance if the destination buffer was too small).
-    pub fn decompress_to_buffer(&mut self, source: &[u8],
-                                destination: &mut [u8])
-                                -> io::Result<usize> {
+    pub fn decompress_to_buffer(
+        &mut self,
+        source: &[u8],
+        destination: &mut [u8],
+    ) -> io::Result<usize> {
         let code = {
-            zstd_safe::decompress_using_dict(&mut self.context,
-                                             destination,
-                                             source,
-                                             &self.dict)
+            zstd_safe::decompress_using_dict(
+                &mut self.context,
+                destination,
+                source,
+                &self.dict,
+            )
         };
         parse_code(code)
     }
 
-    /// Decompress a block of data, and return the decompressed result in a `Vec<u8>`.
+    /// Decompress a block of data, and return the result in a `Vec<u8>`.
     ///
     /// The decompressed data should be less than `capacity` bytes,
     /// or an error will be returned.
-    pub fn decompress(&mut self, data: &[u8], capacity: usize)
-                      -> io::Result<Vec<u8>> {
+    pub fn decompress(
+        &mut self,
+        data: &[u8],
+        capacity: usize,
+    ) -> io::Result<Vec<u8>> {
         let mut buffer = Vec::with_capacity(capacity);
         unsafe {
             buffer.set_len(capacity);
-            let len = try!(self.decompress_to_buffer(data, &mut buffer[..]));
+            let len = self.decompress_to_buffer(data, &mut buffer[..])?;
             buffer.set_len(len);
         }
         Ok(buffer)

@@ -49,9 +49,10 @@ pub struct AutoFinishEncoder<W: Write> {
 }
 
 impl<W: Write> AutoFinishEncoder<W> {
-    fn new<F: 'static + FnMut(io::Result<W>)>(encoder: Encoder<W>,
-                                              on_finish: F)
-                                              -> Self {
+    fn new<F>(encoder: Encoder<W>, on_finish: F)
+    where
+        F: 'static + FnMut(io::Result<W>) -> Self,
+    {
         AutoFinishEncoder {
             encoder: Some(encoder),
             on_finish: Some(Box::new(on_finish)),
@@ -108,14 +109,19 @@ impl<W: Write> Encoder<W> {
     /// but requires the dictionary to be present during decompression.)
     ///
     /// A level of `0` uses zstd's default (currently `3`).
-    pub fn with_dictionary(writer: W, level: i32, dictionary: &[u8])
-                           -> io::Result<Self> {
+    pub fn with_dictionary(
+        writer: W,
+        level: i32,
+        dictionary: &[u8],
+    ) -> io::Result<Self> {
         let mut context = zstd_safe::create_cstream();
 
         // Initialize the stream with an existing dictionary
-        parse_code(zstd_safe::init_cstream_using_dict(&mut context,
-                                                      dictionary,
-                                                      level))?;
+        parse_code(zstd_safe::init_cstream_using_dict(
+            &mut context,
+            dictionary,
+            level,
+        ))?;
 
         Encoder::with_context(writer, context)
     }
@@ -132,25 +138,28 @@ impl<W: Write> Encoder<W> {
     /// Returns an encoder that will finish the stream on drop.
     ///
     /// Calls the given callback with the result from `finish()`.
-    pub fn on_finish<F: 'static + FnMut(io::Result<W>)>
-        (self, f: F)
-         -> AutoFinishEncoder<W> {
+    pub fn on_finish<F: 'static + FnMut(io::Result<W>)>(
+        self,
+        f: F,
+    ) -> AutoFinishEncoder<W> {
         AutoFinishEncoder::new(self, f)
     }
 
-    fn with_context(writer: W, context: zstd_safe::CStream)
-                    -> io::Result<Self> {
+    fn with_context(
+        writer: W,
+        context: zstd_safe::CStream,
+    ) -> io::Result<Self> {
         // This is the output buffer size,
         // for compressed data we get from zstd.
         let buffer_size = zstd_safe::cstream_out_size();
 
         Ok(Encoder {
-               writer: writer,
-               buffer: Vec::with_capacity(buffer_size),
-               offset: 0,
-               context: context,
-               state: EncoderState::Accepting,
-           })
+            writer: writer,
+            buffer: Vec::with_capacity(buffer_size),
+            offset: 0,
+            context: context,
+            state: EncoderState::Accepting,
+        })
     }
 
     /// Acquires a reference to the underlying writer.
@@ -224,9 +233,9 @@ impl<W: Write> Encoder<W> {
                     dst: &mut self.buffer,
                     pos: 0,
                 };
-                let code =
-                    parse_code(zstd_safe::end_stream(&mut self.context,
-                                                     &mut buffer))?;
+                let code = parse_code(
+                    zstd_safe::end_stream(&mut self.context, &mut buffer),
+                )?;
                 (buffer.pos, code)
             };
             unsafe {
@@ -289,9 +298,11 @@ impl<W: Write> Write for Encoder<W> {
                     pos: 0,
                 };
 
-                let code = zstd_safe::compress_stream(&mut self.context,
-                                                      &mut out_buffer,
-                                                      &mut in_buffer);
+                let code = zstd_safe::compress_stream(
+                    &mut self.context,
+                    &mut out_buffer,
+                    &mut in_buffer,
+                );
 
                 (in_buffer.pos, out_buffer.pos, code)
             };
@@ -324,8 +335,8 @@ impl<W: Write> Write for Encoder<W> {
                     pos: 0,
                 };
 
-                let code = zstd_safe::flush_stream(&mut self.context,
-                                                   &mut buffer);
+                let code =
+                    zstd_safe::flush_stream(&mut self.context, &mut buffer);
 
                 (buffer.pos, code)
 
@@ -394,11 +405,13 @@ mod tests {
         assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
     }
 
-    fn setup_partial_write(input_data: &[u8]) -> Encoder<PartialWrite<Vec<u8>>> {
+    fn setup_partial_write(
+        input_data: &[u8],
+    ) -> Encoder<PartialWrite<Vec<u8>>> {
         use std::io::Write;
 
-        let buf = PartialWrite::new(Vec::new(),
-                                    iter::repeat(PartialOp::Limited(1)));
+        let buf =
+            PartialWrite::new(Vec::new(), iter::repeat(PartialOp::Limited(1)));
         let mut z = Encoder::new(buf, 1).unwrap();
 
         // Fill in enough data to make sure the buffer gets written out.
@@ -414,21 +427,23 @@ mod tests {
 #[cfg(test)]
 #[cfg(feature = "tokio")]
 mod async_tests {
-    use futures::{Future, Poll, executor};
+    use futures::{executor, Future, Poll};
     use partial_io::{GenInterruptedWouldBlock, PartialAsyncWrite,
                      PartialWithErrors};
     use quickcheck::quickcheck;
     use std::io::{self, Cursor};
-    use tokio_io::{AsyncWrite, AsyncRead, io as tokio_io};
+    use tokio_io::{io as tokio_io, AsyncRead, AsyncWrite};
 
     #[test]
     fn test_async_write() {
         use stream::decode_all;
 
         let source = "abc".repeat(1024 * 100).into_bytes();
-        let encoded_output = test_async_write_worker(&source[..],
-                                                     Cursor::new(Vec::new()),
-                                                     |w| w.into_inner());
+        let encoded_output = test_async_write_worker(
+            &source[..],
+            Cursor::new(Vec::new()),
+            |w| w.into_inner(),
+        );
         let decoded = decode_all(&encoded_output[..]).unwrap();
         assert_eq!(source, &decoded[..]);
     }
@@ -441,12 +456,13 @@ mod async_tests {
             use stream::decode_all;
 
             let source = "abc".repeat(1024 * 100).into_bytes();
-            let writer = PartialAsyncWrite::new(Cursor::new(Vec::new()),
-                                                encode_ops);
-            let encoded_output =
-                test_async_write_worker(&source[..],
-                                        writer,
-                                        |w| w.into_inner().into_inner());
+            let writer =
+                PartialAsyncWrite::new(Cursor::new(Vec::new()), encode_ops);
+            let encoded_output = test_async_write_worker(
+                &source[..],
+                writer,
+                |w| w.into_inner().into_inner(),
+            );
             let decoded = decode_all(&encoded_output[..]).unwrap();
             assert_eq!(source, &decoded[..]);
         }
@@ -477,17 +493,25 @@ mod async_tests {
         }
     }
 
-    fn test_async_write_worker<R: AsyncRead,
-                               W: AsyncWrite,
-                               Res,
-                               F: FnOnce(W) -> Res>
-        (r: R, w: W, f: F)
-         -> Res {
+    fn test_async_write_worker<
+        R: AsyncRead,
+        W: AsyncWrite,
+        Res,
+        F: FnOnce(W) -> Res,
+    >(
+        r: R,
+        w: W,
+        f: F,
+    ) -> Res {
         use super::Encoder;
 
         let encoder = Encoder::new(w, 1).unwrap();
         let copy_future = tokio_io::copy(r, encoder)
-            .and_then(|(_, _, encoder)| Finish { encoder: Some(encoder) })
+            .and_then(|(_, _, encoder)| {
+                Finish {
+                    encoder: Some(encoder),
+                }
+            })
             .map(f);
         executor::spawn(copy_future).wait_future().unwrap()
     }

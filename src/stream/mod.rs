@@ -1,6 +1,7 @@
 //! Compress and decompress Zstd streams.
 //!
-//! This module provide a `Read`/`Write` interface to zstd streams of arbitrary length.
+//! This module provide a `Read`/`Write` interface
+//! to zstd streams of arbitrary length.
 //!
 //! They are compatible with the `zstd` command-line tool.
 
@@ -17,7 +18,7 @@ pub use self::encoder::{AutoFinishEncoder, Encoder};
 /// The input data must be in the zstd frame format.
 pub fn decode_all<R: io::Read>(source: R) -> io::Result<Vec<u8>> {
     let mut result = Vec::new();
-    try!(copy_decode(source, &mut result));
+    copy_decode(source, &mut result)?;
     Ok(result)
 }
 
@@ -25,11 +26,12 @@ pub fn decode_all<R: io::Read>(source: R) -> io::Result<Vec<u8>> {
 ///
 /// Decompressed data will be appended to `destination`.
 pub fn copy_decode<R, W>(source: R, mut destination: W) -> io::Result<()>
-    where R: io::Read,
-          W: io::Write
+where
+    R: io::Read,
+    W: io::Write,
 {
-    let mut decoder = try!(Decoder::new(source));
-    try!(io::copy(&mut decoder, &mut destination));
+    let mut decoder = Decoder::new(source)?;
+    io::copy(&mut decoder, &mut destination)?;
     Ok(())
 }
 
@@ -40,7 +42,7 @@ pub fn copy_decode<R, W>(source: R, mut destination: W) -> io::Result<()>
 /// A level of `0` uses zstd's default (currently `3`).
 pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
     let mut result = Vec::<u8>::new();
-    try!(copy_encode(source, &mut result, level));
+    copy_encode(source, &mut result, level)?;
     Ok(result)
 }
 
@@ -49,14 +51,18 @@ pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
 /// Compressed data will be appended to `destination`.
 ///
 /// A level of `0` uses zstd's default (currently `3`).
-pub fn copy_encode<R, W>(mut source: R, destination: W, level: i32)
-                         -> io::Result<()>
-    where R: io::Read,
-          W: io::Write
+pub fn copy_encode<R, W>(
+    mut source: R,
+    destination: W,
+    level: i32,
+) -> io::Result<()>
+where
+    R: io::Read,
+    W: io::Write,
 {
-    let mut encoder = try!(Encoder::new(destination, level));
-    try!(io::copy(&mut source, &mut encoder));
-    try!(encoder.finish());
+    let mut encoder = Encoder::new(destination, level)?;
+    io::copy(&mut source, &mut encoder)?;
+    encoder.finish()?;
     Ok(())
 }
 
@@ -147,8 +153,8 @@ mod tests {
     fn setup_try_finish() -> Encoder<PartialWrite<Vec<u8>>> {
         use std::io::Write;
 
-        let buf = PartialWrite::new(Vec::new(),
-                                    iter::repeat(PartialOp::Unlimited));
+        let buf =
+            PartialWrite::new(Vec::new(), iter::repeat(PartialOp::Unlimited));
         let mut z = Encoder::new(buf, 19).unwrap();
 
         z.write_all(b"hello").unwrap();
@@ -166,7 +172,10 @@ mod tests {
     fn test_failing_write() {
         use std::io::Write;
 
-        let buf = PartialWrite::new(Vec::new(), iter::repeat(PartialOp::Err(io::ErrorKind::WouldBlock)));
+        let buf = PartialWrite::new(
+            Vec::new(),
+            iter::repeat(PartialOp::Err(io::ErrorKind::WouldBlock)),
+        );
         let mut z = Encoder::new(buf, 1).unwrap();
 
         // Fill in enough data to make sure the buffer gets written out.
@@ -174,9 +183,11 @@ mod tests {
         // This should work even though the inner writer rejects writes.
         assert_eq!(z.write(&input).unwrap(), 128 * 1024);
 
-        // The next write would fail since the buffer still has some data in it.
-        assert_eq!(z.write(b"abc").unwrap_err().kind(),
-                   io::ErrorKind::WouldBlock);
+        // The next write would fail (the buffer still has some data in it).
+        assert_eq!(
+            z.write(b"abc").unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
 
         z.get_mut().set_ops(iter::repeat(PartialOp::Unlimited));
 
@@ -192,8 +203,10 @@ mod tests {
         // I really hope this data is invalid...
         let data = &[1u8, 2u8, 3u8, 4u8, 5u8];
         let mut dec = Decoder::new(&data[..]).unwrap();
-        assert_eq!(dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
-                   Some(io::ErrorKind::Other));
+        assert_eq!(
+            dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
+            Some(io::ErrorKind::Other)
+        );
     }
 
     #[test]
@@ -208,8 +221,10 @@ mod tests {
         compressed.truncate(half_size);
 
         let mut dec = Decoder::new(&compressed[..]).unwrap();
-        assert_eq!(dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
-                   Some(io::ErrorKind::UnexpectedEof));
+        assert_eq!(
+            dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
+            Some(io::ErrorKind::UnexpectedEof)
+        );
     }
 
     #[test]
@@ -233,17 +248,21 @@ mod tests {
             let mut buffer = Vec::new();
             decoder.read_to_end(&mut buffer).unwrap();
 
-            assert!(target == buffer,
-                    "Error decompressing legacy version {}",
-                    version);
+            assert!(
+                target == buffer,
+                "Error decompressing legacy version {}",
+                version
+            );
         }
     }
 
     // Check that compressing+decompressing some data gives back the original
     fn test_full_cycle(input: &[u8], level: i32) {
-        ::test_cycle_unwrap(input,
-                            |data| encode_all(data, level),
-                            |data| decode_all(data));
+        ::test_cycle_unwrap(
+            input,
+            |data| encode_all(data, level),
+            |data| decode_all(data),
+        );
     }
 
     #[test]

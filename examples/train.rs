@@ -16,15 +16,19 @@ fn main() {
     let matches = App::new("train")
         .author("Alexandre Bury <alexandre.bury@gmail.com>")
         .about("A zstd dict trainer")
-        .arg(Arg::with_name("MAX_SIZE")
-                 .help("Maximum dictionary size in bytes")
-                 .short("s")
-                 .long("max_size")
-                 .takes_value(true))
-        .arg(Arg::with_name("FILE")
-                 .help("Files to use as input")
-                 .required(true)
-                 .multiple(true))
+        .arg(
+            Arg::with_name("MAX_SIZE")
+                .help("Maximum dictionary size in bytes")
+                .short("s")
+                .long("max_size")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("FILE")
+                .help("Files to use as input")
+                .required(true)
+                .multiple(true),
+        )
         .get_matches();
 
     let size = value_t!(matches, "MAX_SIZE", usize).unwrap_or(110 * 1024);

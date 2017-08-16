@@ -33,15 +33,20 @@ impl Compressor {
     /// (for instance if the destination buffer was too small).
     ///
     /// A level of `0` uses zstd's default (currently `3`).
-    pub fn compress_to_buffer(&mut self, source: &[u8],
-                              destination: &mut [u8], level: i32)
-                              -> io::Result<usize> {
+    pub fn compress_to_buffer(
+        &mut self,
+        source: &[u8],
+        destination: &mut [u8],
+        level: i32,
+    ) -> io::Result<usize> {
         let code = {
-            zstd_safe::compress_using_dict(&mut self.context,
-                                           destination,
-                                           source,
-                                           &self.dict[..],
-                                           level)
+            zstd_safe::compress_using_dict(
+                &mut self.context,
+                destination,
+                source,
+                &self.dict[..],
+                level,
+            )
         };
         parse_code(code)
     }
@@ -49,7 +54,11 @@ impl Compressor {
     /// Compresses a block of data and returns the compressed result.
     ///
     /// A level of `0` uses zstd's default (currently `3`).
-    pub fn compress(&mut self, data: &[u8], level: i32) -> io::Result<Vec<u8>> {
+    pub fn compress(
+        &mut self,
+        data: &[u8],
+        level: i32,
+    ) -> io::Result<Vec<u8>> {
         // We allocate a big buffer, slightly larger than the input data.
         let buffer_len = zstd_safe::compress_bound(data.len());
         let mut buffer = Vec::with_capacity(buffer_len);
@@ -57,8 +66,7 @@ impl Compressor {
             // Use all capacity.
             // Memory may not be initialized, but we won't read it.
             buffer.set_len(buffer_len);
-            let len =
-                try!(self.compress_to_buffer(data, &mut buffer[..], level));
+            let len = self.compress_to_buffer(data, &mut buffer[..], level)?;
             buffer.set_len(len);
         }
 

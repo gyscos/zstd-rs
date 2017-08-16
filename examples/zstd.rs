@@ -23,27 +23,27 @@ fn main() {
 }
 
 fn compress(source: &str) -> io::Result<()> {
-    let mut file = try!(fs::File::open(source));
+    let mut file = fs::File::open(source)?;
     let mut encoder = {
-        let target = try!(fs::File::create(source.to_string() + SUFFIX));
-        try!(zstd::Encoder::new(target, 1))
+        let target = fs::File::create(source.to_string() + SUFFIX)?;
+        zstd::Encoder::new(target, 1)?
     };
 
-    try!(io::copy(&mut file, &mut encoder));
-    try!(encoder.finish());
+    io::copy(&mut file, &mut encoder)?;
+    encoder.finish()?;
 
     Ok(())
 }
 
 fn decompress(source: &str) -> io::Result<()> {
     let mut decoder = {
-        let file = try!(fs::File::open(source));
-        try!(zstd::Decoder::new(file))
+        let file = fs::File::open(source)?;
+        zstd::Decoder::new(file)?
     };
 
-    let mut target = try!(fs::File::create(source.trim_right_matches(SUFFIX)));
+    let mut target = fs::File::create(source.trim_right_matches(SUFFIX))?;
 
-    try!(io::copy(&mut decoder, &mut target));
+    io::copy(&mut decoder, &mut target)?;
 
     Ok(())
 }

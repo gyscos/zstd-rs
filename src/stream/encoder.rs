@@ -49,9 +49,9 @@ pub struct AutoFinishEncoder<W: Write> {
 }
 
 impl<W: Write> AutoFinishEncoder<W> {
-    fn new<F>(encoder: Encoder<W>, on_finish: F)
+    fn new<F>(encoder: Encoder<W>, on_finish: F) -> Self
     where
-        F: 'static + FnMut(io::Result<W>) -> Self,
+        F: 'static + FnMut(io::Result<W>),
     {
         AutoFinishEncoder {
             encoder: Some(encoder),

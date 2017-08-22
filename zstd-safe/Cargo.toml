@@ -1,7 +1,7 @@
 [package]
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 name = "zstd-safe"
-version = "1.3.2"
+version = "1.3.3-pre"
 description = "Safe low-level bindings for the zstd compression library."
 keywords = ["zstd", "zstandard", "compression"]
 categories = ["api-bindings", "compression"]

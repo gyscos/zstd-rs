@@ -21,7 +21,9 @@ fn generate_bindings() {
         .expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings.write_to_file(out_path.join("bindings.rs")).expect("Could not write bindings");
+    bindings
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Could not write bindings");
 
 }
 
@@ -48,12 +50,14 @@ fn set_pthread(_config: &mut gcc::Config) {}
 fn compile_zstd() {
     let mut config = gcc::Config::new();
 
-    let globs = &["zstd/lib/common/*.c",
-                  "zstd/lib/compress/*.c",
-                  "zstd/lib/decompress/*.c",
-                  "zstd/lib/legacy/*.c",
-                  "zstd/lib/deprecated/*.c",
-                  "zstd/lib/dictBuilder/*.c"];
+    let globs = &[
+        "zstd/lib/common/*.c",
+        "zstd/lib/compress/*.c",
+        "zstd/lib/decompress/*.c",
+        "zstd/lib/legacy/*.c",
+        "zstd/lib/deprecated/*.c",
+        "zstd/lib/dictBuilder/*.c",
+    ];
 
     for pattern in globs {
         for path in glob::glob(pattern).unwrap() {

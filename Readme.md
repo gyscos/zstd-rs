@@ -98,7 +98,8 @@ This implementation is largely inspired by bozaro's [lz4-rs].
 
 # License
 
-[MIT](LICENSE)
+* The zstd C library is under a dual BSD/GPLv2 license.
+* This zstd-rs binding library is under a [MIT](LICENSE) license.
 
 [zstd]: https://github.com/facebook/zstd
 [lz4-rs]: https://github.com/bozaro/lz4-rs

@@ -8,6 +8,7 @@ env:
     # Combinations of optional features
     - FEATURES=''
     - FEATURES='tokio'
+    - FEATURES='bindgen'
 
 matrix:
   allow_failures:

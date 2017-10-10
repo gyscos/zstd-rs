@@ -16,6 +16,7 @@ fn generate_bindings() {
         .hide_type("max_align_t")
         .use_core()
         .ctypes_prefix("::libc")
+        .clang_arg("-Izstd/lib")
         .clang_arg("-DZSTD_STATIC_LINKING_ONLY")
         .generate()
         .expect("Unable to generate bindings");

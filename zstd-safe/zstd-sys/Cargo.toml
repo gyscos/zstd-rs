@@ -12,7 +12,7 @@ readme = "Readme.md"
 links = "zstd"
 
 [build-dependencies]
-bindgen = { version = "0.30", optional = true }
+bindgen = { version = "0.31", optional = true }
 gcc = "0.3.51"
 glob = "0.2.11"
 

@@ -4,6 +4,9 @@ extern crate bindgen;
 extern crate gcc;
 extern crate glob;
 
+use std::{env, fs};
+use std::path::PathBuf;
+
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings() {
@@ -78,6 +81,13 @@ fn compile_zstd() {
 
     // Compile!
     config.compile("libzstd.a");
+
+    let src = env::current_dir().unwrap().join("zstd").join("lib");
+    let dst = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let include = dst.join("include");
+    fs::create_dir_all(&include).unwrap();
+    fs::copy(src.join("zstd.h"), include.join("zstd.h")).unwrap();
+    println!("cargo:root={}", dst.display());
 }
 
 fn main() {

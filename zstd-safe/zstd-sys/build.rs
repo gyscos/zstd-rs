@@ -87,6 +87,9 @@ fn compile_zstd() {
     let include = dst.join("include");
     fs::create_dir_all(&include).unwrap();
     fs::copy(src.join("zstd.h"), include.join("zstd.h")).unwrap();
+    let dict_builder = include.join("dictBuilder");
+    fs::create_dir_all(&dict_builder).unwrap();
+    fs::copy(src.join("dictBuilder").join("zdict.h"), dict_builder.join("zdict.h")).unwrap();
     println!("cargo:root={}", dst.display());
 }
 

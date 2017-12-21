@@ -8,7 +8,7 @@ license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "0.4.17+zstd.1.3.3"
-exclude = ["assets"]
+exclude = ["assets/**"]
 readme = "Readme.md"
 
 [badges]

@@ -17,6 +17,7 @@ fn generate_bindings() {
         .header("zstd.h")
         .blacklist_type("max_align_t")
         .use_core()
+        .rustified_enum(".*")
         .ctypes_prefix("::libc")
         .clang_arg("-Izstd/lib")
         .clang_arg("-DZSTD_STATIC_LINKING_ONLY")

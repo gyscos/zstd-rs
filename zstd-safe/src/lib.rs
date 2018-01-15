@@ -807,6 +807,159 @@ pub fn reset_dstream(zds: &mut DStream) -> usize {
     unsafe { zstd_sys::ZSTD_resetDStream(zds.0) }
 }
 
+pub type Unsigned = libc::c_uint;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FrameFormat {
+    /// zstd frame format, specified in zstd_compression_format.md (default)
+    One,
+
+    /// Variant of zstd frame format, without initial 4-bytes magic number.
+    /// Useful to save 4 bytes per generated frame.
+    /// Decoder cannot recognise automatically this format, requiring instructions.
+    Magicless,
+}
+
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum CParameter {
+    /// See `FrameFormat`.
+    Format(FrameFormat),
+
+    /// Update all compression parameters according to pre-defined cLevel table.
+    ///
+    /// Default level is ZSTD_CLEVEL_DEFAULT==3.
+    ///
+    /// Special: value 0 means "do not change cLevel".
+    CompressionLevel(Unsigned),
+
+    /// Maximum allowed back-reference distance, expressed as power of 2.
+    ///
+    /// Must be clamped between ZSTD_WINDOWLOG_MIN and ZSTD_WINDOWLOG_MAX.
+    ///
+    /// Special: value 0 means "do not change windowLog".
+    ///
+    /// Note: Using a window size greater than ZSTD_MAXWINDOWSIZE_DEFAULT (default: 2^27)
+    ///   requires setting the maximum window size at least as large during decompression.
+    WindowLog(Unsigned),
+
+    /// Size of the probe table, as a power of 2.
+    ///
+    /// Resulting table size is (1 << (hashLog+2)).
+    /// Must be clamped between ZSTD_HASHLOG_MIN and ZSTD_HASHLOG_MAX.
+    ///
+    /// Larger tables improve compression ratio of strategies <= dFast,
+    /// and improve speed of strategies > dFast.
+    ///
+    /// Special: value 0 means "do not change hashLog".
+    HashLog(Unsigned),
+
+    /// Size of the full-search table, as a power of 2.
+    ///
+    /// Resulting table size is (1 << (chainLog+2)).
+    /// Larger tables result in better and slower compression.
+    /// This parameter is useless when using "fast" strategy.
+    ///
+    /// Special: value 0 means "do not change chainLog".
+    ChainLog(Unsigned),
+
+    /// Number of search attempts, as a power of 2.
+    ///
+    /// More attempts result in better and slower compression.
+    /// This parameter is useless when using "fast" and "dFast" strategies.
+    ///
+    /// Special: value 0 means "do not change searchLog".
+    SearchLog(Unsigned),
+
+    /// Minimum size of searched matches (note : repCode matches can be smaller).
+    ///
+    /// Larger values make faster compression and decompression, but decrease ratio.
+    /// Must be clamped between ZSTD_SEARCHLENGTH_MIN and ZSTD_SEARCHLENGTH_MAX.
+    ///
+    /// Note that currently, for all strategies < btopt, effective minimum is 4.
+    ///
+    /// Note that currently, for all strategies > fast, effective maximum is 6.
+    ///
+    /// Special: value 0 means "do not change minMatchLength".
+    MinMatch(Unsigned),
+
+    /// Only useful for strategies >= btopt.
+    ///
+    /// Length of Match considered "good enough" to stop search.
+    /// Larger values make compression stronger and slower.
+    ///
+    /// Special: value 0 means "do not change targetLength".
+    TargetLength(Unsigned),
+
+    /// Content size will be written into frame header _whenever known_ (default:1)
+    ///
+    /// Content size must be known at the beginning of compression,
+    /// it is provided using ZSTD_CCtx_setPledgedSrcSize()
+    ContentSizeFlag(bool),
+
+    /// A 32-bits checksum of content is written at end of frame (default:0)
+    ChecksumFlag(bool),
+
+    /// When applicable, dictionary's ID is written into frame header (default:1)
+    DictIdFlag(bool),
+
+    /// Select how many threads a compression job can spawn (default:1)
+    ///
+    /// More threads improve speed, but also increase memory usage.
+    ///
+    /// Special: value 0 means "do not change nbThreads"
+    #[cfg(feature = "zstdmt")] ThreadCount(Unsigned),
+
+    /// Size of a compression job. This value is only enforced in streaming (non-blocking) mode.
+    ///
+    /// Each compression job is completed in parallel, so indirectly controls the nb of active threads.
+    /// 0 means default, which is dynamically determined based on compression parameters.
+    ///
+    /// Job size must be a minimum of overlapSize, or 1 KB, whichever is largest
+    ///
+    /// The minimum size is automatically and transparently enforced
+    #[cfg(feature = "zstdmt")] JobSize(Unsigned),
+
+    /// Size of previous input reloaded at the beginning of each job.
+    ///
+    /// 0 => no overlap, 6(default) => use 1/8th of windowSize, >=9 => use full windowSize
+    #[cfg(feature = "zstdmt")] OverlapSizeLog(Unsigned),
+
+    // CompressionStrategy, and parameters marked as "advanced", are currently missing on purpose,
+    // as they will see the most API churn.
+}
+
+/// Set one compression parameter, selected by enum ZSTD_cParameter.
+///
+/// @result : informational value (typically, the one being set, possibly corrected),
+/// or an error code (which can be tested with ZSTD_isError()).
+pub fn cctx_set_parameter(cctx: &mut CCtx, param: CParameter) -> usize {
+    use CParameter::*;
+    use zstd_sys::ZSTD_cParameter;
+    use zstd_sys::ZSTD_format_e;
+
+    let (param, value) = match param {
+        Format(FrameFormat::One) => (ZSTD_cParameter::ZSTD_p_format, ZSTD_format_e::ZSTD_f_zstd1 as Unsigned),
+        Format(FrameFormat::Magicless) => (ZSTD_cParameter::ZSTD_p_format, ZSTD_format_e::ZSTD_f_zstd1_magicless as Unsigned),
+        CompressionLevel(level) => (ZSTD_cParameter::ZSTD_p_compressionLevel, level),
+        WindowLog(value) => (ZSTD_cParameter::ZSTD_p_windowLog, value),
+        HashLog(value) => (ZSTD_cParameter::ZSTD_p_hashLog, value),
+        ChainLog(value) => (ZSTD_cParameter::ZSTD_p_chainLog, value),
+        SearchLog(value) => (ZSTD_cParameter::ZSTD_p_searchLog, value),
+        MinMatch(value) => (ZSTD_cParameter::ZSTD_p_minMatch, value),
+        TargetLength(value) => (ZSTD_cParameter::ZSTD_p_targetLength, value),
+        ContentSizeFlag(flag) => (ZSTD_cParameter::ZSTD_p_contentSizeFlag, if flag { 1 } else { 0 }),
+        ChecksumFlag(flag) => (ZSTD_cParameter::ZSTD_p_checksumFlag, if flag { 1 } else { 0 }),
+        DictIdFlag(flag) => (ZSTD_cParameter::ZSTD_p_dictIDFlag, if flag { 1 } else { 0 }),
+
+        #[cfg(feature = "zstdmt")] ThreadCount(value) => (ZSTD_cParameter::ZSTD_p_nbThreads, value),
+        #[cfg(feature = "zstdmt")] JobSize(value) => (ZSTD_cParameter::ZSTD_p_jobSize, value),
+        #[cfg(feature = "zstdmt")] OverlapSizeLog(value) => (ZSTD_cParameter::ZSTD_p_overlapSizeLog, value),
+    };
+
+    unsafe { zstd_sys::ZSTD_CCtx_setParameter(cctx.0, param, value) }
+}
+
 /// `ZDICT_trainFromBuffer()`
 ///
 /// Train a dictionary from an array of samples.

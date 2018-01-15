@@ -338,7 +338,7 @@ pub struct DDict<'a>(*mut zstd_sys::ZSTD_DDict, PhantomData<&'a ()>);
 /// Create a digested dictionary, ready to start decompression operation without startup delay.
 ///
 /// dictBuffer can be released after DDict creation, as its content is copied inside DDict
-pub fn ceate_ddict(dict_buffer: &[u8]) -> DDict<'static> {
+pub fn create_ddict(dict_buffer: &[u8]) -> DDict<'static> {
     DDict(unsafe {
               zstd_sys::ZSTD_createDDict(ptr_void(dict_buffer),
                                          dict_buffer.len())

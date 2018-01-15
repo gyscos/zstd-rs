@@ -772,7 +772,7 @@ pub fn init_cstream_using_dict(zcs: &mut CStream, dict: &[u8],
                                              compression_level)
     }
 }
-pub fn init_cstream_using_csict(zcs: &mut CStream, cdict: &CDict) -> usize {
+pub fn init_cstream_using_cdict(zcs: &mut CStream, cdict: &CDict) -> usize {
     unsafe { zstd_sys::ZSTD_initCStream_usingCDict(zcs.0, cdict.0) }
 }
 

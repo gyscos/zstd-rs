@@ -58,7 +58,6 @@ fn compile_zstd() {
         "zstd/lib/compress/*.c",
         "zstd/lib/decompress/*.c",
         "zstd/lib/legacy/*.c",
-        "zstd/lib/deprecated/*.c",
         "zstd/lib/dictBuilder/*.c",
     ];
 
@@ -76,6 +75,7 @@ fn compile_zstd() {
     config.include("zstd/lib/legacy");
     config.warnings(false);
 
+    config.define("ZSTD_LIB_DEPRECATED", Some("0"));
     set_pthread(&mut config);
     set_legacy(&mut config);
 

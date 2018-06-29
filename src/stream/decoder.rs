@@ -1,6 +1,6 @@
 use parse_code;
 use std::io::{self, Read};
-
+use dict::DecoderDictionary;
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncRead;
 use zstd_safe;
@@ -71,6 +71,32 @@ impl<R: Read> Decoder<R> {
         let mut context = zstd_safe::create_dstream();
         parse_code(
             zstd_safe::init_dstream_using_dict(&mut context, dictionary),
+        )?;
+
+        let decoder = Decoder {
+            reader: reader,
+            buffer: Vec::with_capacity(buffer_size),
+            offset: 0,
+            context: context,
+            single_frame: false,
+            state: DecoderState::RefillBuffer(RefillBufferHint::None),
+        };
+
+        Ok(decoder)
+    }
+
+    /// Creates a new decoder, using an existing `DecoderDictionary`.
+    ///
+    /// The dictionary must be the same as the one used during compression.
+    pub fn with_prepared_dictionary(
+        reader: R,
+        dictionary: &DecoderDictionary,
+    ) -> io::Result<Self> {
+        let buffer_size = zstd_safe::dstream_in_size();
+
+        let mut context = zstd_safe::create_dstream();
+        parse_code(
+            zstd_safe::init_dstream_using_ddict(&mut context, dictionary.as_ddict()),
         )?;
 
         let decoder = Decoder {

@@ -21,6 +21,46 @@ use std::io::{self, Read};
 use std::path;
 use zstd_safe;
 
+/// Prepared dictionary for compression
+pub struct EncoderDictionary<'a> {
+    cdict: zstd_safe::CDict<'a>,
+}
+
+impl<'a> EncoderDictionary<'a> {
+    /// Create prepared dictionary for compression
+    ///
+    /// A level of `0` uses zstd's default (currently `3`).
+    pub fn new(dictionary: &'a [u8], level: i32) -> Self {
+        Self {
+            cdict: zstd_safe::create_cdict_by_reference(dictionary, level),
+        }
+    }
+
+    /// Returns reference to `CDict` inner object
+    pub fn as_cdict(&self) -> &zstd_safe::CDict {
+        &self.cdict
+    }
+}
+
+/// Prepared dictionary for decompression
+pub struct DecoderDictionary<'a> {
+    ddict: zstd_safe::DDict<'a>,
+}
+
+impl<'a> DecoderDictionary<'a> {
+    /// Create prepared dictionary for decompression
+    pub fn new(dict: &'a [u8]) -> Self {
+        Self {
+            ddict: zstd_safe::create_ddict_by_reference(dict),
+        }
+    }
+
+    /// Returns reference to `DDict` inner object
+    pub fn as_ddict(&self) -> &zstd_safe::DDict {
+        &self.ddict
+    }
+}
+
 /// Train a dictionary from a big continuous chunk of data.
 ///
 /// This is the most efficient way to train a dictionary,

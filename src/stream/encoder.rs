@@ -2,6 +2,7 @@
 use futures::Poll;
 
 use parse_code;
+use dict::EncoderDictionary;
 use std::io::{self, Write};
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncWrite;
@@ -121,6 +122,25 @@ impl<W: Write> Encoder<W> {
             &mut context,
             dictionary,
             level,
+        ))?;
+
+        Encoder::with_context(writer, context)
+    }
+
+    /// Creates a new encoder, using an existing prepared `EncoderDictionary`.
+    ///
+    /// (Provides better compression ratio for small files,
+    /// but requires the dictionary to be present during decompression.)
+    pub fn with_prepared_dictionary(
+        writer: W,
+        dictionary: &EncoderDictionary,
+    ) -> io::Result<Self> {
+        let mut context = zstd_safe::create_cstream();
+
+        // Initialize the stream with an existing dictionary
+        parse_code(zstd_safe::init_cstream_using_cdict(
+            &mut context,
+            dictionary.as_cdict(),
         ))?;
 
         Encoder::with_context(writer, context)

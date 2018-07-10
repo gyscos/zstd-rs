@@ -443,15 +443,18 @@ pub const ZSTD_frameHeaderSize_prefix: usize = 5;
 pub const ZSTD_frameHeaderSize_min: usize = 6;
 pub const ZSTD_frameHeaderSize_max: usize = 18;
 pub const ZSTD_skippableHeaderSize: usize = 8;
-pub const ZSTD_strategy_ZSTD_fast: ZSTD_strategy = 1;
-pub const ZSTD_strategy_ZSTD_dfast: ZSTD_strategy = 2;
-pub const ZSTD_strategy_ZSTD_greedy: ZSTD_strategy = 3;
-pub const ZSTD_strategy_ZSTD_lazy: ZSTD_strategy = 4;
-pub const ZSTD_strategy_ZSTD_lazy2: ZSTD_strategy = 5;
-pub const ZSTD_strategy_ZSTD_btlazy2: ZSTD_strategy = 6;
-pub const ZSTD_strategy_ZSTD_btopt: ZSTD_strategy = 7;
-pub const ZSTD_strategy_ZSTD_btultra: ZSTD_strategy = 8;
-pub type ZSTD_strategy = u32;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_strategy {
+    ZSTD_fast = 1,
+    ZSTD_dfast = 2,
+    ZSTD_greedy = 3,
+    ZSTD_lazy = 4,
+    ZSTD_lazy2 = 5,
+    ZSTD_btlazy2 = 6,
+    ZSTD_btopt = 7,
+    ZSTD_btultra = 8,
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ZSTD_compressionParameters {
@@ -686,16 +689,21 @@ pub struct ZSTD_CCtx_params_s {
     _unused: [u8; 0],
 }
 pub type ZSTD_CCtx_params = ZSTD_CCtx_params_s;
-pub const ZSTD_dictContentType_e_ZSTD_dct_auto: ZSTD_dictContentType_e = 0;
-pub const ZSTD_dictContentType_e_ZSTD_dct_rawContent: ZSTD_dictContentType_e =
-    1;
-pub const ZSTD_dictContentType_e_ZSTD_dct_fullDict: ZSTD_dictContentType_e = 2;
-pub type ZSTD_dictContentType_e = u32;
-/// < Copy dictionary content internally
-pub const ZSTD_dictLoadMethod_e_ZSTD_dlm_byCopy: ZSTD_dictLoadMethod_e = 0;
-/// < Reference dictionary content -- the dictionary buffer must outlive its users.
-pub const ZSTD_dictLoadMethod_e_ZSTD_dlm_byRef: ZSTD_dictLoadMethod_e = 1;
-pub type ZSTD_dictLoadMethod_e = u32;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_dictContentType_e {
+    ZSTD_dct_auto = 0,
+    ZSTD_dct_rawContent = 1,
+    ZSTD_dct_fullDict = 2,
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_dictLoadMethod_e {
+    /// < Copy dictionary content internally
+    ZSTD_dlm_byCopy = 0,
+    /// < Reference dictionary content -- the dictionary buffer must outlive its users.
+    ZSTD_dlm_byRef = 1,
+}
 extern "C" {
     /// ZSTD_findFrameCompressedSize() :
     /// `src` should point to the start of a ZSTD encoded frame or skippable frame
@@ -1278,9 +1286,11 @@ extern "C" {
         cctx: *const ZSTD_CCtx,
     ) -> ZSTD_frameProgression;
 }
-pub const ZSTD_DStreamParameter_e_DStream_p_maxWindowSize:
-    ZSTD_DStreamParameter_e = 0;
-pub type ZSTD_DStreamParameter_e = u32;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_DStreamParameter_e {
+    DStream_p_maxWindowSize = 0,
+}
 extern "C" {
     pub fn ZSTD_setDStreamParameter(
         zds: *mut ZSTD_DStream,
@@ -1394,9 +1404,12 @@ extern "C" {
         srcSize: usize,
     ) -> usize;
 }
-pub const ZSTD_frameType_e_ZSTD_frame: ZSTD_frameType_e = 0;
-pub const ZSTD_frameType_e_ZSTD_skippableFrame: ZSTD_frameType_e = 1;
-pub type ZSTD_frameType_e = u32;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_frameType_e {
+    ZSTD_frame = 0,
+    ZSTD_skippableFrame = 1,
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ZSTD_frameHeader {
@@ -1561,45 +1574,52 @@ extern "C" {
 extern "C" {
     pub fn ZSTD_copyDCtx(dctx: *mut ZSTD_DCtx, preparedDCtx: *const ZSTD_DCtx);
 }
-pub const ZSTD_nextInputType_e_ZSTDnit_frameHeader: ZSTD_nextInputType_e = 0;
-pub const ZSTD_nextInputType_e_ZSTDnit_blockHeader: ZSTD_nextInputType_e = 1;
-pub const ZSTD_nextInputType_e_ZSTDnit_block: ZSTD_nextInputType_e = 2;
-pub const ZSTD_nextInputType_e_ZSTDnit_lastBlock: ZSTD_nextInputType_e = 3;
-pub const ZSTD_nextInputType_e_ZSTDnit_checksum: ZSTD_nextInputType_e = 4;
-pub const ZSTD_nextInputType_e_ZSTDnit_skippableFrame: ZSTD_nextInputType_e =
-    5;
-pub type ZSTD_nextInputType_e = u32;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_nextInputType_e {
+    ZSTDnit_frameHeader = 0,
+    ZSTDnit_blockHeader = 1,
+    ZSTDnit_block = 2,
+    ZSTDnit_lastBlock = 3,
+    ZSTDnit_checksum = 4,
+    ZSTDnit_skippableFrame = 5,
+}
 extern "C" {
     pub fn ZSTD_nextInputType(dctx: *mut ZSTD_DCtx) -> ZSTD_nextInputType_e;
 }
-pub const ZSTD_format_e_ZSTD_f_zstd1: ZSTD_format_e = 0;
-pub const ZSTD_format_e_ZSTD_f_zstd1_magicless: ZSTD_format_e = 1;
+#[repr(u32)]
 /// New advanced API (experimental)
-pub type ZSTD_format_e = u32;
-pub const ZSTD_cParameter_ZSTD_p_format: ZSTD_cParameter = 10;
-pub const ZSTD_cParameter_ZSTD_p_compressionLevel: ZSTD_cParameter = 100;
-pub const ZSTD_cParameter_ZSTD_p_windowLog: ZSTD_cParameter = 101;
-pub const ZSTD_cParameter_ZSTD_p_hashLog: ZSTD_cParameter = 102;
-pub const ZSTD_cParameter_ZSTD_p_chainLog: ZSTD_cParameter = 103;
-pub const ZSTD_cParameter_ZSTD_p_searchLog: ZSTD_cParameter = 104;
-pub const ZSTD_cParameter_ZSTD_p_minMatch: ZSTD_cParameter = 105;
-pub const ZSTD_cParameter_ZSTD_p_targetLength: ZSTD_cParameter = 106;
-pub const ZSTD_cParameter_ZSTD_p_compressionStrategy: ZSTD_cParameter = 107;
-pub const ZSTD_cParameter_ZSTD_p_enableLongDistanceMatching: ZSTD_cParameter =
-    160;
-pub const ZSTD_cParameter_ZSTD_p_ldmHashLog: ZSTD_cParameter = 161;
-pub const ZSTD_cParameter_ZSTD_p_ldmMinMatch: ZSTD_cParameter = 162;
-pub const ZSTD_cParameter_ZSTD_p_ldmBucketSizeLog: ZSTD_cParameter = 163;
-pub const ZSTD_cParameter_ZSTD_p_ldmHashEveryLog: ZSTD_cParameter = 164;
-pub const ZSTD_cParameter_ZSTD_p_contentSizeFlag: ZSTD_cParameter = 200;
-pub const ZSTD_cParameter_ZSTD_p_checksumFlag: ZSTD_cParameter = 201;
-pub const ZSTD_cParameter_ZSTD_p_dictIDFlag: ZSTD_cParameter = 202;
-pub const ZSTD_cParameter_ZSTD_p_nbWorkers: ZSTD_cParameter = 400;
-pub const ZSTD_cParameter_ZSTD_p_jobSize: ZSTD_cParameter = 401;
-pub const ZSTD_cParameter_ZSTD_p_overlapSizeLog: ZSTD_cParameter = 402;
-pub const ZSTD_cParameter_ZSTD_p_forceMaxWindow: ZSTD_cParameter = 1100;
-pub const ZSTD_cParameter_ZSTD_p_forceAttachDict: ZSTD_cParameter = 1101;
-pub type ZSTD_cParameter = u32;
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_format_e {
+    ZSTD_f_zstd1 = 0,
+    ZSTD_f_zstd1_magicless = 1,
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_cParameter {
+    ZSTD_p_format = 10,
+    ZSTD_p_compressionLevel = 100,
+    ZSTD_p_windowLog = 101,
+    ZSTD_p_hashLog = 102,
+    ZSTD_p_chainLog = 103,
+    ZSTD_p_searchLog = 104,
+    ZSTD_p_minMatch = 105,
+    ZSTD_p_targetLength = 106,
+    ZSTD_p_compressionStrategy = 107,
+    ZSTD_p_enableLongDistanceMatching = 160,
+    ZSTD_p_ldmHashLog = 161,
+    ZSTD_p_ldmMinMatch = 162,
+    ZSTD_p_ldmBucketSizeLog = 163,
+    ZSTD_p_ldmHashEveryLog = 164,
+    ZSTD_p_contentSizeFlag = 200,
+    ZSTD_p_checksumFlag = 201,
+    ZSTD_p_dictIDFlag = 202,
+    ZSTD_p_nbWorkers = 400,
+    ZSTD_p_jobSize = 401,
+    ZSTD_p_overlapSizeLog = 402,
+    ZSTD_p_forceMaxWindow = 1100,
+    ZSTD_p_forceAttachDict = 1101,
+}
 extern "C" {
     /// ZSTD_CCtx_setParameter() :
     /// Set one compression parameter, selected by enum ZSTD_cParameter.
@@ -1742,10 +1762,13 @@ extern "C" {
     /// @return 0 or an error code (which can be checked with ZSTD_isError()).
     pub fn ZSTD_CCtx_resetParameters(cctx: *mut ZSTD_CCtx) -> usize;
 }
-pub const ZSTD_EndDirective_ZSTD_e_continue: ZSTD_EndDirective = 0;
-pub const ZSTD_EndDirective_ZSTD_e_flush: ZSTD_EndDirective = 1;
-pub const ZSTD_EndDirective_ZSTD_e_end: ZSTD_EndDirective = 2;
-pub type ZSTD_EndDirective = u32;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_EndDirective {
+    ZSTD_e_continue = 0,
+    ZSTD_e_flush = 1,
+    ZSTD_e_end = 2,
+}
 extern "C" {
     /// ZSTD_compress_generic() :
     /// Behave about the same as ZSTD_compressStream. To note :
@@ -2178,9 +2201,12 @@ extern "C" {
         pledgedSrcSize: ::libc::c_ulonglong,
     ) -> usize;
 }
-pub const ZSTDMT_parameter_ZSTDMT_p_jobSize: ZSTDMT_parameter = 0;
-pub const ZSTDMT_parameter_ZSTDMT_p_overlapSectionLog: ZSTDMT_parameter = 1;
-pub type ZSTDMT_parameter = u32;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTDMT_parameter {
+    ZSTDMT_p_jobSize = 0,
+    ZSTDMT_p_overlapSectionLog = 1,
+}
 extern "C" {
     pub fn ZSTDMT_setMTCtxParameter(
         mtctx: *mut ZSTDMT_CCtx,

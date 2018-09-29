@@ -174,10 +174,10 @@ impl<W: Write> Encoder<W> {
         let buffer_size = zstd_safe::cstream_out_size();
 
         Ok(Encoder {
-            writer: writer,
+            writer,
             buffer: Vec::with_capacity(buffer_size),
             offset: 0,
-            context: context,
+            context,
             state: EncoderState::Accepting,
         })
     }

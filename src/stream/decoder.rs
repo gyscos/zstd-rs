@@ -74,10 +74,10 @@ impl<R: Read> Decoder<R> {
         )?;
 
         let decoder = Decoder {
-            reader: reader,
+            reader,
             buffer: Vec::with_capacity(buffer_size),
             offset: 0,
-            context: context,
+            context,
             single_frame: false,
             state: DecoderState::RefillBuffer(RefillBufferHint::None),
         };
@@ -100,10 +100,10 @@ impl<R: Read> Decoder<R> {
         )?;
 
         let decoder = Decoder {
-            reader: reader,
+            reader,
             buffer: Vec::with_capacity(buffer_size),
             offset: 0,
-            context: context,
+            context,
             single_frame: false,
             state: DecoderState::RefillBuffer(RefillBufferHint::None),
         };

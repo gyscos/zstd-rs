@@ -672,9 +672,7 @@ pub fn sizeof_ddict(ddict: &DDict) -> usize {
 /// Dictionary content is simply referenced, and therefore stays in dictBuffer.
 ///
 /// It is important that dictBuffer outlives CDict, it must remain read accessible throughout the lifetime of CDict
-pub fn create_cdict_by_reference<'a>(dict_buffer: &'a [u8],
-                                     compression_level: i32)
-                                     -> CDict<'a> {
+pub fn create_cdict_by_reference(dict_buffer: &[u8], compression_level: i32) -> CDict {
     CDict(unsafe {
               zstd_sys::ZSTD_createCDict_byReference(ptr_void(dict_buffer),
                                                      dict_buffer.len(),
@@ -703,7 +701,7 @@ pub fn is_frame(buffer: &[u8]) -> u32 {
 /// Dictionary content is simply referenced, and therefore stays in dictBuffer.
 ///
 /// It is important that dictBuffer outlives DDict, it must remain read accessible throughout the lifetime of DDict
-pub fn create_ddict_by_reference<'a>(dict_buffer: &'a [u8]) -> DDict<'a> {
+pub fn create_ddict_by_reference(dict_buffer: &[u8]) -> DDict {
     DDict(unsafe {
               zstd_sys::ZSTD_createDDict_byReference(ptr_void(dict_buffer),
                                                      dict_buffer.len())

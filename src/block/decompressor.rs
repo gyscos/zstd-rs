@@ -22,7 +22,7 @@ impl Decompressor {
     pub fn with_dict(dict: Vec<u8>) -> Self {
         Decompressor {
             context: zstd_safe::create_dctx(),
-            dict: dict,
+            dict,
         }
     }
 

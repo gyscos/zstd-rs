@@ -23,7 +23,7 @@ impl Compressor {
     pub fn with_dict(dict: Vec<u8>) -> Self {
         Compressor {
             context: zstd_safe::create_cctx(),
-            dict: dict,
+            dict,
         }
     }
 

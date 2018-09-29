@@ -23,7 +23,6 @@
 //!
 //! [zstd]: https://github.com/facebook/zstd
 #![deny(missing_docs)]
-extern crate libc;
 
 #[cfg(test)]
 extern crate partial_io;
@@ -51,9 +50,9 @@ pub use stream::{decode_all, encode_all, Decoder, Encoder};
 ///
 /// Returns the number of bytes written if the code represents success,
 /// or the error message otherwise.
-fn parse_code(code: libc::size_t) -> Result<usize, io::Error> {
+fn parse_code(code: usize) -> Result<usize, io::Error> {
     if zstd_safe::is_error(code) == 0 {
-        Ok(code as usize)
+        Ok(code)
     } else {
         let msg = zstd_safe::get_error_name(code);
         let error = io::Error::new(io::ErrorKind::Other, msg.to_string());

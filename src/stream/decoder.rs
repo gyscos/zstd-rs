@@ -177,9 +177,7 @@ impl<R: Read> Decoder<R> {
             }
         }
     }
-}
 
-impl<R: Read> Decoder<R> {
     /// This function handles buffer_refill state of the read operation
     ///
     /// It returns true if read operation should be stopped and false otherwise

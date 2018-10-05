@@ -1,6 +1,6 @@
+use dict::DecoderDictionary;
 use parse_code;
 use std::io::{self, Read};
-use dict::DecoderDictionary;
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncRead;
 use zstd_safe;
@@ -65,13 +65,13 @@ impl<R: Read> Decoder<R> {
     ///
     /// The dictionary must be the same as the one used during compression.
     pub fn with_dictionary(reader: R, dictionary: &[u8]) -> io::Result<Self> {
-
         let buffer_size = zstd_safe::dstream_in_size();
 
         let mut context = zstd_safe::create_dstream();
-        parse_code(
-            zstd_safe::init_dstream_using_dict(&mut context, dictionary),
-        )?;
+        parse_code(zstd_safe::init_dstream_using_dict(
+            &mut context,
+            dictionary,
+        ))?;
 
         let decoder = Decoder {
             reader,
@@ -95,9 +95,10 @@ impl<R: Read> Decoder<R> {
         let buffer_size = zstd_safe::dstream_in_size();
 
         let mut context = zstd_safe::create_dstream();
-        parse_code(
-            zstd_safe::init_dstream_using_ddict(&mut context, dictionary.as_ddict()),
-        )?;
+        parse_code(zstd_safe::init_dstream_using_ddict(
+            &mut context,
+            dictionary.as_ddict(),
+        ))?;
 
         let decoder = Decoder {
             reader,
@@ -186,12 +187,11 @@ impl<R: Read> Decoder<R> {
         hint: RefillBufferHint,
         out_buffer: &mut zstd_safe::OutBuffer,
     ) -> Result<bool, io::Error> {
-
         // refilled = false if we reached the end of the input.
         let refilled = match self.refill_buffer() {
             Err(ref err)
-                if out_buffer.pos > 0 &&
-                    err.kind() == io::ErrorKind::WouldBlock =>
+                if out_buffer.pos > 0
+                    && err.kind() == io::ErrorKind::WouldBlock =>
             {
                 // The underlying reader was blocked, but we've already
                 // put some data into the output buffer.
@@ -245,7 +245,6 @@ impl<R: Read> Decoder<R> {
         &mut self,
         out_buffer: &mut zstd_safe::OutBuffer,
     ) -> Result<bool, io::Error> {
-
         let mut in_buffer = zstd_safe::InBuffer {
             src: &self.buffer,
             pos: self.offset,
@@ -301,7 +300,6 @@ impl<R: Read> Decoder<R> {
 
 impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-
         // Self-contained buffer pointer, size and offset
 
         let mut out_buffer = zstd_safe::OutBuffer { dst: buf, pos: 0 };
@@ -344,8 +342,9 @@ fn _assert_traits() {
 #[cfg(feature = "tokio")]
 mod async_tests {
     use futures::Future;
-    use partial_io::{GenInterruptedWouldBlock, PartialAsyncRead,
-                     PartialWithErrors};
+    use partial_io::{
+        GenInterruptedWouldBlock, PartialAsyncRead, PartialWithErrors,
+    };
     use quickcheck::quickcheck;
     use std::io::{self, Cursor};
     use tokio_io::{io as tokio_io, AsyncRead, AsyncWrite};

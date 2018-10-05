@@ -23,7 +23,6 @@ pub fn compress_to_buffer(
     destination: &mut [u8],
     level: i32,
 ) -> io::Result<usize> {
-
     Compressor::new().compress_to_buffer(source, destination, level)
 }
 

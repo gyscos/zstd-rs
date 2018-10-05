@@ -2,7 +2,6 @@ extern crate zstd;
 #[macro_use]
 extern crate clap;
 
-
 use clap::{App, Arg};
 use std::io;
 

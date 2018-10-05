@@ -29,10 +29,9 @@ extern crate partial_io;
 
 extern crate zstd_safe;
 
-
-pub mod stream;
 pub mod block;
 pub mod dict;
+pub mod stream;
 
 #[cfg(feature = "tokio")]
 #[macro_use]

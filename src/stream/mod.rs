@@ -7,8 +7,8 @@
 
 use std::io;
 
-mod encoder;
 mod decoder;
+mod encoder;
 
 pub use self::decoder::Decoder;
 pub use self::encoder::{AutoFinishEncoder, Encoder};
@@ -68,8 +68,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Decoder, Encoder};
     use super::{copy_encode, decode_all, encode_all};
+    use super::{Decoder, Encoder};
 
     use partial_io::{PartialOp, PartialWrite};
 
@@ -96,7 +96,6 @@ mod tests {
 
     #[test]
     fn test_concatenated_frames() {
-
         let mut buffer = Vec::new();
         copy_encode(&b"foo"[..], &mut buffer, 1).unwrap();
         copy_encode(&b"bar"[..], &mut buffer, 2).unwrap();

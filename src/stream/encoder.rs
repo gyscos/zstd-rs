@@ -1,8 +1,8 @@
 #[cfg(feature = "tokio")]
 use futures::Poll;
 
-use parse_code;
 use dict::EncoderDictionary;
+use parse_code;
 use std::io::{self, Write};
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncWrite;
@@ -88,7 +88,6 @@ impl<W: Write> Write for AutoFinishEncoder<W> {
         self.encoder.as_mut().unwrap().write(buf)
     }
 
-
     fn flush(&mut self) -> io::Result<()> {
         self.encoder.as_mut().unwrap().flush()
     }
@@ -152,7 +151,9 @@ impl<W: Write> Encoder<W> {
     ///
     /// Panics on drop if an error happens when finishing the stream.
     pub fn auto_finish(self) -> AutoFinishEncoder<W> {
-        self.on_finish(|result| { result.unwrap(); })
+        self.on_finish(|result| {
+            result.unwrap();
+        })
     }
 
     /// Returns an encoder that will finish the stream on drop.
@@ -253,13 +254,13 @@ impl<W: Write> Encoder<W> {
                     dst: &mut self.buffer,
                     pos: 0,
                 };
-                let code = parse_code(
-                    zstd_safe::end_stream(&mut self.context, &mut buffer),
-                )?;
+                let code = parse_code(zstd_safe::end_stream(
+                    &mut self.context,
+                    &mut buffer,
+                ))?;
                 (buffer.pos, code)
             };
             unsafe {
-
                 self.buffer.set_len(pos);
             }
             if remaining != 0 {
@@ -304,7 +305,6 @@ impl<W: Write> Write for Encoder<W> {
             self.write_from_offset()?;
 
             // If we get to here, `self.buffer` can safely be discarded.
-
 
             // Time to fill our output buffer
             let (in_pos, out_pos, code) = {
@@ -359,7 +359,6 @@ impl<W: Write> Write for Encoder<W> {
                     zstd_safe::flush_stream(&mut self.context, &mut buffer);
 
                 (buffer.pos, code)
-
             };
 
             unsafe {
@@ -448,8 +447,9 @@ mod tests {
 #[cfg(feature = "tokio")]
 mod async_tests {
     use futures::{executor, Future, Poll};
-    use partial_io::{GenInterruptedWouldBlock, PartialAsyncWrite,
-                     PartialWithErrors};
+    use partial_io::{
+        GenInterruptedWouldBlock, PartialAsyncWrite, PartialWithErrors,
+    };
     use quickcheck::quickcheck;
     use std::io::{self, Cursor};
     use tokio_io::{io as tokio_io, AsyncRead, AsyncWrite};
@@ -478,11 +478,10 @@ mod async_tests {
             let source = "abc".repeat(1024 * 100).into_bytes();
             let writer =
                 PartialAsyncWrite::new(Cursor::new(Vec::new()), encode_ops);
-            let encoded_output = test_async_write_worker(
-                &source[..],
-                writer,
-                |w| w.into_inner().into_inner(),
-            );
+            let encoded_output =
+                test_async_write_worker(&source[..], writer, |w| {
+                    w.into_inner().into_inner()
+                });
             let decoded = decode_all(&encoded_output[..]).unwrap();
             assert_eq!(source, &decoded[..]);
         }
@@ -527,10 +526,8 @@ mod async_tests {
 
         let encoder = Encoder::new(w, 1).unwrap();
         let copy_future = tokio_io::copy(r, encoder)
-            .and_then(|(_, _, encoder)| {
-                Finish {
-                    encoder: Some(encoder),
-                }
+            .and_then(|(_, _, encoder)| Finish {
+                encoder: Some(encoder),
             })
             .map(f);
         executor::spawn(copy_future).wait_future().unwrap()

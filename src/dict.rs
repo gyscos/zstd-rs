@@ -136,13 +136,15 @@ mod tests {
     use std::io;
     use std::io::Read;
 
+    extern crate walkdir;
+
     #[test]
     fn test_dict_training() {
         // Train a dictionary
-        let paths: Vec<_> = fs::read_dir("src")
-            .unwrap()
+        let paths: Vec<_> = walkdir::WalkDir::new("src")
+            .into_iter()
             .map(|entry| entry.unwrap())
-            .map(|entry| entry.path())
+            .map(|entry| entry.into_path())
             .filter(|path| path.to_str().unwrap().ends_with(".rs"))
             .collect();
 
@@ -158,16 +160,19 @@ mod tests {
                 &mut ::stream::Encoder::with_dictionary(&mut buffer, 1, &dict)
                     .unwrap()
                     .auto_finish(),
-            ).unwrap();
+            )
+            .unwrap();
 
             let mut result = Vec::new();
             io::copy(
                 &mut ::stream::Decoder::with_dictionary(
                     &buffer[..],
                     &dict[..],
-                ).unwrap(),
+                )
+                .unwrap(),
                 &mut result,
-            ).unwrap();
+            )
+            .unwrap();
 
             assert_eq!(&content, &result);
         }

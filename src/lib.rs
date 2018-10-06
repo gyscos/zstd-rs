@@ -29,10 +29,6 @@ extern crate partial_io;
 
 extern crate zstd_safe;
 
-pub mod block;
-pub mod dict;
-pub mod stream;
-
 #[cfg(feature = "tokio")]
 #[macro_use]
 extern crate tokio_io;
@@ -41,7 +37,12 @@ extern crate futures;
 #[cfg(all(test, feature = "tokio"))]
 extern crate quickcheck;
 
+pub mod block;
+pub mod dict;
+pub mod stream;
+
 use std::io;
+
 #[doc(no_inline)]
 pub use stream::{decode_all, encode_all, Decoder, Encoder};
 

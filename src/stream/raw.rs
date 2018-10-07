@@ -17,6 +17,9 @@ pub trait Operation {
     /// Performs a single step of this operation.
     ///
     /// Should return a hint for the next input size.
+    ///
+    /// If the result is `Ok(0)`, it may indicate that a frame was just
+    /// finished.
     fn run(
         &mut self,
         input: &mut InBuffer,
@@ -44,16 +47,56 @@ pub trait Operation {
         })
     }
 
+    /// Prepares this operation for a new frame.
+    ///
+    /// If `Self::run()` returns `Ok(0)`, and more data needs to be processed,
+    /// this will be called.
+    ///
+    /// Mostly used for decoder to handle concatenated frames.
+    fn reinit(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
     /// Flushes any internal buffer, if any.
     ///
     /// Returns the number of bytes still in the buffer.
-    fn flush(&mut self, output: &mut OutBuffer) -> io::Result<usize>;
+    fn flush(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+        Ok(0)
+    }
 
     /// Finishes the operation, writing any footer if necessary.
     ///
     /// Returns the number of bytes still to write.
-    /// Keep calling this method until it returns `Ok(0)`.
-    fn finish(&mut self, output: &mut OutBuffer) -> io::Result<usize>;
+    ///
+    /// Keep calling this method until it returns `Ok(0)`,
+    /// and then don't ever call this method.
+    fn finish(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+        Ok(0)
+    }
+}
+
+/// Dummy operation that just copies its input to the output.
+pub struct NoOp;
+
+impl Operation for NoOp {
+    fn run(
+        &mut self,
+        input: &mut InBuffer,
+        output: &mut OutBuffer,
+    ) -> io::Result<usize> {
+        let src = &input.src[input.pos..];
+        let dst = &mut output.dst[output.pos..];
+
+        let len = usize::min(src.len(), dst.len());
+        let src = &src[..len];
+        let dst = &mut dst[..len];
+
+        dst.copy_from_slice(src);
+        input.pos += len;
+        output.pos += len;
+
+        Ok(0)
+    }
 }
 
 /// Describes the result of an operation.
@@ -110,14 +153,9 @@ impl Operation for Decoder {
         ))
     }
 
-    fn flush(&mut self, _output: &mut OutBuffer) -> io::Result<usize> {
-        // No need to flush anything when decompressing.
-        Ok(0)
-    }
-
-    fn finish(&mut self, _output: &mut OutBuffer) -> io::Result<usize> {
-        // No need to do anything special at the end.
-        Ok(0)
+    fn reinit(&mut self) -> io::Result<()> {
+        parse_code(zstd_safe::reset_dstream(&mut self.context))?;
+        Ok(())
     }
 }
 

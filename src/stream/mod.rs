@@ -9,7 +9,7 @@ mod decoder;
 mod encoder;
 
 mod functions;
-mod zio;
+pub mod zio;
 
 #[cfg(test)]
 mod tests;

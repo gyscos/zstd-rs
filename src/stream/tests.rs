@@ -195,12 +195,21 @@ fn test_full_cycle(input: &[u8], level: i32) {
 }
 
 #[test]
+fn test_empty() {
+    // Test compressing empty data
+    for level in 1..19 {
+        test_full_cycle(b"", level);
+    }
+}
+
+#[test]
 fn test_ll_source() {
     // Where could I find some long text?...
     let data = include_bytes!("../../zstd-safe/zstd-sys/src/bindings.rs");
     // Test a few compression levels.
     // TODO: check them all?
     for level in 1..5 {
+        // Test compressing actual data
         test_full_cycle(data, level);
     }
 }

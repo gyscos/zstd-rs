@@ -54,3 +54,6 @@ where
     encoder.finish()?;
     Ok(())
 }
+
+#[cfg(tests)]
+mod tests {}

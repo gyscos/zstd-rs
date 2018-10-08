@@ -4,9 +4,8 @@ extern crate bindgen;
 extern crate gcc;
 extern crate glob;
 
-use std::{env, fs};
 use std::path::PathBuf;
-
+use std::{env, fs};
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings() {
@@ -18,22 +17,22 @@ fn generate_bindings() {
         .blacklist_type("max_align_t")
         .use_core()
         .rustified_enum(".*")
-        .ctypes_prefix("::libc")
         .clang_arg("-Izstd/lib")
-        .clang_arg("-DZSTD_STATIC_LINKING_ONLY")
-        .generate()
-        .expect("Unable to generate bindings");
+        .clang_arg("-DZSTD_STATIC_LINKING_ONLY");
+
+    #[cfg(not(feature = "std"))]
+    let bindings = bindings.ctypes_prefix("::libc");
+
+    let bindings = bindings.generate().expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Could not write bindings");
-
 }
 
 #[cfg(not(feature = "bindgen"))]
 fn generate_bindings() {}
-
 
 #[cfg(not(feature = "legacy"))]
 fn set_legacy(_config: &mut gcc::Build) {}
@@ -88,7 +87,11 @@ fn compile_zstd() {
     let include = dst.join("include");
     fs::create_dir_all(&include).unwrap();
     fs::copy(src.join("zstd.h"), include.join("zstd.h")).unwrap();
-    fs::copy(src.join("dictBuilder").join("zdict.h"), include.join("zdict.h")).unwrap();
+    fs::copy(
+        src.join("dictBuilder").join("zdict.h"),
+        include.join("zdict.h"),
+    )
+    .unwrap();
     println!("cargo:root={}", dst.display());
 }
 

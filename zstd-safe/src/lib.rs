@@ -31,18 +31,26 @@
 extern crate libc;
 extern crate zstd_sys;
 
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(feature = "std")]
+use std::os::raw::{c_int, c_uint, c_ulonglong, c_void};
+
+#[cfg(not(feature = "std"))]
+use libc::{c_int, c_uint, c_ulonglong, c_void};
+
 use core::marker::PhantomData;
 use core::ops::Deref;
 use core::ops::DerefMut;
-use core::slice;
 use core::str;
 
-fn ptr_void(src: &[u8]) -> *const libc::c_void {
-    src.as_ptr() as *const libc::c_void
+fn ptr_void(src: &[u8]) -> *const c_void {
+    src.as_ptr() as *const c_void
 }
 
-fn ptr_mut_void(dst: &mut [u8]) -> *mut libc::c_void {
-    dst.as_mut_ptr() as *mut libc::c_void
+fn ptr_mut_void(dst: &mut [u8]) -> *mut c_void {
+    dst.as_mut_ptr() as *mut c_void
 }
 
 pub fn version_number() -> u32 {
@@ -165,16 +173,31 @@ impl Drop for CCtx {
 unsafe impl Send for CCtx {}
 // CCtx can't be shared across threads, so it does not implement Sync.
 
+#[cfg(not(feature = "std"))]
 pub fn get_error_name(code: usize) -> &'static str {
     unsafe {
         // We are getting a *const char from zstd
         let name = zstd_sys::ZSTD_getErrorName(code);
+
         // To be safe, we need to compute right now its length
         let len = libc::strlen(name);
+
         // Cast it to a slice
-        let slice = slice::from_raw_parts(name as *mut u8, len);
+        let slice = core::slice::from_raw_parts(name as *mut u8, len);
         // And hope it's still text.
         str::from_utf8(slice).expect("bad error message from zstd")
+    }
+}
+
+#[cfg(feature = "std")]
+pub fn get_error_name(code: usize) -> &'static str {
+    unsafe {
+        // We are getting a *const char from zstd
+        let name = zstd_sys::ZSTD_getErrorName(code);
+
+        std::ffi::CStr::from_ptr(name)
+            .to_str()
+            .expect("bad error message from zstd")
     }
 }
 
@@ -810,8 +833,8 @@ pub fn init_cstream_src_size(
     unsafe {
         zstd_sys::ZSTD_initCStream_srcSize(
             zcs.0,
-            compression_level as libc::c_int,
-            pledged_src_size as libc::c_ulonglong,
+            compression_level as c_int,
+            pledged_src_size as c_ulonglong,
         )
     }
 }
@@ -848,10 +871,7 @@ pub fn init_cstream_using_cdict(zcs: &mut CStream, cdict: &CDict) -> usize {
 /// Returns 0, or an error code (which can be tested using ZSTD_isError()) */
 pub fn reset_cstream(zcs: &mut CStream, pledged_src_size: u64) -> usize {
     unsafe {
-        zstd_sys::ZSTD_resetCStream(
-            zcs.0,
-            pledged_src_size as libc::c_ulonglong,
-        )
+        zstd_sys::ZSTD_resetCStream(zcs.0, pledged_src_size as c_ulonglong)
     }
 }
 pub fn init_dstream_using_dict(zds: &mut DStream, dict: &[u8]) -> usize {
@@ -866,7 +886,7 @@ pub fn reset_dstream(zds: &mut DStream) -> usize {
     unsafe { zstd_sys::ZSTD_resetDStream(zds.0) }
 }
 
-pub type Unsigned = libc::c_uint;
+pub type Unsigned = c_uint;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FrameFormat {
@@ -1029,9 +1049,11 @@ pub fn cctx_set_parameter(cctx: &mut CCtx, param: CParameter) -> usize {
         }
 
         #[cfg(feature = "zstdmt")]
-        ThreadCount(value) => (ZSTD_cParameter::ZSTD_p_nbThreads, value),
+        ThreadCount(value) => (ZSTD_cParameter::ZSTD_p_nbWorkers, value),
+
         #[cfg(feature = "zstdmt")]
         JobSize(value) => (ZSTD_cParameter::ZSTD_p_jobSize, value),
+
         #[cfg(feature = "zstdmt")]
         OverlapSizeLog(value) => {
             (ZSTD_cParameter::ZSTD_p_overlapSizeLog, value)
@@ -1104,7 +1126,7 @@ pub fn insert_block(dctx: &mut DCtx, block: &[u8]) -> usize {
 /// Multi-threading methods.
 #[cfg(feature = "zstdmt")]
 pub mod mt {
-    use super::libc;
+    use super::c_ulonglong;
     use super::zstd_sys;
     use super::{ptr_mut, ptr_mut_void, ptr_void, InBuffer, OutBuffer};
 
@@ -1152,7 +1174,7 @@ pub mod mt {
         unsafe {
             zstd_sys::ZSTDMT_resetCStream(
                 mtctx.0,
-                pledged_src_size as libc::c_ulonglong,
+                pledged_src_size as c_ulonglong,
             )
         }
     }

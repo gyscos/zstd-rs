@@ -37,3 +37,4 @@ libc = "0.2.42"
 default = ["legacy"]
 legacy = []
 zstdmt = []
+std = ["bindgen"]

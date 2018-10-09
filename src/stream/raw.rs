@@ -47,20 +47,11 @@ pub trait Operation {
         })
     }
 
-    /// Prepares this operation for a new frame.
-    ///
-    /// If `Self::run()` returns `Ok(0)`, and more data needs to be processed,
-    /// this will be called.
-    ///
-    /// Mostly used for decoder to handle concatenated frames.
-    fn reinit(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-
     /// Flushes any internal buffer, if any.
     ///
     /// Returns the number of bytes still in the buffer.
     fn flush(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+        let _ = output;
         Ok(0)
     }
 
@@ -71,6 +62,7 @@ pub trait Operation {
     /// Keep calling this method until it returns `Ok(0)`,
     /// and then don't ever call this method.
     fn finish(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+        let _ = output;
         Ok(0)
     }
 }
@@ -116,17 +108,23 @@ pub struct Status {
 /// An in-memory decoder for streams of data.
 pub struct Decoder {
     context: DStream,
-}
 
-/// An in-memory encoder for streams of data.
-pub struct Encoder {
-    context: CStream,
+    single_frame: bool,
+    frame_ended: bool,
 }
 
 impl Decoder {
     /// Creates a new decoder.
     pub fn new() -> io::Result<Self> {
         Self::with_dictionary(&[])
+    }
+
+    /// Configures the multi-frame policy for this Decoder.
+    ///
+    /// If `single_frame = True`, this will stop after decoding the first
+    /// frame. Otherwise, it will keep concatenating successive frames.
+    pub fn set_single_frame(&mut self, single_frame: bool) {
+        self.single_frame = single_frame;
     }
 
     /// Creates a new decoder initialized with the given dictionary.
@@ -136,7 +134,16 @@ impl Decoder {
             &mut context,
             dictionary,
         ))?;
-        Ok(Decoder { context })
+        Ok(Decoder {
+            context,
+            single_frame: false,
+            frame_ended: false,
+        })
+    }
+
+    fn reinit(&mut self) -> io::Result<()> {
+        parse_code(zstd_safe::reset_dstream(&mut self.context))?;
+        Ok(())
     }
 }
 
@@ -146,17 +153,43 @@ impl Operation for Decoder {
         input: &mut InBuffer,
         output: &mut OutBuffer,
     ) -> io::Result<usize> {
-        parse_code(zstd_safe::decompress_stream(
+        // If we ended a frame earlier, we should do something about it now.
+        if self.frame_ended {
+            if self.single_frame || input.src.len() <= input.pos {
+                return Ok(0);
+            } else {
+                // println!("Input: {:?}", input);
+                self.reinit()?;
+                self.frame_ended = false;
+            }
+        }
+
+        let hint = parse_code(zstd_safe::decompress_stream(
             &mut self.context,
             output,
             input,
-        ))
+        ));
+
+        // println!("Output: {:?}", output);
+
+        if let Ok(0) = hint {
+            self.frame_ended = true;
+        }
+
+        hint
     }
 
-    fn reinit(&mut self) -> io::Result<()> {
-        parse_code(zstd_safe::reset_dstream(&mut self.context))?;
-        Ok(())
+    fn finish(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+        // Finishing the decoder means "flushing out" zstd's own buffer.
+        // We'll do that by simulating empty imput.
+        // Whenever this returns `Ok(0)`, it means we're good to go.
+        self.run(&mut InBuffer::around(&[]), output)
     }
+}
+
+/// An in-memory encoder for streams of data.
+pub struct Encoder {
+    context: CStream,
 }
 
 impl Encoder {

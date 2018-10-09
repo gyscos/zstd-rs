@@ -6,7 +6,7 @@ use zstd_safe;
 
 // input -> [ zstd -> buffer -> writer ]
 
-/// Implements the [`std::io::Writer`] API around an operation.
+/// Implements the [`Write`] API around an [`Operation`].
 ///
 /// This can be used to wrap a raw in-memory operation in a write-focused API.
 ///
@@ -76,9 +76,20 @@ where
 
                 (output.pos, hint)
             };
+
             // We return here if zstd had a problem.
             // Could happen with invalid data, ...
             let hint = hint?;
+
+            if hint != 0 && bytes_written == 0 {
+                // This happens if we are decoding an incomplete frame.
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "incomplete frame",
+                ));
+            }
+
+            // println!("Finishing {}, {}", bytes_written, hint);
 
             self.offset = 0;
             unsafe { self.buffer.set_len(bytes_written) };
@@ -113,7 +124,7 @@ where
 
     /// Return the wrapped `Writer` and `Operation`.
     ///
-    /// Careful: if you call this before calling [`Self::finish()`], the
+    /// Careful: if you call this before calling [`Writer::finish()`], the
     /// output may be incomplete.
     pub fn into_inner(self) -> (W, D) {
         (self.writer, self.operation)
@@ -145,7 +156,7 @@ where
                 (src.pos, dst.pos, hint)
             };
 
-            // println!("Read {}; Wrote {}", bytes_read, bytes_written);
+            println!("Read {}; Wrote {}", bytes_read, bytes_written);
 
             self.offset = 0;
             unsafe { self.buffer.set_len(bytes_written) };
@@ -188,7 +199,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::Writer;
-    use std::io::{Cursor, Read, Write};
+    use std::io::Write;
 
     #[test]
     fn test_noop() {

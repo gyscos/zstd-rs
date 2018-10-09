@@ -5,7 +5,7 @@ use stream::raw::Operation;
 use zstd_safe;
 
 // [ reader -> zstd ] -> output
-/// Implements the [`std::io::Reader`] API around an operation.
+/// Implements the [`Read`] API around an [`Operation`].
 ///
 /// This can be used to wrap a raw in-memory operation in a read-focused API.
 ///
@@ -28,6 +28,16 @@ impl<R, D> Reader<R, D> {
             operation,
             finished: false,
         }
+    }
+
+    /// Returns a mutable reference to the underlying operation.
+    pub fn operation_mut(&mut self) -> &mut D {
+        &mut self.operation
+    }
+
+    /// Returns a mutable reference to the underlying reader.
+    pub fn reader_mut(&mut self) -> &mut R {
+        &mut self.reader
     }
 }
 
@@ -70,6 +80,12 @@ where
                     if hint == 0 {
                         // This indicates that the footer is complete.
                         self.finished = true;
+                    } else if dst.pos == 0 {
+                        // Didn't output anything? Maybe we have an incomplete frame?
+                        return Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            "incomplete frame",
+                        ));
                     }
                 }
 
@@ -89,7 +105,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::Reader;
-    use std::io::{Cursor, Read, Write};
+    use std::io::{Cursor, Read};
 
     #[test]
     fn test_noop() {
@@ -119,7 +135,7 @@ mod tests {
                 Reader::new(Cursor::new(input), Encoder::new(1).unwrap());
             reader.read_to_end(&mut output).unwrap();
         }
-        println!("{:?}", output);
+        // println!("{:?}", output);
         let decoded = ::decode_all(&output[..]).unwrap();
         assert_eq!(&decoded, input);
     }

@@ -195,7 +195,7 @@ impl<R: Read> Decoder<R> {
             {
                 // The underlying reader was blocked, but we've already
                 // put some data into the output buffer.
-                // We need to stop this read operation so data won' be lost.
+                // We need to stop this read operation so data won't be lost.
                 return Ok(true);
             }
             // We are refilled if we were able to read anything

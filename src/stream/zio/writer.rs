@@ -71,8 +71,10 @@ where
 
             // Let's fill this buffer again!
 
-            let hint =
-                unsafe { self.with_full_buffer(|dst, op| op.finish(dst)) };
+            let finished_frame = self.finished_frame;
+            let hint = unsafe {
+                self.with_full_buffer(|dst, op| op.finish(dst, finished_frame))
+            };
             self.offset = 0;
 
             // We return here if zstd had a problem.

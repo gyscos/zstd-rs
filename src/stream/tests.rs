@@ -145,6 +145,7 @@ fn test_incomplete_frame() {
     let mut enc = Encoder::new(Vec::new(), 1).unwrap();
     enc.write_all(b"This is a regular string").unwrap();
     let mut compressed = enc.finish().unwrap();
+    // println!("{:?}", compressed);
 
     let half_size = compressed.len() - 2;
     compressed.truncate(half_size);

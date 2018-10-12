@@ -8,6 +8,7 @@ use std::io;
 
 use zstd_safe::{self, CStream, DStream, InBuffer, OutBuffer};
 
+use dict::DecoderDictionary;
 use parse_code;
 
 /// Represents an abstract compression/decompression operation.
@@ -69,8 +70,13 @@ pub trait Operation {
     ///
     /// Keep calling this method until it returns `Ok(0)`,
     /// and then don't ever call this method.
-    fn finish(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+    fn finish(
+        &mut self,
+        output: &mut OutBuffer,
+        finished_frame: bool,
+    ) -> io::Result<usize> {
         let _ = output;
+        let _ = finished_frame;
         Ok(0)
     }
 }
@@ -133,6 +139,18 @@ impl Decoder {
         ))?;
         Ok(Decoder { context })
     }
+
+    /// Creates a new decoder, using an existing `DecoderDictionary`.
+    pub fn with_prepared_dictionary(
+        dictionary: &DecoderDictionary,
+    ) -> io::Result<Self> {
+        let mut context = zstd_safe::create_dstream();
+        parse_code(zstd_safe::init_dstream_using_ddict(
+            &mut context,
+            dictionary.as_ddict(),
+        ))?;
+        Ok(Decoder { context })
+    }
 }
 
 impl Operation for Decoder {
@@ -151,6 +169,20 @@ impl Operation for Decoder {
     fn reinit(&mut self) -> io::Result<()> {
         parse_code(zstd_safe::reset_dstream(&mut self.context))?;
         Ok(())
+    }
+    fn finish(
+        &mut self,
+        _output: &mut OutBuffer,
+        finished_frame: bool,
+    ) -> io::Result<usize> {
+        if finished_frame {
+            Ok(0)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "incomplete frame",
+            ))
+        }
     }
 }
 
@@ -194,7 +226,11 @@ impl Operation for Encoder {
         parse_code(zstd_safe::flush_stream(&mut self.context, output))
     }
 
-    fn finish(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+    fn finish(
+        &mut self,
+        output: &mut OutBuffer,
+        _finished_frame: bool,
+    ) -> io::Result<usize> {
         parse_code(zstd_safe::end_stream(&mut self.context, output))
     }
 
@@ -230,7 +266,7 @@ mod tests {
                 break;
             }
         }
-        encoder.finish(&mut output).unwrap();
+        encoder.finish(&mut output, true).unwrap();
 
         let initial_data = input.src;
 

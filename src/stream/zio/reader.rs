@@ -35,6 +35,11 @@ impl<R, D> Reader<R, D> {
         }
     }
 
+    /// Sets `self` to stop after the first decoded frame.
+    pub fn set_single_frame(&mut self) {
+        self.single_frame = true;
+    }
+
     /// Returns a mutable reference to the underlying operation.
     pub fn operation_mut(&mut self) -> &mut D {
         &mut self.operation
@@ -43,6 +48,16 @@ impl<R, D> Reader<R, D> {
     /// Returns a mutable reference to the underlying reader.
     pub fn reader_mut(&mut self) -> &mut R {
         &mut self.reader
+    }
+
+    /// Returns a reference to the underlying reader.
+    pub fn reader(&self) -> &R {
+        &self.reader
+    }
+
+    /// Returns the inner reader.
+    pub fn into_inner(self) -> R {
+        self.reader
     }
 }
 
@@ -54,10 +69,6 @@ where
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.finished {
             return Ok(0);
-        }
-        if self.finished_frame {
-            self.operation.reinit()?;
-            self.finished_frame = false;
         }
 
         // Keep trying until _something_ has been written.
@@ -80,8 +91,14 @@ where
                 // The return value is a hint for the next input size,
                 // but it's safe to ignore.
                 if !eof {
+                    if self.finished_frame {
+                        self.operation.reinit()?;
+                        self.finished_frame = false;
+                    }
+
                     // Phase 1: feed input to the operation
                     let hint = self.operation.run(&mut src, &mut dst)?;
+
                     if hint == 0 {
                         // We just finished a frame.
                         self.finished_frame = true;
@@ -94,7 +111,10 @@ where
 
                     // Phase 2: flush out the operation's buffer
                     // Keep calling `finish()` until the buffer is empty.
-                    let hint = self.operation.finish(&mut dst)?;
+                    let hint = self
+                        .operation
+                        .finish(&mut dst, self.finished_frame)?;
+                    // println!("Hint: {}\nOutput: {:?}", hint, dst);
                     if hint == 0 {
                         // This indicates that the footer is complete.
                         // This is the only way to terminate the stream cleanly.
@@ -102,13 +122,6 @@ where
                         if dst.pos == 0 {
                             return Ok(0);
                         }
-                    } else if dst.pos == 0 {
-                        // Didn't output anything? Maybe we are decoding an
-                        // incomplete frame?
-                        return Err(io::Error::new(
-                            io::ErrorKind::UnexpectedEof,
-                            "incomplete frame",
-                        ));
                     }
                 }
 

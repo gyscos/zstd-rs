@@ -16,6 +16,9 @@ pub struct Reader<R, D> {
     operation: D,
 
     finished: bool,
+
+    single_frame: bool,
+    finished_frame: bool,
 }
 
 impl<R, D> Reader<R, D> {
@@ -27,6 +30,8 @@ impl<R, D> Reader<R, D> {
             reader,
             operation,
             finished: false,
+            single_frame: false,
+            finished_frame: false,
         }
     }
 
@@ -47,21 +52,25 @@ where
     D: Operation,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // Keep trying until _something_ has been written.
         if self.finished {
             return Ok(0);
         }
+        if self.finished_frame {
+            self.operation.reinit()?;
+            self.finished_frame = false;
+        }
 
+        // Keep trying until _something_ has been written.
         loop {
-            // Start with a fresh pool of un-processed data.
-            // This is the only line that can return an interuption error.
-            let (bytes_read, bytes_written, eof) = {
+            let (bytes_read, bytes_written) = {
+                // Start with a fresh pool of un-processed data.
+                // This is the only line that can return an interuption error.
                 let input = self.reader.fill_buf()?;
 
                 // println!("{:?}", input);
 
                 // It's possible we don't have any new data to read.
-                // (In this case we may have zstd's own buffer to clear.)
+                // (In this case we may still have zstd's own buffer to clear.)
                 let eof = input.is_empty();
 
                 let mut src = zstd_safe::InBuffer::around(input);
@@ -71,17 +80,31 @@ where
                 // The return value is a hint for the next input size,
                 // but it's safe to ignore.
                 if !eof {
-                    // TODO: if the result is 0, it may mean that we just
-                    // finished reading a ZSTD frame.
-                    // TODO: re-init the context if we want to read sequential streams?
-                    let _ = self.operation.run(&mut src, &mut dst)?;
+                    // Phase 1: feed input to the operation
+                    let hint = self.operation.run(&mut src, &mut dst)?;
+                    if hint == 0 {
+                        // We just finished a frame.
+                        self.finished_frame = true;
+                        if self.single_frame {
+                            self.finished = true;
+                        }
+                    }
                 } else {
+                    // TODO: Make it Work!
+
+                    // Phase 2: flush out the operation's buffer
+                    // Keep calling `finish()` until the buffer is empty.
                     let hint = self.operation.finish(&mut dst)?;
                     if hint == 0 {
                         // This indicates that the footer is complete.
+                        // This is the only way to terminate the stream cleanly.
                         self.finished = true;
+                        if dst.pos == 0 {
+                            return Ok(0);
+                        }
                     } else if dst.pos == 0 {
-                        // Didn't output anything? Maybe we have an incomplete frame?
+                        // Didn't output anything? Maybe we are decoding an
+                        // incomplete frame?
                         return Err(io::Error::new(
                             io::ErrorKind::UnexpectedEof,
                             "incomplete frame",
@@ -91,13 +114,14 @@ where
 
                 // println!("{:?}", dst);
 
-                (src.pos, dst.pos, eof)
+                (src.pos, dst.pos)
             };
             self.reader.consume(bytes_read);
 
-            if bytes_written > 0 || eof {
+            if bytes_written > 0 {
                 return Ok(bytes_written);
             }
+            // We need more data! Try again!
         }
     }
 }

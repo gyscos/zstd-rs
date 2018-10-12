@@ -45,6 +45,40 @@ use core::ops::Deref;
 use core::ops::DerefMut;
 use core::str;
 
+// Re-define constants from zstd_sys
+pub const VERSION_MAJOR: u32 = zstd_sys::ZSTD_VERSION_MAJOR;
+pub const VERSION_MINOR: u32 = zstd_sys::ZSTD_VERSION_MINOR;
+pub const VERSION_RELEASE: u32 = zstd_sys::ZSTD_VERSION_RELEASE;
+pub const VERSION_NUMBER: u32 = zstd_sys::ZSTD_VERSION_NUMBER;
+pub const CLEVEL_DEFAULT: i32 = zstd_sys::ZSTD_CLEVEL_DEFAULT as i32;
+pub const CONTENTSIZE_UNKNOWN: u64 = zstd_sys::ZSTD_CONTENTSIZE_UNKNOWN as u64;
+pub const CONTENTSIZE_ERROR: u64 = zstd_sys::ZSTD_CONTENTSIZE_ERROR as u64;
+pub const MAGICNUMBER: u32 = zstd_sys::ZSTD_MAGICNUMBER;
+pub const MAGIC_DICTIONARY: u32 = zstd_sys::ZSTD_MAGIC_DICTIONARY;
+pub const MAGIC_SKIPPABLE_START: u32 = zstd_sys::ZSTD_MAGIC_SKIPPABLE_START;
+pub const BLOCKSIZELOG_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZELOG_MAX;
+pub const BLOCKSIZE_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZE_MAX;
+pub const WINDOWLOG_MAX_32: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_32;
+pub const WINDOWLOG_MAX_64: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_64;
+pub const WINDOWLOG_MIN: u32 = zstd_sys::ZSTD_WINDOWLOG_MIN;
+pub const HASHLOG_MIN: u32 = zstd_sys::ZSTD_HASHLOG_MIN;
+pub const CHAINLOG_MAX_32: u32 = zstd_sys::ZSTD_CHAINLOG_MAX_32;
+pub const CHAINLOG_MAX_64: u32 = zstd_sys::ZSTD_CHAINLOG_MAX_64;
+pub const CHAINLOG_MIN: u32 = zstd_sys::ZSTD_CHAINLOG_MIN;
+pub const HASHLOG3_MAX: u32 = zstd_sys::ZSTD_HASHLOG3_MAX;
+pub const SEARCHLOG_MIN: u32 = zstd_sys::ZSTD_SEARCHLOG_MIN;
+pub const SEARCHLENGTH_MAX: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MAX;
+pub const SEARCHLENGTH_MIN: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MIN;
+pub const TARGETLENGTH_MAX: u32 = zstd_sys::ZSTD_TARGETLENGTH_MAX;
+pub const TARGETLENGTH_MIN: u32 = zstd_sys::ZSTD_TARGETLENGTH_MIN;
+pub const LDM_MINMATCH_MAX: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MAX;
+pub const LDM_MINMATCH_MIN: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MIN;
+pub const LDM_BUCKETSIZELOG_MAX: u32 = zstd_sys::ZSTD_LDM_BUCKETSIZELOG_MAX;
+pub const FRAMEHEADERSIZE_PREFIX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_PREFIX;
+pub const FRAMEHEADERSIZE_MIN: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MIN;
+pub const FRAMEHEADERSIZE_MAX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MAX;
+pub const JOBSIZE_MIN: u32 = zstd_sys::ZSTDMT_JOBSIZE_MIN;
+
 fn ptr_void(src: &[u8]) -> *const c_void {
     src.as_ptr() as *const c_void
 }
@@ -883,17 +917,20 @@ pub fn init_cstream_using_cdict(zcs: &mut CStream, cdict: &CDict) -> usize {
 
 /// `ZSTD_resetCStream()`
 ///
-/// start a new compression job, using same parameters from previous job.
+/// Start a new compression job, using same parameters from previous job.
 ///
-/// This is typically useful to skip dictionary loading stage, since it will re-use it in-place..
+/// This is typically useful to skip dictionary loading stage, since it will re-use it in-place.
 ///
 /// Note that zcs must be init at least once before using ZSTD_resetCStream().
 ///
-/// pledgedSrcSize==0 means "srcSize unknown".
+/// If pledgedSrcSize is not known at reset time, use macro ZSTD_CONTENTSIZE_UNKNOWN.
 ///
 /// If pledgedSrcSize > 0, its value must be correct, as it will be written in header, and controlled at the end.
 ///
-/// Returns 0, or an error code (which can be tested using ZSTD_isError()) */
+/// For the time being, pledgedSrcSize==0 is interpreted as "srcSize unknown" for compatibility with older programs,
+/// but it will change to mean "empty" in future version, so use macro ZSTD_CONTENTSIZE_UNKNOWN instead.
+///
+/// Returns 0, or an error code (which can be tested using ZSTD_isError())
 pub fn reset_cstream(zcs: &mut CStream, pledged_src_size: u64) -> usize {
     unsafe {
         zstd_sys::ZSTD_resetCStream(zcs.0, pledged_src_size as c_ulonglong)

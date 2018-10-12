@@ -22,6 +22,8 @@ pub struct Writer<W, D> {
     // When `true`, indicates that nothing should be added to the buffer.
     // All that's left if to empty the buffer.
     finished: bool,
+
+    finished_frame: bool,
 }
 
 impl<W, D> Writer<W, D>
@@ -42,6 +44,7 @@ where
             buffer: Vec::with_capacity(32 * 1024),
 
             finished: false,
+            finished_frame: false,
         }
     }
 
@@ -68,20 +71,15 @@ where
 
             // Let's fill this buffer again!
 
-            let (bytes_written, hint) = {
-                unsafe { self.expand_buffer() };
-                let mut output =
-                    zstd_safe::OutBuffer::around(&mut self.buffer);
-                let hint = self.operation.finish(&mut output);
-
-                (output.pos, hint)
-            };
+            let hint =
+                unsafe { self.with_full_buffer(|dst, op| op.finish(dst)) };
+            self.offset = 0;
 
             // We return here if zstd had a problem.
             // Could happen with invalid data, ...
             let hint = hint?;
 
-            if hint != 0 && bytes_written == 0 {
+            if hint != 0 && self.buffer.len() == 0 {
                 // This happens if we are decoding an incomplete frame.
                 return Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
@@ -91,19 +89,30 @@ where
 
             // println!("Finishing {}, {}", bytes_written, hint);
 
-            self.offset = 0;
-            unsafe { self.buffer.set_len(bytes_written) };
-
             self.finished = hint == 0;
         }
     }
 
-    /// Expands the buffer before writing there.
+    /// Run the given closure on `self.buffer`.
     ///
-    /// This will leave the buffer with potentially uninitialized memory.
-    unsafe fn expand_buffer(&mut self) {
+    /// Before running it, the buffer will look as big as its capacity,
+    /// but the memory there may be uninitialized.
+    ///
+    /// It is only safe to write in this buffer, not to read from there.
+    unsafe fn with_full_buffer<F, T>(&mut self, f: F) -> T
+    where
+        F: FnOnce(&mut zstd_safe::OutBuffer, &mut D) -> T,
+    {
         let capacity = self.buffer.capacity();
         self.buffer.set_len(capacity);
+
+        let (bytes_written, result) = {
+            let mut output = zstd_safe::OutBuffer::around(&mut self.buffer);
+            let result = f(&mut output, &mut self.operation);
+            (output.pos, result)
+        };
+        self.buffer.set_len(bytes_written);
+        result
     }
 
     /// Attempt to write `self.buffer` to the wrapped writer.
@@ -144,23 +153,29 @@ where
         loop {
             // First, write any pending data from `self.buffer`.
             self.write_from_offset()?;
-
             // At this point `self.buffer` can safely be discarded.
-            let (bytes_read, bytes_written, hint) = {
-                unsafe { self.expand_buffer() };
-                let mut src = zstd_safe::InBuffer::around(buf);
-                let mut dst = zstd_safe::OutBuffer::around(&mut self.buffer);
 
-                let hint = self.operation.run(&mut src, &mut dst);
+            // Support writing concatenated frames by re-initializing the
+            // context.
+            if self.finished_frame {
+                self.operation.reinit()?;
+                self.finished_frame = false;
+            }
 
-                (src.pos, dst.pos, hint)
+            let mut src = zstd_safe::InBuffer::around(buf);
+            let hint = unsafe {
+                self.with_full_buffer(|dst, op| op.run(&mut src, dst))
             };
+            let bytes_read = src.pos;
 
-            println!("Read {}; Wrote {}", bytes_read, bytes_written);
+            // println!("Read {}; Wrote {}", bytes_read, bytes_written);
 
             self.offset = 0;
-            unsafe { self.buffer.set_len(bytes_written) };
-            let _ = hint?;
+            let hint = hint?;
+
+            if hint == 0 {
+                self.finished_frame = true;
+            }
 
             // As we said, as soon as we've consumed something, return.
             if bytes_read > 0 || buf.is_empty() {
@@ -179,17 +194,11 @@ where
                 return Ok(());
             }
 
-            let (bytes_written, hint) = {
-                unsafe { self.expand_buffer() };
-                let mut dst = zstd_safe::OutBuffer::around(&mut self.buffer);
-                let hint = self.operation.flush(&mut dst);
+            let hint =
+                unsafe { self.with_full_buffer(|dst, op| op.flush(dst)) };
 
-                (dst.pos, hint)
-            };
-
-            let hint = hint?;
             self.offset = 0;
-            unsafe { self.buffer.set_len(bytes_written) };
+            let hint = hint?;
 
             finished = hint == 0;
         }

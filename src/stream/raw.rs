@@ -8,7 +8,7 @@ use std::io;
 
 use zstd_safe::{self, CStream, DStream, InBuffer, OutBuffer};
 
-use dict::DecoderDictionary;
+use dict::{DecoderDictionary, EncoderDictionary};
 use parse_code;
 
 /// Represents an abstract compression/decompression operation.
@@ -204,6 +204,18 @@ impl Encoder {
             &mut context,
             dictionary,
             level,
+        ))?;
+        Ok(Encoder { context })
+    }
+
+    /// Creates a new encoder using an existing `EncoderDictionary`.
+    pub fn with_prepared_dictionary(
+        dictionary: &EncoderDictionary,
+    ) -> io::Result<Self> {
+        let mut context = zstd_safe::create_cstream();
+        parse_code(zstd_safe::init_cstream_using_cdict(
+            &mut context,
+            dictionary.as_cdict(),
         ))?;
         Ok(Encoder { context })
     }

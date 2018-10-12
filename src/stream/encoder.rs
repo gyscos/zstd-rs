@@ -1,22 +1,14 @@
+use std::io::{self, Write};
+
 #[cfg(feature = "tokio")]
 use futures::Poll;
-
-use dict::EncoderDictionary;
-use parse_code;
-use std::io::{self, Write};
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncWrite;
+
 use zstd_safe;
 
-#[derive(PartialEq)]
-enum EncoderState {
-    Accepting,
-    // Finished just makes sure writes are no longer accepted.
-    Finished,
-    StreamEnd,
-    // The "stream ended and flushed" state corresponds to the object being
-    // destroyed.
-}
+use dict::EncoderDictionary;
+use stream::{raw, zio};
 
 /// An encoder that compress and forward data to another writer.
 ///
@@ -30,21 +22,14 @@ enum EncoderState {
 /// [`finish()`]: #method.finish
 pub struct Encoder<W: Write> {
     // output writer (compressed data)
-    writer: W,
-    // output buffer
-    buffer: Vec<u8>,
-    // offset in the output buffer
-    offset: usize,
-
-    // compression context
-    context: zstd_safe::CStream,
-    state: EncoderState,
+    writer: zio::Writer<W, raw::Encoder>,
 }
 
 /// A wrapper around an `Encoder<W>` that finishes the stream on drop.
 pub struct AutoFinishEncoder<W: Write> {
     // We wrap this in an option to take it during drop.
     encoder: Option<Encoder<W>>,
+
     // TODO: make this a FnOnce once it works in a Box
     on_finish: Option<Box<FnMut(io::Result<W>)>>,
 }
@@ -114,16 +99,9 @@ impl<W: Write> Encoder<W> {
         level: i32,
         dictionary: &[u8],
     ) -> io::Result<Self> {
-        let mut context = zstd_safe::create_cstream();
-
-        // Initialize the stream with an existing dictionary
-        parse_code(zstd_safe::init_cstream_using_dict(
-            &mut context,
-            dictionary,
-            level,
-        ))?;
-
-        Encoder::with_context(writer, context)
+        let encoder = raw::Encoder::with_dictionary(level, dictionary)?;
+        let writer = zio::Writer::new(writer, encoder);
+        Ok(Encoder { writer })
     }
 
     /// Creates a new encoder, using an existing prepared `EncoderDictionary`.
@@ -134,15 +112,9 @@ impl<W: Write> Encoder<W> {
         writer: W,
         dictionary: &EncoderDictionary,
     ) -> io::Result<Self> {
-        let mut context = zstd_safe::create_cstream();
-
-        // Initialize the stream with an existing dictionary
-        parse_code(zstd_safe::init_cstream_using_cdict(
-            &mut context,
-            dictionary.as_cdict(),
-        ))?;
-
-        Encoder::with_context(writer, context)
+        let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
+        let writer = zio::Writer::new(writer, encoder);
+        Ok(Encoder { writer })
     }
 
     /// Returns a wrapper around `self` that will finish the stream on drop.
@@ -166,26 +138,9 @@ impl<W: Write> Encoder<W> {
         AutoFinishEncoder::new(self, f)
     }
 
-    fn with_context(
-        writer: W,
-        context: zstd_safe::CStream,
-    ) -> io::Result<Self> {
-        // This is the output buffer size,
-        // for compressed data we get from zstd.
-        let buffer_size = zstd_safe::cstream_out_size();
-
-        Ok(Encoder {
-            writer,
-            buffer: Vec::with_capacity(buffer_size),
-            offset: 0,
-            context,
-            state: EncoderState::Accepting,
-        })
-    }
-
     /// Acquires a reference to the underlying writer.
     pub fn get_ref(&self) -> &W {
-        &self.writer
+        self.writer.writer()
     }
 
     /// Acquires a mutable reference to the underlying writer.
@@ -193,7 +148,7 @@ impl<W: Write> Encoder<W> {
     /// Note that mutation of the writer may result in surprising results if
     /// this encoder is continued to be used.
     pub fn get_mut(&mut self) -> &mut W {
-        &mut self.writer
+        self.writer.writer_mut()
     }
 
     /// **Required**: Finishes the stream.
@@ -208,10 +163,8 @@ impl<W: Write> Encoder<W> {
     /// **Note**: If you don't want (or can't) call `finish()` manually after
     ///           writing your data, consider using `auto_finish()` to get an
     ///           `AutoFinishEncoder`.
-    pub fn finish(mut self) -> io::Result<W> {
-        self.do_finish()?;
-        // Return the writer, because why not
-        Ok(self.writer)
+    pub fn finish(self) -> io::Result<W> {
+        self.try_finish().map_err(|(_, err)| err)
     }
 
     /// **Required**: Attempts to finish the stream.
@@ -225,151 +178,26 @@ impl<W: Write> Encoder<W> {
     /// `write` on this object will panic after `try_finish` has been called,
     /// even if it fails.
     pub fn try_finish(mut self) -> Result<W, (Self, io::Error)> {
-        match self.do_finish() {
-            Ok(()) => Ok(self.writer),
+        match self.writer.finish() {
+            // Return the writer, because why not
+            Ok(()) => Ok(self.writer.into_inner().0),
             Err(e) => Err((self, e)),
         }
-    }
-
-    /// Expands the buffer before writing there.
-    unsafe fn expand_buffer(&mut self) {
-        let capacity = self.buffer.capacity();
-        self.buffer.set_len(capacity);
-    }
-
-    fn do_finish(&mut self) -> io::Result<()> {
-        if self.state == EncoderState::Accepting {
-            // Write any data pending in `self.buffer`.
-            self.write_from_offset()?;
-            self.state = EncoderState::Finished;
-        }
-
-        if self.state == EncoderState::Finished {
-            // First, closes the stream.
-            let (pos, remaining) = {
-                unsafe {
-                    self.expand_buffer();
-                }
-                let mut buffer = zstd_safe::OutBuffer {
-                    dst: &mut self.buffer,
-                    pos: 0,
-                };
-                let code = parse_code(zstd_safe::end_stream(
-                    &mut self.context,
-                    &mut buffer,
-                ))?;
-                (buffer.pos, code)
-            };
-            unsafe {
-                self.buffer.set_len(pos);
-            }
-            if remaining != 0 {
-                // Need to flush?
-                panic!("Need to flush, but I'm lazy.");
-            }
-            self.offset = 0;
-            self.state = EncoderState::StreamEnd;
-        }
-
-        self.write_from_offset()?;
-
-        Ok(())
     }
 
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
         zstd_safe::cstream_in_size()
     }
-
-    /// write_all, except keep track of partial writes for non-blocking IO.
-    fn write_from_offset(&mut self) -> io::Result<()> {
-        while self.offset < self.buffer.len() {
-            match self.writer.write(&self.buffer[self.offset..]) {
-                Ok(n) => self.offset += n,
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => (),
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
-    }
 }
 
 impl<W: Write> Write for Encoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if self.state != EncoderState::Accepting {
-            panic!("write called after try_finish attempted");
-        }
-
-        loop {
-            // Write any data pending in `self.buffer`.
-            self.write_from_offset()?;
-
-            // If we get to here, `self.buffer` can safely be discarded.
-
-            // Time to fill our output buffer
-            let (in_pos, out_pos, code) = {
-                unsafe {
-                    self.expand_buffer();
-                }
-                let mut in_buffer = zstd_safe::InBuffer { src: buf, pos: 0 };
-
-                let mut out_buffer = zstd_safe::OutBuffer {
-                    dst: &mut self.buffer,
-                    pos: 0,
-                };
-
-                let code = zstd_safe::compress_stream(
-                    &mut self.context,
-                    &mut out_buffer,
-                    &mut in_buffer,
-                );
-
-                (in_buffer.pos, out_buffer.pos, code)
-            };
-            unsafe {
-                // Note: this may very well be empty,
-                // if it doesn't exceed zstd's own buffer
-                self.buffer.set_len(out_pos);
-            }
-
-            // Do we care about the hint?
-            let _ = parse_code(code)?;
-            self.offset = 0;
-
-            if in_pos > 0 || buf.is_empty() {
-                return Ok(in_pos);
-            }
-        }
+        self.writer.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        if self.state == EncoderState::Accepting {
-            self.write_from_offset()?;
-
-            let (pos, code) = {
-                unsafe {
-                    self.expand_buffer();
-                }
-                let mut buffer = zstd_safe::OutBuffer {
-                    dst: &mut self.buffer,
-                    pos: 0,
-                };
-
-                let code =
-                    zstd_safe::flush_stream(&mut self.context, &mut buffer);
-
-                (buffer.pos, code)
-            };
-
-            unsafe {
-                self.buffer.set_len(pos);
-            }
-            let _ = parse_code(code)?;
-            self.offset = 0;
-        }
-
-        self.write_from_offset()?;
-        Ok(())
+        self.writer.flush()
     }
 }
 
@@ -436,8 +264,11 @@ mod tests {
         // Fill in enough data to make sure the buffer gets written out.
         z.write(input_data).unwrap();
 
-        // At this point, the internal buffer in z should have some data.
-        assert_ne!(z.offset, z.buffer.len());
+        {
+            let inner = &mut z.writer;
+            // At this point, the internal buffer in z should have some data.
+            assert_ne!(inner.offset(), inner.buffer().len());
+        }
 
         z
     }

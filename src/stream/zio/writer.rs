@@ -76,6 +76,7 @@ where
                 self.with_full_buffer(|dst, op| op.finish(dst, finished_frame))
             };
             self.offset = 0;
+            // println!("Hint: {:?}\nOut:{:?}", hint, &self.buffer);
 
             // We return here if zstd had a problem.
             // Could happen with invalid data, ...
@@ -140,6 +141,28 @@ where
     pub fn into_inner(self) -> (W, D) {
         (self.writer, self.operation)
     }
+
+    /// Gives a reference to the inner writer.
+    pub fn writer(&self) -> &W {
+        &self.writer
+    }
+
+    /// Gives a mutable reference to the inner writer.
+    pub fn writer_mut(&mut self) -> &mut W {
+        &mut self.writer
+    }
+
+    /// Returns the offset in the current buffer. Only useful for debugging.
+    #[cfg(test)]
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Returns the current buffer. Only useful for debugging.
+    #[cfg(test)]
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
+    }
 }
 
 impl<W, D> Write for Writer<W, D>
@@ -187,7 +210,7 @@ where
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut finished = false;
+        let mut finished = self.finished;
         loop {
             // If the output is blocked or has an error, return now.
             self.write_from_offset()?;

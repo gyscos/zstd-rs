@@ -60,6 +60,26 @@ impl<R, D> Reader<R, D> {
         self.reader
     }
 }
+// Read and retry on Interrupted errors.
+fn fill_buf<R>(reader: &mut R) -> io::Result<&[u8]>
+where
+    R: BufRead,
+{
+    // This doesn't work right now because of the borrow-checker.
+    // When it can be made to compile, it would allow Reader to automatically
+    // retry on `Interrupted` error.
+    /*
+    loop {
+        match reader.fill_buf() {
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
+            otherwise => return otherwise,
+        }
+    }
+    */
+
+    // Workaround for now
+    reader.fill_buf()
+}
 
 impl<R, D> Read for Reader<R, D>
 where
@@ -76,7 +96,7 @@ where
             let (bytes_read, bytes_written) = {
                 // Start with a fresh pool of un-processed data.
                 // This is the only line that can return an interuption error.
-                let input = self.reader.fill_buf()?;
+                let input = fill_buf(&mut self.reader)?;
 
                 // println!("{:?}", input);
 

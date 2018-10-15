@@ -56,8 +56,7 @@ where
     /// If you forget to call this and just drop the `Writer`, you *will* have
     /// an incomplete output.
     ///
-    /// If this method returns `Interrupted`, keep calling it until it returns
-    /// `Ok(())`, then don't call it again.
+    /// Keep calling it until it returns `Ok(())`, then don't call it again.
     pub fn finish(&mut self) -> io::Result<()> {
         loop {
             // Keep trying until we're really done.

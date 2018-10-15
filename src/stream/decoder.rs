@@ -86,18 +86,6 @@ impl<R: BufRead> Decoder<R> {
     pub fn finish(self) -> R {
         self.reader.into_inner()
     }
-
-    /*
-    // Read and retry on Interrupted errors.
-    fn read_with_retry(&mut self) -> Result<usize, io::Error> {
-        loop {
-            match self.reader.read(&mut self.buffer) {
-                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-                otherwise => return otherwise,
-            }
-        }
-    }
-        */
 }
 
 impl<R: BufRead> Read for Decoder<R> {
@@ -107,7 +95,7 @@ impl<R: BufRead> Read for Decoder<R> {
 }
 
 #[cfg(feature = "tokio")]
-impl<R: AsyncRead> AsyncRead for Decoder<R> {
+impl<R: AsyncRead + BufRead> AsyncRead for Decoder<R> {
     unsafe fn prepare_uninitialized_buffer(&self, _buf: &mut [u8]) -> bool {
         false
     }
@@ -125,9 +113,7 @@ fn _assert_traits() {
 #[cfg(feature = "tokio")]
 mod async_tests {
     use futures::Future;
-    use partial_io::{
-        GenInterruptedWouldBlock, PartialAsyncRead, PartialWithErrors,
-    };
+    use partial_io::{GenWouldBlock, PartialAsyncRead, PartialWithErrors};
     use quickcheck::quickcheck;
     use std::io::{self, Cursor};
     use tokio_io::{io as tokio_io, AsyncRead, AsyncWrite};
@@ -149,7 +135,11 @@ mod async_tests {
     fn test_async_read_partial() {
         quickcheck(test as fn(_) -> _);
 
-        fn test(encode_ops: PartialWithErrors<GenInterruptedWouldBlock>) {
+        // This used to test for Interrupted errors as well.
+        // But right now a solution to silently ignore Interrupted error
+        // would not compile.
+        // Plus, it's still not clear it's a good idea.
+        fn test(encode_ops: PartialWithErrors<GenWouldBlock>) {
             use stream::encode_all;
 
             let source = "abc".repeat(1024 * 10).into_bytes();

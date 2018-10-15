@@ -185,6 +185,14 @@ impl<W: Write> Encoder<W> {
         }
     }
 
+    /// Attemps to finish the stream.
+    ///
+    /// You *need* to finish the stream when you're done writing, either with
+    /// this method or with [`finish(self)`](#method.finish).
+    pub fn do_finish(&mut self) -> io::Result<()> {
+        self.writer.finish()
+    }
+
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
         zstd_safe::cstream_in_size()
@@ -205,7 +213,7 @@ impl<W: Write> Write for Encoder<W> {
 impl<W: AsyncWrite> AsyncWrite for Encoder<W> {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         try_nb!(self.do_finish());
-        self.writer.shutdown()
+        self.writer.writer_mut().shutdown()
     }
 }
 

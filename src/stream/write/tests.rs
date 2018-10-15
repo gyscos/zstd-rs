@@ -1,7 +1,30 @@
-use super::Encoder;
-use partial_io::{PartialOp, PartialWrite};
+use std::io::{Cursor, Write};
 use std::iter;
+
+use partial_io::{PartialOp, PartialWrite};
+
 use stream::decode_all;
+use stream::write::{Decoder, Encoder};
+
+#[test]
+fn test_cycle() {
+    let input = b"Abcdefghabcdefgh";
+
+    let buffer = Cursor::new(Vec::new());
+    let mut encoder = Encoder::new(buffer, 1).unwrap();
+    encoder.write_all(input).unwrap();
+    let encoded = encoder.finish().unwrap().into_inner();
+
+    // println!("Encoded: {:?}", encoded);
+
+    let buffer = Cursor::new(Vec::new());
+    let mut decoder = Decoder::new(buffer).unwrap();
+    decoder.write_all(&encoded).unwrap();
+    decoder.flush().unwrap();
+    let decoded = decoder.into_inner().into_inner();
+
+    assert_eq!(input, &decoded[..]);
+}
 
 /// Test that flush after a partial write works successfully without
 /// corrupting the frame. This test is in this module because it checks

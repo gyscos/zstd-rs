@@ -12,6 +12,9 @@ use zstd_safe;
 #[cfg(feature = "tokio")]
 mod async_tests;
 
+#[cfg(test)]
+mod tests;
+
 /// A decoder that decompress input data from another `Read`.
 ///
 /// This allows to read a stream of compressed data

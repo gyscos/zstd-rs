@@ -192,7 +192,7 @@ where
             };
             let bytes_read = src.pos;
 
-            // println!("Read {}; Wrote {}", bytes_read, bytes_written);
+            // println!("Hint: {:?}\nRead {}", hint, bytes_read);
 
             self.offset = 0;
             let hint = hint?;
@@ -203,6 +203,7 @@ where
 
             // As we said, as soon as we've consumed something, return.
             if bytes_read > 0 || buf.is_empty() {
+                // println!("Returning {}", bytes_read);
                 return Ok(bytes_read);
             }
         }

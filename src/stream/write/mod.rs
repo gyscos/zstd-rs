@@ -273,6 +273,11 @@ impl<W: Write> Decoder<W> {
         self.writer.writer_mut()
     }
 
+    /// Returns the inner `Write`.
+    pub fn into_inner(self) -> W {
+        self.writer.into_inner().0
+    }
+
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
         zstd_safe::cstream_in_size()

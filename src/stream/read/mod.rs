@@ -1,11 +1,16 @@
+//! Types which operate over `Read` streams.
 use std::io::{self, BufRead, BufReader, Read};
 
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncRead;
 
-use dict::DecoderDictionary;
+use dict::{DecoderDictionary, EncoderDictionary};
 use stream::{raw, zio};
 use zstd_safe;
+
+#[cfg(test)]
+#[cfg(feature = "tokio")]
+mod async_tests;
 
 /// A decoder that decompress input data from another `Read`.
 ///
@@ -13,6 +18,11 @@ use zstd_safe;
 /// (good for files or heavy network stream).
 pub struct Decoder<R: BufRead> {
     reader: zio::Reader<R, raw::Decoder>,
+}
+
+/// An encoder that compress input data from another `Read`.
+pub struct Encoder<R: BufRead> {
+    reader: zio::Reader<R, raw::Encoder>,
 }
 
 impl<R: Read> Decoder<BufReader<R>> {
@@ -101,66 +111,93 @@ impl<R: AsyncRead + BufRead> AsyncRead for Decoder<R> {
     }
 }
 
+impl<R: Read> Encoder<BufReader<R>> {
+    /// Creates a new encoder.
+    pub fn new(reader: R, level: i32) -> io::Result<Self> {
+        let buffer_size = zstd_safe::dstream_in_size();
+
+        Self::with_buffer(BufReader::with_capacity(buffer_size, reader), level)
+    }
+}
+
+impl<R: BufRead> Encoder<R> {
+    /// Creates a new encoder around a `BufRead`.
+    pub fn with_buffer(reader: R, level: i32) -> io::Result<Self> {
+        Self::with_dictionary(reader, level, &[])
+    }
+
+    /// Creates a new encoder, using an existing dictionary.
+    ///
+    /// The dictionary must be the same as the one used during compression.
+    pub fn with_dictionary(
+        reader: R,
+        level: i32,
+        dictionary: &[u8],
+    ) -> io::Result<Self> {
+        let encoder = raw::Encoder::with_dictionary(level, dictionary)?;
+        let reader = zio::Reader::new(reader, encoder);
+
+        Ok(Encoder { reader })
+    }
+
+    /// Creates a new encoder, using an existing `EncoderDictionary`.
+    ///
+    /// The dictionary must be the same as the one used during compression.
+    pub fn with_prepared_dictionary(
+        reader: R,
+        dictionary: &EncoderDictionary,
+    ) -> io::Result<Self> {
+        let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
+        let reader = zio::Reader::new(reader, encoder);
+
+        Ok(Encoder { reader })
+    }
+
+    /// Recommendation for the size of the output buffer.
+    pub fn recommended_output_size() -> usize {
+        zstd_safe::dstream_out_size()
+    }
+
+    /// Acquire a reference to the underlying reader.
+    pub fn get_ref(&self) -> &R {
+        self.reader.reader()
+    }
+
+    /// Acquire a mutable reference to the underlying reader.
+    ///
+    /// Note that mutation of the reader may result in surprising results if
+    /// this encoder is continued to be used.
+    pub fn get_mut(&mut self) -> &mut R {
+        self.reader.reader_mut()
+    }
+
+    /// Return the inner `Read`.
+    ///
+    /// Calling `finish()` is not *required* after reading a stream -
+    /// just use it if you need to get the `Read` back.
+    pub fn finish(self) -> R {
+        self.reader.into_inner()
+    }
+}
+
+impl<R: BufRead> Read for Encoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.reader.read(buf)
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl<R: AsyncRead + BufRead> AsyncRead for Encoder<R> {
+    unsafe fn prepare_uninitialized_buffer(&self, _buf: &mut [u8]) -> bool {
+        false
+    }
+}
+
 fn _assert_traits() {
     use std::io::Cursor;
 
     fn _assert_send<T: Send>(_: T) {}
 
     _assert_send(Decoder::new(Cursor::new(Vec::new())));
-}
-
-#[cfg(test)]
-#[cfg(feature = "tokio")]
-mod async_tests {
-    use futures::Future;
-    use partial_io::{GenWouldBlock, PartialAsyncRead, PartialWithErrors};
-    use quickcheck::quickcheck;
-    use std::io::{self, Cursor};
-    use tokio_io::{io as tokio_io, AsyncRead, AsyncWrite};
-
-    #[test]
-    fn test_async_read() {
-        use stream::encode_all;
-
-        let source = "abc".repeat(1024 * 10).into_bytes();
-        let encoded = encode_all(&source[..], 1).unwrap();
-        let writer =
-            test_async_read_worker(&encoded[..], Cursor::new(Vec::new()))
-                .unwrap();
-        let output = writer.into_inner();
-        assert_eq!(source, output);
-    }
-
-    #[test]
-    fn test_async_read_partial() {
-        quickcheck(test as fn(_) -> _);
-
-        // This used to test for Interrupted errors as well.
-        // But right now a solution to silently ignore Interrupted error
-        // would not compile.
-        // Plus, it's still not clear it's a good idea.
-        fn test(encode_ops: PartialWithErrors<GenWouldBlock>) {
-            use stream::encode_all;
-
-            let source = "abc".repeat(1024 * 10).into_bytes();
-            let encoded = encode_all(&source[..], 1).unwrap();
-            let reader = PartialAsyncRead::new(&encoded[..], encode_ops);
-            let writer =
-                test_async_read_worker(reader, Cursor::new(Vec::new()))
-                    .unwrap();
-            let output = writer.into_inner();
-            assert_eq!(source, output);
-        }
-    }
-
-    fn test_async_read_worker<R: AsyncRead, W: AsyncWrite>(
-        r: R,
-        w: W,
-    ) -> io::Result<W> {
-        use super::Decoder;
-
-        let decoder = Decoder::new(r).unwrap();
-        let (_, _, w) = tokio_io::copy(decoder, w).wait()?;
-        Ok(w)
-    }
+    _assert_send(Encoder::new(Cursor::new(Vec::new()), 1));
 }

@@ -5,8 +5,8 @@
 //!
 //! They are compatible with the `zstd` command-line tool.
 
-mod decoder;
-mod encoder;
+pub mod read;
+pub mod write;
 
 mod functions;
 pub mod zio;
@@ -16,6 +16,6 @@ mod tests;
 
 pub mod raw;
 
-pub use self::decoder::Decoder;
-pub use self::encoder::{AutoFinishEncoder, Encoder};
 pub use self::functions::{copy_decode, copy_encode, decode_all, encode_all};
+pub use self::read::Decoder;
+pub use self::write::{AutoFinishEncoder, Encoder};

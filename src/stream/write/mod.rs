@@ -1,4 +1,4 @@
-//! Types which operate over `Write` streams.
+//! Implement push-based [`Write`] trait for both compressing and decompressing.
 use std::io::{self, Write};
 
 #[cfg(feature = "tokio")]

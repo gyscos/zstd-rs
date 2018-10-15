@@ -1,9 +1,10 @@
 //! Compress and decompress Zstd streams.
 //!
-//! This module provide a `Read`/`Write` interface
-//! to zstd streams of arbitrary length.
-//!
+//! Zstd streams are the main way to compress and decompress data.
 //! They are compatible with the `zstd` command-line tool.
+//!
+//! This module provides both `Read` and `Write` interfaces to compressing and
+//! decompressing.
 
 pub mod read;
 pub mod write;

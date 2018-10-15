@@ -1,4 +1,4 @@
-//! Types which operate over `Read` streams.
+//! Implement pull-based [`Read`] trait for both compressing and decompressing.
 use std::io::{self, BufRead, BufReader, Read};
 
 #[cfg(feature = "tokio")]

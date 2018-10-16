@@ -81,7 +81,7 @@ where
             // Could happen with invalid data, ...
             let hint = hint?;
 
-            if hint != 0 && self.buffer.len() == 0 {
+            if hint != 0 && self.buffer.is_empty() {
                 // This happens if we are decoding an incomplete frame.
                 return Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,

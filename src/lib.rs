@@ -29,10 +29,6 @@ extern crate partial_io;
 
 extern crate zstd_safe;
 
-pub mod block;
-pub mod dict;
-pub mod stream;
-
 #[cfg(feature = "tokio")]
 #[macro_use]
 extern crate tokio_io;
@@ -41,7 +37,12 @@ extern crate futures;
 #[cfg(all(test, feature = "tokio"))]
 extern crate quickcheck;
 
+pub mod block;
+pub mod dict;
+pub mod stream;
+
 use std::io;
+
 #[doc(no_inline)]
 pub use stream::{decode_all, encode_all, Decoder, Encoder};
 
@@ -49,7 +50,7 @@ pub use stream::{decode_all, encode_all, Decoder, Encoder};
 ///
 /// Returns the number of bytes written if the code represents success,
 /// or the error message otherwise.
-fn parse_code(code: usize) -> Result<usize, io::Error> {
+fn parse_code(code: usize) -> io::Result<usize> {
     if zstd_safe::is_error(code) == 0 {
         Ok(code)
     } else {

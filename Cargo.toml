@@ -7,7 +7,7 @@ categories = ["compression", "api-bindings"]
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "0.4.20+zstd.1.3.6"
+version ="0.4.21+zstd.1.3.7"
 exclude = ["assets/**"]
 readme = "Readme.md"
 

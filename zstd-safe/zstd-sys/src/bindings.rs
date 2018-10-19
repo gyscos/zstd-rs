@@ -2,8 +2,8 @@
 
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 3;
-pub const ZSTD_VERSION_RELEASE: u32 = 6;
-pub const ZSTD_VERSION_NUMBER: u32 = 10306;
+pub const ZSTD_VERSION_RELEASE: u32 = 7;
+pub const ZSTD_VERSION_NUMBER: u32 = 10307;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_CONTENTSIZE_UNKNOWN: i32 = -1;
 pub const ZSTD_CONTENTSIZE_ERROR: i32 = -2;

@@ -227,6 +227,17 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_compatibility() {
+        let input = include_bytes!("../../assets/example.txt.zst");
+
+        let output = decode_all(&input[..]).unwrap();
+
+        let expected = include_bytes!("../../assets/example.txt");
+
+        assert_eq!(&output[..], &expected[..]);
+    }
+
+    #[test]
     fn test_legacy() {
         use std::fs;
         use std::io::Read;

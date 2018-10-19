@@ -1,1 +1,1 @@
-/assets -text -crlf
+/assets/* -text -crlf

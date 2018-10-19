@@ -1,7 +1,7 @@
 #[cfg(feature = "bindgen")]
 extern crate bindgen;
 
-extern crate gcc;
+extern crate cc;
 extern crate glob;
 
 use std::path::PathBuf;
@@ -35,23 +35,23 @@ fn generate_bindings() {
 fn generate_bindings() {}
 
 #[cfg(not(feature = "legacy"))]
-fn set_legacy(_config: &mut gcc::Build) {}
+fn set_legacy(_config: &mut cc::Build) {}
 
 #[cfg(feature = "legacy")]
-fn set_legacy(config: &mut gcc::Build) {
+fn set_legacy(config: &mut cc::Build) {
     config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
 }
 
 #[cfg(feature = "zstdmt")]
-fn set_pthread(config: &mut gcc::Build) {
+fn set_pthread(config: &mut cc::Build) {
     config.flag("-pthread");
 }
 
 #[cfg(not(feature = "zstdmt"))]
-fn set_pthread(_config: &mut gcc::Build) {}
+fn set_pthread(_config: &mut cc::Build) {}
 
 fn compile_zstd() {
-    let mut config = gcc::Build::new();
+    let mut config = cc::Build::new();
 
     let globs = &[
         "zstd/lib/common/*.c",

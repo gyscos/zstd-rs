@@ -91,7 +91,7 @@ mod tests {
         let mut dec = Decoder::new(&compressed[..]).unwrap().single_frame();
         let mut buf = Vec::new();
         dec.read_to_end(&mut buf).unwrap();
-        assert_eq!(&buf, b"foo");
+        assert_eq!(&buf, b"foo", "Error decoding a single frame.");
     }
 
     #[test]
@@ -101,7 +101,11 @@ mod tests {
         copy_encode(&b"bar"[..], &mut buffer, 2).unwrap();
         copy_encode(&b"baz"[..], &mut buffer, 3).unwrap();
 
-        assert_eq!(&decode_all(&buffer[..]).unwrap(), b"foobarbaz");
+        assert_eq!(
+            &decode_all(&buffer[..]).unwrap(),
+            b"foobarbaz",
+            "Error decoding concatenated frames."
+        );
     }
 
     #[test]
@@ -117,8 +121,7 @@ mod tests {
         let buf = z.finish().unwrap();
 
         let s = decode_all(&buf[..]).unwrap();
-        let s = ::std::str::from_utf8(&s).unwrap();
-        assert_eq!(s, "hello");
+        assert_eq!(s, b"hello", "Error decoding after flush.");
     }
 
     #[test]
@@ -138,7 +141,7 @@ mod tests {
 
         // Make sure the multiple try_finish calls didn't screw up the internal
         // buffer and continued to produce valid compressed data.
-        assert_eq!(&decode_all(&buf[..]).unwrap(), b"hello");
+        assert_eq!(&decode_all(&buf[..]).unwrap(), b"hello", "Error decoding");
     }
 
     #[test]
@@ -162,7 +165,11 @@ mod tests {
             .set_ops(iter::repeat(PartialOp::Err(io::ErrorKind::WouldBlock)));
 
         let (z, err) = z.try_finish().unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(
+            err.kind(),
+            io::ErrorKind::WouldBlock,
+            "expected WouldBlock error"
+        );
 
         z
     }
@@ -178,21 +185,30 @@ mod tests {
         let mut z = Encoder::new(buf, 1).unwrap();
 
         // Fill in enough data to make sure the buffer gets written out.
-        let input = "b".repeat(128 * 1024).into_bytes();
+        let input = vec![b'b'; 128 * 1024];
         // This should work even though the inner writer rejects writes.
-        assert_eq!(z.write(&input).unwrap(), 128 * 1024);
+        assert_eq!(
+            z.write(&input).unwrap(),
+            128 * 1024,
+            "did not write all input buffer"
+        );
 
         // The next write would fail (the buffer still has some data in it).
         assert_eq!(
             z.write(b"abc").unwrap_err().kind(),
-            io::ErrorKind::WouldBlock
+            io::ErrorKind::WouldBlock,
+            "expected WouldBlock error"
         );
 
         z.get_mut().set_ops(iter::repeat(PartialOp::Unlimited));
 
         // This shouldn't have led to any corruption.
         let buf = z.finish().unwrap().into_inner();
-        assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
+        assert_eq!(
+            &decode_all(&buf[..]).unwrap(),
+            &input,
+            "WouldBlock errors should not corrupt stream"
+        );
     }
 
     #[test]
@@ -204,7 +220,8 @@ mod tests {
         let mut dec = Decoder::new(&data[..]).unwrap();
         assert_eq!(
             dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
-            Some(io::ErrorKind::Other)
+            Some(io::ErrorKind::Other),
+            "did not encounter expected 'invalid frame' error"
         );
     }
 
@@ -222,7 +239,8 @@ mod tests {
         let mut dec = Decoder::new(&compressed[..]).unwrap();
         assert_eq!(
             dec.read_to_end(&mut Vec::new()).err().map(|e| e.kind()),
-            Some(io::ErrorKind::UnexpectedEof)
+            Some(io::ErrorKind::UnexpectedEof),
+            "did not encounter expected EOF error"
         );
     }
 
@@ -234,21 +252,21 @@ mod tests {
 
         let expected = include_bytes!("../../assets/example.txt");
 
-        assert_eq!(&output[..], &expected[..]);
+        assert_eq!(
+            &output[..],
+            &expected[..],
+            "error decoding cli-compressed data"
+        );
     }
 
+    #[cfg(feature = "legacy")]
     #[test]
     fn test_legacy() {
         use std::fs;
         use std::io::Read;
 
-        let mut target = Vec::new();
-
         // Read the content from that file
-        fs::File::open("assets/example.txt")
-            .unwrap()
-            .read_to_end(&mut target)
-            .unwrap();
+        let expected = include_bytes!("../../assets/example.txt");
 
         for version in &[5, 6, 7, 8] {
             let filename = format!("assets/example.txt.v{}.zst", version);
@@ -258,9 +276,10 @@ mod tests {
             let mut buffer = Vec::new();
             decoder.read_to_end(&mut buffer).unwrap();
 
-            assert!(
-                target == buffer,
-                "Error decompressing legacy version {}",
+            assert_eq!(
+                &expected[..],
+                &buffer[..],
+                "error decompressing legacy version {}",
                 version
             );
         }

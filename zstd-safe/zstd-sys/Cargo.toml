@@ -20,12 +20,16 @@ version = "1.4.5+zstd.1.3.6"
 
 [build-dependencies]
 blob = "0.2.0"
-cc = { version = "1.0", features = ["parallel"] }
 glob = "0.2.11"
 
 [build-dependencies.bindgen]
 optional = true
 version = "0.42"
+
+[build-dependencies.cc]
+version = "1.0"
+features = ["parallel"]
+
 
 [dependencies]
 libc = "0.2.21"

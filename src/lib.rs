@@ -43,6 +43,9 @@ pub mod stream;
 
 use std::io;
 
+/// Default compression level.
+pub use zstd_safe::CLEVEL_DEFAULT as DEFAULT_COMPRESSION_LEVEL;
+
 #[doc(no_inline)]
 pub use stream::{decode_all, encode_all, Decoder, Encoder};
 

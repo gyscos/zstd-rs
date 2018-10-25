@@ -50,6 +50,8 @@ pub const VERSION_MAJOR: u32 = zstd_sys::ZSTD_VERSION_MAJOR;
 pub const VERSION_MINOR: u32 = zstd_sys::ZSTD_VERSION_MINOR;
 pub const VERSION_RELEASE: u32 = zstd_sys::ZSTD_VERSION_RELEASE;
 pub const VERSION_NUMBER: u32 = zstd_sys::ZSTD_VERSION_NUMBER;
+
+/// Default compression level.
 pub const CLEVEL_DEFAULT: i32 = zstd_sys::ZSTD_CLEVEL_DEFAULT as i32;
 pub const CONTENTSIZE_UNKNOWN: u64 = zstd_sys::ZSTD_CONTENTSIZE_UNKNOWN as u64;
 pub const CONTENTSIZE_ERROR: u64 = zstd_sys::ZSTD_CONTENTSIZE_ERROR as u64;

@@ -1011,7 +1011,7 @@ fn bindgen_test_layout_ZSTD_customMem() {
 }
 extern "C" {
     #[link_name = "\u{1}ZSTD_defaultCMem"]
-    pub static mut ZSTD_defaultCMem: ZSTD_customMem;
+    pub static ZSTD_defaultCMem: ZSTD_customMem;
 }
 extern "C" {
     pub fn ZSTD_createCCtx_advanced(

@@ -950,8 +950,6 @@ pub fn reset_dstream(zds: &mut DStream) -> usize {
     unsafe { zstd_sys::ZSTD_resetDStream(zds.0) }
 }
 
-pub type Unsigned = c_uint;
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FrameFormat {
     /// zstd frame format, specified in zstd_compression_format.md (default)
@@ -973,7 +971,7 @@ pub enum CParameter {
     /// Default level is ZSTD_CLEVEL_DEFAULT==3.
     ///
     /// Special: value 0 means "do not change cLevel".
-    CompressionLevel(Unsigned),
+    CompressionLevel(u32),
 
     /// Maximum allowed back-reference distance, expressed as power of 2.
     ///
@@ -983,7 +981,7 @@ pub enum CParameter {
     ///
     /// Note: Using a window size greater than ZSTD_MAXWINDOWSIZE_DEFAULT (default: 2^27)
     ///   requires setting the maximum window size at least as large during decompression.
-    WindowLog(Unsigned),
+    WindowLog(u32),
 
     /// Size of the probe table, as a power of 2.
     ///
@@ -994,7 +992,7 @@ pub enum CParameter {
     /// and improve speed of strategies > dFast.
     ///
     /// Special: value 0 means "do not change hashLog".
-    HashLog(Unsigned),
+    HashLog(u32),
 
     /// Size of the full-search table, as a power of 2.
     ///
@@ -1003,7 +1001,7 @@ pub enum CParameter {
     /// This parameter is useless when using "fast" strategy.
     ///
     /// Special: value 0 means "do not change chainLog".
-    ChainLog(Unsigned),
+    ChainLog(u32),
 
     /// Number of search attempts, as a power of 2.
     ///
@@ -1011,7 +1009,7 @@ pub enum CParameter {
     /// This parameter is useless when using "fast" and "dFast" strategies.
     ///
     /// Special: value 0 means "do not change searchLog".
-    SearchLog(Unsigned),
+    SearchLog(u32),
 
     /// Minimum size of searched matches (note : repCode matches can be smaller).
     ///
@@ -1023,7 +1021,7 @@ pub enum CParameter {
     /// Note that currently, for all strategies > fast, effective maximum is 6.
     ///
     /// Special: value 0 means "do not change minMatchLength".
-    MinMatch(Unsigned),
+    MinMatch(u32),
 
     /// Only useful for strategies >= btopt.
     ///
@@ -1031,7 +1029,7 @@ pub enum CParameter {
     /// Larger values make compression stronger and slower.
     ///
     /// Special: value 0 means "do not change targetLength".
-    TargetLength(Unsigned),
+    TargetLength(u32),
 
     /// Content size will be written into frame header _whenever known_ (default:1)
     ///
@@ -1051,7 +1049,7 @@ pub enum CParameter {
     ///
     /// Special: value 0 means "do not change nbThreads"
     #[cfg(feature = "zstdmt")]
-    ThreadCount(Unsigned),
+    ThreadCount(u32),
 
     /// Size of a compression job. This value is only enforced in streaming (non-blocking) mode.
     ///
@@ -1062,13 +1060,13 @@ pub enum CParameter {
     ///
     /// The minimum size is automatically and transparently enforced
     #[cfg(feature = "zstdmt")]
-    JobSize(Unsigned),
+    JobSize(u32),
 
     /// Size of previous input reloaded at the beginning of each job.
     ///
     /// 0 => no overlap, 6(default) => use 1/8th of windowSize, >=9 => use full windowSize
     #[cfg(feature = "zstdmt")]
-    OverlapSizeLog(Unsigned),
+    OverlapSizeLog(u32),
     // CompressionStrategy, and parameters marked as "advanced", are currently missing on purpose,
     // as they will see the most API churn.
 }
@@ -1085,11 +1083,11 @@ pub fn cctx_set_parameter(cctx: &mut CCtx, param: CParameter) -> usize {
     let (param, value) = match param {
         Format(FrameFormat::One) => (
             ZSTD_cParameter::ZSTD_p_format,
-            ZSTD_format_e::ZSTD_f_zstd1 as Unsigned,
+            ZSTD_format_e::ZSTD_f_zstd1 as c_uint,
         ),
         Format(FrameFormat::Magicless) => (
             ZSTD_cParameter::ZSTD_p_format,
-            ZSTD_format_e::ZSTD_f_zstd1_magicless as Unsigned,
+            ZSTD_format_e::ZSTD_f_zstd1_magicless as c_uint,
         ),
         CompressionLevel(level) => {
             (ZSTD_cParameter::ZSTD_p_compressionLevel, level)

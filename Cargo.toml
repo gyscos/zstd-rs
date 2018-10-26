@@ -15,7 +15,7 @@ readme = "Readme.md"
 travis-ci = { repository = "gyscos/zstd-rs" }
 
 [dependencies]
-zstd-safe = { path="zstd-safe", version = "1.4.5", default-features = false, features=["std"] }
+zstd-safe = { path="zstd-safe", version = "1.4.5", default-features = false }
 tokio-io = { version = "0.1", optional = true }
 futures = { version = "0.1", optional = true }
 
@@ -31,3 +31,4 @@ default = ["legacy"]
 legacy = ["zstd-safe/legacy"]
 bindgen = ["zstd-safe/bindgen"]
 tokio = ["tokio-io", "futures", "partial-io/quickcheck", "partial-io/tokio"]
+wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc

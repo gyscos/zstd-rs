@@ -18,4 +18,4 @@ default = ["legacy"]
 legacy = ["zstd-sys/legacy"]
 bindgen = ["zstd-sys/bindgen"]
 zstdmt = ["zstd-sys/zstdmt"]
-std = ["zstd-sys/std"]
+std = ["zstd-sys/std"] # Use std instead of libc types - useful on wasm.

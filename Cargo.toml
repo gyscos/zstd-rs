@@ -15,7 +15,7 @@ readme = "Readme.md"
 travis-ci = { repository = "gyscos/zstd-rs" }
 
 [dependencies]
-zstd-safe = { path="zstd-safe", version = "1.4.5", default-features = false, features=["std"] }
+zstd-safe = { path="zstd-safe", version = "1.4.5", default-features = false }
 tokio-io = { version = "0.1", optional = true }
 futures = { version = "0.1", optional = true }
 
@@ -27,7 +27,8 @@ humansize = "1.0"
 walkdir = "2.2.5"
 
 [features]
-default = ["legacy"]
+default = ["legacy", "std"]
 legacy = ["zstd-safe/legacy"]
 bindgen = ["zstd-safe/bindgen"]
+std = ["zstd-safe/std"]
 tokio = ["tokio-io", "futures", "partial-io/quickcheck", "partial-io/tokio"]

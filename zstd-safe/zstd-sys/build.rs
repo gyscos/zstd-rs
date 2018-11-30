@@ -21,7 +21,7 @@ fn generate_bindings() {
         .clang_arg("-DZSTD_STATIC_LINKING_ONLY");
 
     #[cfg(not(feature = "std"))]
-    let bindings = bindings.ctypes_prefix("::libc");
+    let bindings = bindings.ctypes_prefix("libc");
 
     let bindings = bindings.generate().expect("Unable to generate bindings");
 

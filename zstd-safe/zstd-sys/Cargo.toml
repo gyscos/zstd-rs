@@ -24,7 +24,7 @@ glob = "0.2"
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.43"
+version = "0.44"
 
 [build-dependencies.cc]
 version = "1.0"

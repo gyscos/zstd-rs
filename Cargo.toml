@@ -21,8 +21,8 @@ futures = { version = "0.1", optional = true }
 
 [dev-dependencies]
 clap = "2.6.0"
-partial-io = "^0.2.1"
-quickcheck = "0.4"
+partial-io = "0.3"
+quickcheck = "0.7"
 humansize = "1.0"
 walkdir = "2.2.5"
 

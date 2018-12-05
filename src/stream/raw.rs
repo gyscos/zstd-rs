@@ -9,7 +9,7 @@ use std::io;
 use zstd_safe::{self, CStream, DStream, InBuffer, OutBuffer};
 
 use dict::{DecoderDictionary, EncoderDictionary};
-use parse_code;
+use map_error_code;
 
 /// Represents an abstract compression/decompression operation.
 ///
@@ -133,10 +133,10 @@ impl Decoder {
     /// Creates a new decoder initialized with the given dictionary.
     pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
         let mut context = zstd_safe::create_dstream();
-        parse_code(zstd_safe::init_dstream_using_dict(
+        zstd_safe::init_dstream_using_dict(
             &mut context,
             dictionary,
-        ))?;
+        ).map_err(map_error_code)?;
         Ok(Decoder { context })
     }
 
@@ -145,10 +145,10 @@ impl Decoder {
         dictionary: &DecoderDictionary,
     ) -> io::Result<Self> {
         let mut context = zstd_safe::create_dstream();
-        parse_code(zstd_safe::init_dstream_using_ddict(
+        zstd_safe::init_dstream_using_ddict(
             &mut context,
             dictionary.as_ddict(),
-        ))?;
+        ).map_err(map_error_code)?;
         Ok(Decoder { context })
     }
 }
@@ -159,15 +159,15 @@ impl Operation for Decoder {
         input: &mut InBuffer,
         output: &mut OutBuffer,
     ) -> io::Result<usize> {
-        parse_code(zstd_safe::decompress_stream(
+        zstd_safe::decompress_stream(
             &mut self.context,
             output,
             input,
-        ))
+        ).map_err(map_error_code)
     }
 
     fn reinit(&mut self) -> io::Result<()> {
-        parse_code(zstd_safe::reset_dstream(&mut self.context))?;
+        zstd_safe::reset_dstream(&mut self.context).map_err(map_error_code)?;
         Ok(())
     }
     fn finish(
@@ -200,11 +200,11 @@ impl Encoder {
     /// Creates a new encoder initialized with the given dictionary.
     pub fn with_dictionary(level: i32, dictionary: &[u8]) -> io::Result<Self> {
         let mut context = zstd_safe::create_cstream();
-        parse_code(zstd_safe::init_cstream_using_dict(
+        zstd_safe::init_cstream_using_dict(
             &mut context,
             dictionary,
             level,
-        ))?;
+        ).map_err(map_error_code)?;
         Ok(Encoder { context })
     }
 
@@ -213,10 +213,10 @@ impl Encoder {
         dictionary: &EncoderDictionary,
     ) -> io::Result<Self> {
         let mut context = zstd_safe::create_cstream();
-        parse_code(zstd_safe::init_cstream_using_cdict(
+        zstd_safe::init_cstream_using_cdict(
             &mut context,
             dictionary.as_cdict(),
-        ))?;
+        ).map_err(map_error_code)?;
         Ok(Encoder { context })
     }
 }
@@ -227,15 +227,15 @@ impl Operation for Encoder {
         input: &mut InBuffer,
         output: &mut OutBuffer,
     ) -> io::Result<usize> {
-        parse_code(zstd_safe::compress_stream(
+        zstd_safe::compress_stream(
             &mut self.context,
             output,
             input,
-        ))
+        ).map_err(map_error_code)
     }
 
     fn flush(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
-        parse_code(zstd_safe::flush_stream(&mut self.context, output))
+        zstd_safe::flush_stream(&mut self.context, output).map_err(map_error_code)
     }
 
     fn finish(
@@ -243,14 +243,14 @@ impl Operation for Encoder {
         output: &mut OutBuffer,
         _finished_frame: bool,
     ) -> io::Result<usize> {
-        parse_code(zstd_safe::end_stream(&mut self.context, output))
+        zstd_safe::end_stream(&mut self.context, output).map_err(map_error_code)
     }
 
     fn reinit(&mut self) -> io::Result<()> {
-        parse_code(zstd_safe::reset_cstream(
+        zstd_safe::reset_cstream(
             &mut self.context,
             zstd_safe::CONTENTSIZE_UNKNOWN,
-        ))?;
+        ).map_err(map_error_code)?;
         Ok(())
     }
 }

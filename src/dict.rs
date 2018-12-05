@@ -14,7 +14,7 @@
 //! [`Encoder::with_dictionary`]: ../struct.Encoder.html#method.with_dictionary
 //! [`Decoder::with_dictionary`]: ../struct.Decoder.html#method.with_dictionary
 
-use parse_code;
+use map_error_code;
 use std::fs;
 
 use std::io::{self, Read};
@@ -81,11 +81,11 @@ pub fn from_continuous(
     let mut result = Vec::with_capacity(max_size);
     unsafe {
         result.set_len(max_size);
-        let written = parse_code(zstd_safe::train_from_buffer(
+        let written = zstd_safe::train_from_buffer(
             &mut result,
             sample_data,
             sample_sizes,
-        ))?;
+        ).map_err(map_error_code)?;
         result.set_len(written);
     }
     Ok(result)

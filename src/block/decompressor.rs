@@ -1,4 +1,4 @@
-use parse_code;
+use map_error_code;
 
 use std::io;
 use zstd_safe;
@@ -35,15 +35,12 @@ impl Decompressor {
         source: &[u8],
         destination: &mut [u8],
     ) -> io::Result<usize> {
-        let code = {
-            zstd_safe::decompress_using_dict(
-                &mut self.context,
-                destination,
-                source,
-                &self.dict,
-            )
-        };
-        parse_code(code)
+        zstd_safe::decompress_using_dict(
+            &mut self.context,
+            destination,
+            source,
+            &self.dict,
+        ).map_err(map_error_code)
     }
 
     /// Decompress a block of data, and return the result in a `Vec<u8>`.

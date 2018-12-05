@@ -1,4 +1,4 @@
-use parse_code;
+use map_error_code;
 
 use std::io;
 use zstd_safe;
@@ -39,16 +39,13 @@ impl Compressor {
         destination: &mut [u8],
         level: i32,
     ) -> io::Result<usize> {
-        let code = {
             zstd_safe::compress_using_dict(
                 &mut self.context,
                 destination,
                 source,
                 &self.dict[..],
                 level,
-            )
-        };
-        parse_code(code)
+            ).map_err(map_error_code)
     }
 
     /// Compresses a block of data and returns the compressed result.

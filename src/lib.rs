@@ -49,18 +49,10 @@ pub use zstd_safe::CLEVEL_DEFAULT as DEFAULT_COMPRESSION_LEVEL;
 #[doc(no_inline)]
 pub use stream::{decode_all, encode_all, Decoder, Encoder};
 
-/// Parse the result code
-///
-/// Returns the number of bytes written if the code represents success,
-/// or the error message otherwise.
-fn parse_code(code: usize) -> io::Result<usize> {
-    if zstd_safe::is_error(code) == 0 {
-        Ok(code)
-    } else {
-        let msg = zstd_safe::get_error_name(code);
-        let error = io::Error::new(io::ErrorKind::Other, msg.to_string());
-        Err(error)
-    }
+/// Returns the error message as io::Error based on error_code.
+fn map_error_code(code: usize) -> io::Error {
+    let msg = zstd_safe::get_error_name(code);
+    io::Error::new(io::ErrorKind::Other, msg.to_string())
 }
 
 // Some helper functions to write full-cycle tests.

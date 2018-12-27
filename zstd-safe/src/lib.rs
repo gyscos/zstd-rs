@@ -35,10 +35,10 @@ extern crate zstd_sys;
 extern crate std;
 
 #[cfg(feature = "std")]
-use std::os::raw::{c_int, c_uint, c_ulonglong, c_void};
+use std::os::raw::{c_int, c_ulonglong, c_void};
 
 #[cfg(not(feature = "std"))]
-use libc::{c_int, c_uint, c_ulonglong, c_void};
+use libc::{c_int, c_ulonglong, c_void};
 
 use core::marker::PhantomData;
 use core::ops::Deref;
@@ -69,8 +69,8 @@ pub const CHAINLOG_MAX_64: u32 = zstd_sys::ZSTD_CHAINLOG_MAX_64;
 pub const CHAINLOG_MIN: u32 = zstd_sys::ZSTD_CHAINLOG_MIN;
 pub const HASHLOG3_MAX: u32 = zstd_sys::ZSTD_HASHLOG3_MAX;
 pub const SEARCHLOG_MIN: u32 = zstd_sys::ZSTD_SEARCHLOG_MIN;
-pub const SEARCHLENGTH_MAX: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MAX;
-pub const SEARCHLENGTH_MIN: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MIN;
+// pub const SEARCHLENGTH_MAX: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MAX;
+// pub const SEARCHLENGTH_MIN: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MIN;
 pub const TARGETLENGTH_MAX: u32 = zstd_sys::ZSTD_TARGETLENGTH_MAX;
 pub const TARGETLENGTH_MIN: u32 = zstd_sys::ZSTD_TARGETLENGTH_MIN;
 pub const LDM_MINMATCH_MAX: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MAX;
@@ -79,7 +79,7 @@ pub const LDM_BUCKETSIZELOG_MAX: u32 = zstd_sys::ZSTD_LDM_BUCKETSIZELOG_MAX;
 pub const FRAMEHEADERSIZE_PREFIX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_PREFIX;
 pub const FRAMEHEADERSIZE_MIN: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MIN;
 pub const FRAMEHEADERSIZE_MAX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MAX;
-pub const JOBSIZE_MIN: u32 = zstd_sys::ZSTDMT_JOBSIZE_MIN;
+// pub const JOBSIZE_MIN: u32 = zstd_sys::ZSTDMT_JOBSIZE_MIN;
 
 type SafeResult = Result<usize, usize>;
 
@@ -120,7 +120,11 @@ pub fn version_number() -> u32 {
 ///
 /// Returns the compressed size written into `dst` (<= `dstCapacity),
 /// or an error code if it fails (which can be tested using ZSTD_isError()).
-pub fn compress(dst: &mut [u8], src: &[u8], compression_level: i32) -> SafeResult {
+pub fn compress(
+    dst: &mut [u8],
+    src: &[u8],
+    compression_level: i32,
+) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_compress(
             ptr_mut_void(dst),
@@ -302,7 +306,11 @@ unsafe impl Send for DCtx {}
 /// `ZSTD_decompressDCtx()`
 ///
 /// Same as ZSTD_decompress(), requires an allocated ZSTD_DCtx (see ZSTD_createDCtx()).
-pub fn decompress_dctx(ctx: &mut DCtx, dst: &mut [u8], src: &[u8]) -> SafeResult {
+pub fn decompress_dctx(
+    ctx: &mut DCtx,
+    dst: &mut [u8],
+    src: &[u8],
+) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_decompressDCtx(
             ctx.0,
@@ -654,13 +662,15 @@ pub fn compress_stream(
 
 pub fn flush_stream(zcs: &mut CStream, output: &mut OutBuffer) -> SafeResult {
     let mut output = output.wrap();
-    let code = unsafe { zstd_sys::ZSTD_flushStream(zcs.0, ptr_mut(&mut output)) };
+    let code =
+        unsafe { zstd_sys::ZSTD_flushStream(zcs.0, ptr_mut(&mut output)) };
     parse_code(code)
 }
 
 pub fn end_stream(zcs: &mut CStream, output: &mut OutBuffer) -> SafeResult {
     let mut output = output.wrap();
-    let code = unsafe { zstd_sys::ZSTD_endStream(zcs.0, ptr_mut(&mut output)) };
+    let code =
+        unsafe { zstd_sys::ZSTD_endStream(zcs.0, ptr_mut(&mut output)) };
     parse_code(code)
 }
 
@@ -733,7 +743,9 @@ pub fn dstream_out_size() -> usize {
 /// Returns the compressed size of the frame pointed to by `src`, suitable to pass to
 /// `ZSTD_decompress` or similar, or an error code if given invalid input.
 pub fn find_frame_compressed_size(src: &[u8]) -> SafeResult {
-    let code = unsafe { zstd_sys::ZSTD_findFrameCompressedSize(ptr_void(src), src.len()) };
+    let code = unsafe {
+        zstd_sys::ZSTD_findFrameCompressedSize(ptr_void(src), src.len())
+    };
     parse_code(code)
 }
 /// `ZSTD_getFrameContentSize()`
@@ -942,8 +954,12 @@ pub fn init_cstream_using_dict(
     };
     parse_code(code)
 }
-pub fn init_cstream_using_cdict(zcs: &mut CStream, cdict: &CDict) -> SafeResult {
-    let code = unsafe { zstd_sys::ZSTD_initCStream_usingCDict(zcs.0, cdict.0) };
+pub fn init_cstream_using_cdict(
+    zcs: &mut CStream,
+    cdict: &CDict,
+) -> SafeResult {
+    let code =
+        unsafe { zstd_sys::ZSTD_initCStream_usingCDict(zcs.0, cdict.0) };
     parse_code(code)
 }
 
@@ -975,8 +991,12 @@ pub fn init_dstream_using_dict(zds: &mut DStream, dict: &[u8]) -> SafeResult {
     };
     parse_code(code)
 }
-pub fn init_dstream_using_ddict(zds: &mut DStream, ddict: &DDict) -> SafeResult {
-    let code = unsafe { zstd_sys::ZSTD_initDStream_usingDDict(zds.0, ddict.0) };
+pub fn init_dstream_using_ddict(
+    zds: &mut DStream,
+    ddict: &DDict,
+) -> SafeResult {
+    let code =
+        unsafe { zstd_sys::ZSTD_initDStream_usingDDict(zds.0, ddict.0) };
     parse_code(code)
 }
 pub fn reset_dstream(zds: &mut DStream) -> SafeResult {
@@ -1005,7 +1025,7 @@ pub enum CParameter {
     /// Default level is ZSTD_CLEVEL_DEFAULT==3.
     ///
     /// Special: value 0 means "do not change cLevel".
-    CompressionLevel(u32),
+    CompressionLevel(i32),
 
     /// Maximum allowed back-reference distance, expressed as power of 2.
     ///
@@ -1111,52 +1131,62 @@ pub enum CParameter {
 /// or an error code (which can be tested with ZSTD_isError()).
 pub fn cctx_set_parameter(cctx: &mut CCtx, param: CParameter) -> SafeResult {
     use zstd_sys::ZSTD_cParameter;
+    // TODO: Until bindgen properly generates a binding for this, we'll need to do it here.
+    use zstd_sys::ZSTD_cParameter::ZSTD_c_experimentalParam2 as ZSTD_c_format;
     use zstd_sys::ZSTD_format_e;
     use CParameter::*;
 
     let (param, value) = match param {
-        Format(FrameFormat::One) => (
-            ZSTD_cParameter::ZSTD_p_format,
-            ZSTD_format_e::ZSTD_f_zstd1 as c_uint,
-        ),
+        Format(FrameFormat::One) => {
+            (ZSTD_c_format, ZSTD_format_e::ZSTD_f_zstd1 as c_int)
+        }
         Format(FrameFormat::Magicless) => (
-            ZSTD_cParameter::ZSTD_p_format,
-            ZSTD_format_e::ZSTD_f_zstd1_magicless as c_uint,
+            ZSTD_c_format,
+            ZSTD_format_e::ZSTD_f_zstd1_magicless as c_int,
         ),
         CompressionLevel(level) => {
-            (ZSTD_cParameter::ZSTD_p_compressionLevel, level)
+            (ZSTD_cParameter::ZSTD_c_compressionLevel, level)
         }
-        WindowLog(value) => (ZSTD_cParameter::ZSTD_p_windowLog, value),
-        HashLog(value) => (ZSTD_cParameter::ZSTD_p_hashLog, value),
-        ChainLog(value) => (ZSTD_cParameter::ZSTD_p_chainLog, value),
-        SearchLog(value) => (ZSTD_cParameter::ZSTD_p_searchLog, value),
-        MinMatch(value) => (ZSTD_cParameter::ZSTD_p_minMatch, value),
-        TargetLength(value) => (ZSTD_cParameter::ZSTD_p_targetLength, value),
+        WindowLog(value) => {
+            (ZSTD_cParameter::ZSTD_c_windowLog, value as c_int)
+        }
+        HashLog(value) => (ZSTD_cParameter::ZSTD_c_hashLog, value as c_int),
+        ChainLog(value) => (ZSTD_cParameter::ZSTD_c_chainLog, value as c_int),
+        SearchLog(value) => {
+            (ZSTD_cParameter::ZSTD_c_searchLog, value as c_int)
+        }
+        MinMatch(value) => (ZSTD_cParameter::ZSTD_c_minMatch, value as c_int),
+        TargetLength(value) => {
+            (ZSTD_cParameter::ZSTD_c_targetLength, value as c_int)
+        }
         ContentSizeFlag(flag) => (
-            ZSTD_cParameter::ZSTD_p_contentSizeFlag,
+            ZSTD_cParameter::ZSTD_c_contentSizeFlag,
             if flag { 1 } else { 0 },
         ),
         ChecksumFlag(flag) => (
-            ZSTD_cParameter::ZSTD_p_checksumFlag,
+            ZSTD_cParameter::ZSTD_c_checksumFlag,
             if flag { 1 } else { 0 },
         ),
         DictIdFlag(flag) => {
-            (ZSTD_cParameter::ZSTD_p_dictIDFlag, if flag { 1 } else { 0 })
+            (ZSTD_cParameter::ZSTD_c_dictIDFlag, if flag { 1 } else { 0 })
         }
 
         #[cfg(feature = "zstdmt")]
-        ThreadCount(value) => (ZSTD_cParameter::ZSTD_p_nbWorkers, value),
+        ThreadCount(value) => {
+            (ZSTD_cParameter::ZSTD_c_nbWorkers, value as c_int)
+        }
 
         #[cfg(feature = "zstdmt")]
-        JobSize(value) => (ZSTD_cParameter::ZSTD_p_jobSize, value),
+        JobSize(value) => (ZSTD_cParameter::ZSTD_c_jobSize, value as c_int),
 
         #[cfg(feature = "zstdmt")]
         OverlapSizeLog(value) => {
-            (ZSTD_cParameter::ZSTD_p_overlapSizeLog, value)
+            (ZSTD_cParameter::ZSTD_c_overlapLog, value as c_int)
         }
     };
 
-    let code = unsafe { zstd_sys::ZSTD_CCtx_setParameter(cctx.0, param, value) };
+    let code =
+        unsafe { zstd_sys::ZSTD_CCtx_setParameter(cctx.0, param, value) };
     parse_code(code)
 }
 
@@ -1195,7 +1225,11 @@ pub fn train_from_buffer(
 pub fn get_block_size(cctx: &mut CCtx) -> usize {
     unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0) }
 }
-pub fn compress_block(cctx: &mut CCtx, dst: &mut [u8], src: &[u8]) -> SafeResult {
+pub fn compress_block(
+    cctx: &mut CCtx,
+    dst: &mut [u8],
+    src: &[u8],
+) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_compressBlock(
             cctx.0,
@@ -1225,10 +1259,10 @@ pub fn insert_block(dctx: &mut DCtx, block: &[u8]) -> usize {
 /// Multi-threading methods.
 #[cfg(feature = "zstdmt")]
 pub mod mt {
-    use super::SafeResult;
-    use super::parse_code;
     use super::c_ulonglong;
+    use super::parse_code;
     use super::zstd_sys;
+    use super::SafeResult;
     use super::{ptr_mut, ptr_mut_void, ptr_void, InBuffer, OutBuffer};
 
     pub struct CCtx(*mut zstd_sys::ZSTDMT_CCtx);
@@ -1297,15 +1331,22 @@ pub mod mt {
         parse_code(code)
     }
 
-    pub fn flush_stream(mtctx: &mut CCtx, output: &mut OutBuffer) -> SafeResult {
+    pub fn flush_stream(
+        mtctx: &mut CCtx,
+        output: &mut OutBuffer,
+    ) -> SafeResult {
         let mut output = output.wrap();
-        let code = unsafe { zstd_sys::ZSTDMT_flushStream(mtctx.0, ptr_mut(&mut output)) };
+        let code = unsafe {
+            zstd_sys::ZSTDMT_flushStream(mtctx.0, ptr_mut(&mut output))
+        };
         parse_code(code)
     }
 
     pub fn end_stream(mtctx: &mut CCtx, output: &mut OutBuffer) -> SafeResult {
         let mut output = output.wrap();
-        let code = unsafe { zstd_sys::ZSTDMT_endStream(mtctx.0, ptr_mut(&mut output)) };
+        let code = unsafe {
+            zstd_sys::ZSTDMT_endStream(mtctx.0, ptr_mut(&mut output))
+        };
         parse_code(code)
     }
 }

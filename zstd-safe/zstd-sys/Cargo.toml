@@ -16,22 +16,22 @@ links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
-version ="1.4.6+zstd.1.3.7"
+version ="1.4.7+zstd.1.3.8"
 
 [build-dependencies]
-blob = "0.2"
-glob = "0.2"
+blob = "0.2.0"
+glob = "0.2.11"
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.44"
+version = "0.45.0"
 
 [build-dependencies.cc]
-version = "1.0"
+version = "1.0.28"
 features = ["parallel"]
 
 [dependencies]
-libc = "0.2"
+libc = "0.2.45"
 
 [features]
 default = ["legacy"]

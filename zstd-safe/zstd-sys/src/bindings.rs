@@ -2,16 +2,21 @@
 
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 3;
-pub const ZSTD_VERSION_RELEASE: u32 = 7;
-pub const ZSTD_VERSION_NUMBER: u32 = 10307;
+pub const ZSTD_VERSION_RELEASE: u32 = 8;
+pub const ZSTD_VERSION_NUMBER: u32 = 10308;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_CONTENTSIZE_UNKNOWN: i32 = -1;
 pub const ZSTD_CONTENTSIZE_ERROR: i32 = -2;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
 pub const ZSTD_MAGIC_SKIPPABLE_START: u32 = 407710288;
+pub const ZSTD_MAGIC_SKIPPABLE_MASK: u32 = 4294967280;
 pub const ZSTD_BLOCKSIZELOG_MAX: u32 = 17;
 pub const ZSTD_BLOCKSIZE_MAX: u32 = 131072;
+pub const ZSTD_FRAMEHEADERSIZE_PREFIX: u32 = 5;
+pub const ZSTD_FRAMEHEADERSIZE_MIN: u32 = 6;
+pub const ZSTD_FRAMEHEADERSIZE_MAX: u32 = 18;
+pub const ZSTD_SKIPPABLEHEADERSIZE: u32 = 8;
 pub const ZSTD_WINDOWLOG_MAX_32: u32 = 30;
 pub const ZSTD_WINDOWLOG_MAX_64: u32 = 31;
 pub const ZSTD_WINDOWLOG_MIN: u32 = 10;
@@ -19,19 +24,22 @@ pub const ZSTD_HASHLOG_MIN: u32 = 6;
 pub const ZSTD_CHAINLOG_MAX_32: u32 = 29;
 pub const ZSTD_CHAINLOG_MAX_64: u32 = 30;
 pub const ZSTD_CHAINLOG_MIN: u32 = 6;
-pub const ZSTD_HASHLOG3_MAX: u32 = 17;
 pub const ZSTD_SEARCHLOG_MIN: u32 = 1;
-pub const ZSTD_SEARCHLENGTH_MAX: u32 = 7;
-pub const ZSTD_SEARCHLENGTH_MIN: u32 = 3;
+pub const ZSTD_MINMATCH_MAX: u32 = 7;
+pub const ZSTD_MINMATCH_MIN: u32 = 3;
 pub const ZSTD_TARGETLENGTH_MAX: u32 = 131072;
 pub const ZSTD_TARGETLENGTH_MIN: u32 = 0;
-pub const ZSTD_LDM_MINMATCH_MAX: u32 = 4096;
+pub const ZSTD_OVERLAPLOG_MIN: u32 = 0;
+pub const ZSTD_OVERLAPLOG_MAX: u32 = 9;
+pub const ZSTD_WINDOWLOG_LIMIT_DEFAULT: u32 = 27;
+pub const ZSTD_LDM_HASHLOG_MIN: u32 = 6;
 pub const ZSTD_LDM_MINMATCH_MIN: u32 = 4;
+pub const ZSTD_LDM_MINMATCH_MAX: u32 = 4096;
+pub const ZSTD_LDM_BUCKETSIZELOG_MIN: u32 = 1;
 pub const ZSTD_LDM_BUCKETSIZELOG_MAX: u32 = 8;
-pub const ZSTD_FRAMEHEADERSIZE_PREFIX: u32 = 5;
-pub const ZSTD_FRAMEHEADERSIZE_MIN: u32 = 6;
-pub const ZSTD_FRAMEHEADERSIZE_MAX: u32 = 18;
-pub const ZSTDMT_JOBSIZE_MIN: u32 = 1048576;
+pub const ZSTD_LDM_HASHRATELOG_MIN: u32 = 0;
+pub const ZSTD_HASHLOG3_MAX: u32 = 17;
+pub const ZSTDMT_NBWORKERS_MAX: u32 = 200;
 pub type wchar_t = libc::c_int;
 extern "C" {
     pub fn ZSTD_versionNumber() -> libc::c_uint;
@@ -112,9 +120,11 @@ extern "C" {
 }
 extern "C" {
     #[doc = " ZSTD_compressCCtx() :"]
-    #[doc = "  Same as ZSTD_compress(), requires an allocated ZSTD_CCtx (see ZSTD_createCCtx())."]
+    #[doc = "  Same as ZSTD_compress(), using an explicit ZSTD_CCtx"]
+    #[doc = "  The function will compress at requested compression level,"]
+    #[doc = "  ignoring any other parameter"]
     pub fn ZSTD_compressCCtx(
-        ctx: *mut ZSTD_CCtx,
+        cctx: *mut ZSTD_CCtx,
         dst: *mut libc::c_void,
         dstCapacity: usize,
         src: *const libc::c_void,
@@ -136,9 +146,11 @@ extern "C" {
 }
 extern "C" {
     #[doc = " ZSTD_decompressDCtx() :"]
-    #[doc = "  Same as ZSTD_decompress(), requires an allocated ZSTD_DCtx (see ZSTD_createDCtx())"]
+    #[doc = "  Same as ZSTD_decompress(),"]
+    #[doc = "  requires an allocated ZSTD_DCtx."]
+    #[doc = "  Compatible with sticky parameters."]
     pub fn ZSTD_decompressDCtx(
-        ctx: *mut ZSTD_DCtx,
+        dctx: *mut ZSTD_DCtx,
         dst: *mut libc::c_void,
         dstCapacity: usize,
         src: *const libc::c_void,
@@ -147,9 +159,12 @@ extern "C" {
 }
 extern "C" {
     #[doc = "  Simple dictionary API"]
-    #[doc = "  Compression using a predefined Dictionary (see dictBuilder/zdict.h)."]
+    #[doc = "  Compression at an explicit compression level using a Dictionary."]
+    #[doc = "  A dictionary can be any arbitrary data segment (also called a prefix),"]
+    #[doc = "  or a buffer with specified information (see dictBuilder/zdict.h)."]
     #[doc = "  Note : This function loads the dictionary, resulting in significant startup delay."]
-    #[doc = "  Note : When `dict == NULL || dictSize < 8` no dictionary is used."]
+    #[doc = "         It\'s intended for a dictionary used only once."]
+    #[doc = "  Note 2 : When `dict == NULL || dictSize < 8` no dictionary is used."]
     pub fn ZSTD_compress_usingDict(
         ctx: *mut ZSTD_CCtx,
         dst: *mut libc::c_void,
@@ -163,9 +178,10 @@ extern "C" {
 }
 extern "C" {
     #[doc = " ZSTD_decompress_usingDict() :"]
-    #[doc = "  Decompression using a predefined Dictionary (see dictBuilder/zdict.h)."]
+    #[doc = "  Decompression using a known Dictionary."]
     #[doc = "  Dictionary must be identical to the one used during compression."]
     #[doc = "  Note : This function loads the dictionary, resulting in significant startup delay."]
+    #[doc = "         It\'s intended for a dictionary used only once."]
     #[doc = "  Note : When `dict == NULL || dictSize < 8` no dictionary is used."]
     pub fn ZSTD_decompress_usingDict(
         dctx: *mut ZSTD_DCtx,
@@ -186,11 +202,12 @@ pub struct ZSTD_CDict_s {
 pub type ZSTD_CDict = ZSTD_CDict_s;
 extern "C" {
     #[doc = " ZSTD_createCDict() :"]
-    #[doc = "  When compressing multiple messages / blocks with the same dictionary, it\'s recommended to load it just once."]
-    #[doc = "  ZSTD_createCDict() will create a digested dictionary, ready to start future compression operations without startup delay."]
+    #[doc = "  When compressing multiple messages / blocks using the same dictionary, it\'s recommended to load it only once."]
+    #[doc = "  ZSTD_createCDict() will create a digested dictionary, ready to start future compression operations without startup cost."]
     #[doc = "  ZSTD_CDict can be created once and shared by multiple threads concurrently, since its usage is read-only."]
-    #[doc = "  `dictBuffer` can be released after ZSTD_CDict creation, since its content is copied within CDict"]
-    #[doc = "  Note : A ZSTD_CDict can be created with an empty dictionary, but it is inefficient for small data."]
+    #[doc = " `dictBuffer` can be released after ZSTD_CDict creation, because its content is copied within CDict."]
+    #[doc = "  Consider experimental function `ZSTD_createCDict_byReference()` if you prefer to not duplicate `dictBuffer` content."]
+    #[doc = "  Note : A ZSTD_CDict can be created from an empty dictBuffer, but it is inefficient when used to compress small data."]
     pub fn ZSTD_createCDict(
         dictBuffer: *const libc::c_void,
         dictSize: usize,
@@ -205,11 +222,9 @@ extern "C" {
 extern "C" {
     #[doc = " ZSTD_compress_usingCDict() :"]
     #[doc = "  Compression using a digested Dictionary."]
-    #[doc = "  Faster startup than ZSTD_compress_usingDict(), recommended when same dictionary is used multiple times."]
-    #[doc = "  Note that compression level is decided during dictionary creation."]
-    #[doc = "  Frame parameters are hardcoded (dictID=yes, contentSize=yes, checksum=no)"]
-    #[doc = "  Note : ZSTD_compress_usingCDict() can be used with a ZSTD_CDict created from an empty dictionary."]
-    #[doc = "         But it is inefficient for small data, and it is recommended to use ZSTD_compressCCtx()."]
+    #[doc = "  Recommended when same dictionary is used multiple times."]
+    #[doc = "  Note : compression level is _decided at dictionary creation time_,"]
+    #[doc = "     and frame parameters are hardcoded (dictID=yes, contentSize=yes, checksum=no)"]
     pub fn ZSTD_compress_usingCDict(
         cctx: *mut ZSTD_CCtx,
         dst: *mut libc::c_void,
@@ -228,7 +243,7 @@ pub type ZSTD_DDict = ZSTD_DDict_s;
 extern "C" {
     #[doc = " ZSTD_createDDict() :"]
     #[doc = "  Create a digested dictionary, ready to start decompression operation without startup delay."]
-    #[doc = "  dictBuffer can be released after DDict creation, as its content is copied inside DDict"]
+    #[doc = "  dictBuffer can be released after DDict creation, as its content is copied inside DDict."]
     pub fn ZSTD_createDDict(
         dictBuffer: *const libc::c_void,
         dictSize: usize,
@@ -242,7 +257,7 @@ extern "C" {
 extern "C" {
     #[doc = " ZSTD_decompress_usingDDict() :"]
     #[doc = "  Decompression using a digested Dictionary."]
-    #[doc = "  Faster startup than ZSTD_decompress_usingDict(), recommended when same dictionary is used multiple times."]
+    #[doc = "  Recommended when same dictionary is used multiple times."]
     pub fn ZSTD_decompress_usingDDict(
         dctx: *mut ZSTD_DCtx,
         dst: *mut libc::c_void,
@@ -441,19 +456,43 @@ extern "C" {
     pub fn ZSTD_DStreamOutSize() -> usize;
 }
 extern "C" {
-    #[doc = "   ADVANCED AND EXPERIMENTAL FUNCTIONS"]
-    #[doc = ""]
-    #[doc = " The definitions in this section are considered experimental."]
-    #[doc = " They should never be used with a dynamic library, as prototypes may change in the future."]
-    #[doc = " They are provided for advanced scenarios."]
-    #[doc = " Use them only in association with static linking."]
     pub fn ZSTD_minCLevel() -> libc::c_int;
 }
-pub const ZSTD_frameHeaderSize_prefix: usize = 5;
-pub const ZSTD_frameHeaderSize_min: usize = 6;
-pub const ZSTD_frameHeaderSize_max: usize = 18;
-pub const ZSTD_skippableHeaderSize: usize = 8;
+extern "C" {
+    #[doc = " ZSTD_findFrameCompressedSize() :"]
+    #[doc = " `src` should point to the start of a ZSTD frame or skippable frame."]
+    #[doc = " `srcSize` must be >= first frame size"]
+    #[doc = " @return : the compressed size of the first frame starting at `src`,"]
+    #[doc = "           suitable to pass as `srcSize` to `ZSTD_decompress` or similar,"]
+    #[doc = "        or an error code if input is invalid"]
+    pub fn ZSTD_findFrameCompressedSize(
+        src: *const libc::c_void,
+        srcSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_sizeof_*() :"]
+    #[doc = "  These functions give the _current_ memory usage of selected object."]
+    #[doc = "  Note that object memory usage can evolve (increase or decrease) over time."]
+    pub fn ZSTD_sizeof_CCtx(cctx: *const ZSTD_CCtx) -> usize;
+}
+extern "C" {
+    pub fn ZSTD_sizeof_DCtx(dctx: *const ZSTD_DCtx) -> usize;
+}
+extern "C" {
+    pub fn ZSTD_sizeof_CStream(zcs: *const ZSTD_CStream) -> usize;
+}
+extern "C" {
+    pub fn ZSTD_sizeof_DStream(zds: *const ZSTD_DStream) -> usize;
+}
+extern "C" {
+    pub fn ZSTD_sizeof_CDict(cdict: *const ZSTD_CDict) -> usize;
+}
+extern "C" {
+    pub fn ZSTD_sizeof_DDict(ddict: *const ZSTD_DDict) -> usize;
+}
 #[repr(u32)]
+#[doc = "  Advanced compression API"]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ZSTD_strategy {
     ZSTD_fast = 1,
@@ -464,7 +503,385 @@ pub enum ZSTD_strategy {
     ZSTD_btlazy2 = 6,
     ZSTD_btopt = 7,
     ZSTD_btultra = 8,
+    ZSTD_btultra2 = 9,
 }
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_cParameter {
+    ZSTD_c_compressionLevel = 100,
+    ZSTD_c_windowLog = 101,
+    ZSTD_c_hashLog = 102,
+    ZSTD_c_chainLog = 103,
+    ZSTD_c_searchLog = 104,
+    ZSTD_c_minMatch = 105,
+    ZSTD_c_targetLength = 106,
+    ZSTD_c_strategy = 107,
+    ZSTD_c_enableLongDistanceMatching = 160,
+    ZSTD_c_ldmHashLog = 161,
+    ZSTD_c_ldmMinMatch = 162,
+    ZSTD_c_ldmBucketSizeLog = 163,
+    ZSTD_c_ldmHashRateLog = 164,
+    ZSTD_c_contentSizeFlag = 200,
+    ZSTD_c_checksumFlag = 201,
+    ZSTD_c_dictIDFlag = 202,
+    ZSTD_c_nbWorkers = 400,
+    ZSTD_c_jobSize = 401,
+    ZSTD_c_overlapLog = 402,
+    ZSTD_c_experimentalParam1 = 500,
+    ZSTD_c_experimentalParam2 = 10,
+    ZSTD_c_experimentalParam3 = 1000,
+    ZSTD_c_experimentalParam4 = 1001,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZSTD_bounds {
+    pub error: usize,
+    pub lowerBound: libc::c_int,
+    pub upperBound: libc::c_int,
+}
+#[test]
+fn bindgen_test_layout_ZSTD_bounds() {
+    assert_eq!(
+        ::core::mem::size_of::<ZSTD_bounds>(),
+        16usize,
+        concat!("Size of: ", stringify!(ZSTD_bounds))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<ZSTD_bounds>(),
+        8usize,
+        concat!("Alignment of ", stringify!(ZSTD_bounds))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZSTD_bounds>())).error as *const _ as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZSTD_bounds),
+            "::",
+            stringify!(error)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZSTD_bounds>())).lowerBound as *const _
+                as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZSTD_bounds),
+            "::",
+            stringify!(lowerBound)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZSTD_bounds>())).upperBound as *const _
+                as usize
+        },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZSTD_bounds),
+            "::",
+            stringify!(upperBound)
+        )
+    );
+}
+extern "C" {
+    #[doc = " ZSTD_cParam_getBounds() :"]
+    #[doc = "  All parameters must belong to an interval with lower and upper bounds,"]
+    #[doc = "  otherwise they will either trigger an error or be automatically clamped."]
+    #[doc = " @return : a structure, ZSTD_bounds, which contains"]
+    #[doc = "         - an error status field, which must be tested using ZSTD_isError()"]
+    #[doc = "         - lower and upper bounds, both inclusive"]
+    pub fn ZSTD_cParam_getBounds(cParam: ZSTD_cParameter) -> ZSTD_bounds;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_setParameter() :"]
+    #[doc = "  Set one compression parameter, selected by enum ZSTD_cParameter."]
+    #[doc = "  All parameters have valid bounds. Bounds can be queried using ZSTD_cParam_getBounds()."]
+    #[doc = "  Providing a value beyond bound will either clamp it, or trigger an error (depending on parameter)."]
+    #[doc = "  Setting a parameter is generally only possible during frame initialization (before starting compression)."]
+    #[doc = "  Exception : when using multi-threading mode (nbWorkers >= 1),"]
+    #[doc = "              the following parameters can be updated _during_ compression (within same frame):"]
+    #[doc = "              => compressionLevel, hashLog, chainLog, searchLog, minMatch, targetLength and strategy."]
+    #[doc = "              new parameters will be active for next job only (after a flush())."]
+    #[doc = " @return : an error code (which can be tested using ZSTD_isError())."]
+    pub fn ZSTD_CCtx_setParameter(
+        cctx: *mut ZSTD_CCtx,
+        param: ZSTD_cParameter,
+        value: libc::c_int,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_setPledgedSrcSize() :"]
+    #[doc = "  Total input data size to be compressed as a single frame."]
+    #[doc = "  Value will be written in frame header, unless if explicitly forbidden using ZSTD_c_contentSizeFlag."]
+    #[doc = "  This value will also be controlled at end of frame, and trigger an error if not respected."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    #[doc = "  Note 1 : pledgedSrcSize==0 actually means zero, aka an empty frame."]
+    #[doc = "           In order to mean \"unknown content size\", pass constant ZSTD_CONTENTSIZE_UNKNOWN."]
+    #[doc = "           ZSTD_CONTENTSIZE_UNKNOWN is default value for any new frame."]
+    #[doc = "  Note 2 : pledgedSrcSize is only valid once, for the next frame."]
+    #[doc = "           It\'s discarded at the end of the frame, and replaced by ZSTD_CONTENTSIZE_UNKNOWN."]
+    #[doc = "  Note 3 : Whenever all input data is provided and consumed in a single round,"]
+    #[doc = "           for example with ZSTD_compress2(),"]
+    #[doc = "           or invoking immediately ZSTD_compressStream2(,,,ZSTD_e_end),"]
+    #[doc = "           this value is automatically overriden by srcSize instead."]
+    pub fn ZSTD_CCtx_setPledgedSrcSize(
+        cctx: *mut ZSTD_CCtx,
+        pledgedSrcSize: libc::c_ulonglong,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_loadDictionary() :"]
+    #[doc = "  Create an internal CDict from `dict` buffer."]
+    #[doc = "  Decompression will have to use same dictionary."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    #[doc = "  Special: Loading a NULL (or 0-size) dictionary invalidates previous dictionary,"]
+    #[doc = "           meaning \"return to no-dictionary mode\"."]
+    #[doc = "  Note 1 : Dictionary is sticky, it will be used for all future compressed frames."]
+    #[doc = "           To return to \"no-dictionary\" situation, load a NULL dictionary (or reset parameters)."]
+    #[doc = "  Note 2 : Loading a dictionary involves building tables."]
+    #[doc = "           It\'s also a CPU consuming operation, with non-negligible impact on latency."]
+    #[doc = "           Tables are dependent on compression parameters, and for this reason,"]
+    #[doc = "           compression parameters can no longer be changed after loading a dictionary."]
+    #[doc = "  Note 3 :`dict` content will be copied internally."]
+    #[doc = "           Use experimental ZSTD_CCtx_loadDictionary_byReference() to reference content instead."]
+    #[doc = "           In such a case, dictionary buffer must outlive its users."]
+    #[doc = "  Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()"]
+    #[doc = "           to precisely select how dictionary content must be interpreted."]
+    pub fn ZSTD_CCtx_loadDictionary(
+        cctx: *mut ZSTD_CCtx,
+        dict: *const libc::c_void,
+        dictSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_refCDict() :"]
+    #[doc = "  Reference a prepared dictionary, to be used for all next compressed frames."]
+    #[doc = "  Note that compression parameters are enforced from within CDict,"]
+    #[doc = "  and supercede any compression parameter previously set within CCtx."]
+    #[doc = "  The dictionary will remain valid for future compressed frames using same CCtx."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    #[doc = "  Special : Referencing a NULL CDict means \"return to no-dictionary mode\"."]
+    #[doc = "  Note 1 : Currently, only one dictionary can be managed."]
+    #[doc = "           Referencing a new dictionary effectively \"discards\" any previous one."]
+    #[doc = "  Note 2 : CDict is just referenced, its lifetime must outlive its usage within CCtx."]
+    pub fn ZSTD_CCtx_refCDict(
+        cctx: *mut ZSTD_CCtx,
+        cdict: *const ZSTD_CDict,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_refPrefix() :"]
+    #[doc = "  Reference a prefix (single-usage dictionary) for next compressed frame."]
+    #[doc = "  A prefix is **only used once**. Tables are discarded at end of frame (ZSTD_e_end)."]
+    #[doc = "  Decompression will need same prefix to properly regenerate data."]
+    #[doc = "  Compressing with a prefix is similar in outcome as performing a diff and compressing it,"]
+    #[doc = "  but performs much faster, especially during decompression (compression speed is tunable with compression level)."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    #[doc = "  Special: Adding any prefix (including NULL) invalidates any previous prefix or dictionary"]
+    #[doc = "  Note 1 : Prefix buffer is referenced. It **must** outlive compression."]
+    #[doc = "           Its content must remain unmodified during compression."]
+    #[doc = "  Note 2 : If the intention is to diff some large src data blob with some prior version of itself,"]
+    #[doc = "           ensure that the window size is large enough to contain the entire source."]
+    #[doc = "           See ZSTD_c_windowLog."]
+    #[doc = "  Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters."]
+    #[doc = "           It\'s a CPU consuming operation, with non-negligible impact on latency."]
+    #[doc = "           If there is a need to use the same prefix multiple times, consider loadDictionary instead."]
+    #[doc = "  Note 4 : By default, the prefix is interpreted as raw content (ZSTD_dm_rawContent)."]
+    #[doc = "           Use experimental ZSTD_CCtx_refPrefix_advanced() to alter dictionary interpretation."]
+    pub fn ZSTD_CCtx_refPrefix(
+        cctx: *mut ZSTD_CCtx,
+        prefix: *const libc::c_void,
+        prefixSize: usize,
+    ) -> usize;
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_ResetDirective {
+    ZSTD_reset_session_only = 1,
+    ZSTD_reset_parameters = 2,
+    ZSTD_reset_session_and_parameters = 3,
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_reset() :"]
+    #[doc = "  There are 2 different things that can be reset, independently or jointly :"]
+    #[doc = "  - The session : will stop compressing current frame, and make CCtx ready to start a new one."]
+    #[doc = "                  Useful after an error, or to interrupt any ongoing compression."]
+    #[doc = "                  Any internal data not yet flushed is cancelled."]
+    #[doc = "                  Compression parameters and dictionary remain unchanged."]
+    #[doc = "                  They will be used to compress next frame."]
+    #[doc = "                  Resetting session never fails."]
+    #[doc = "  - The parameters : changes all parameters back to \"default\"."]
+    #[doc = "                  This removes any reference to any dictionary too."]
+    #[doc = "                  Parameters can only be changed between 2 sessions (i.e. no compression is currently ongoing)"]
+    #[doc = "                  otherwise the reset fails, and function returns an error value (which can be tested using ZSTD_isError())"]
+    #[doc = "  - Both : similar to resetting the session, followed by resetting parameters."]
+    pub fn ZSTD_CCtx_reset(
+        cctx: *mut ZSTD_CCtx,
+        reset: ZSTD_ResetDirective,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_compress2() :"]
+    #[doc = "  Behave the same as ZSTD_compressCCtx(), but compression parameters are set using the advanced API."]
+    #[doc = "  ZSTD_compress2() always starts a new frame."]
+    #[doc = "  Should cctx hold data from a previously unfinished frame, everything about it is forgotten."]
+    #[doc = "  - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_set*()"]
+    #[doc = "  - The function is always blocking, returns when compression is completed."]
+    #[doc = "  Hint : compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`."]
+    #[doc = " @return : compressed size written into `dst` (<= `dstCapacity),"]
+    #[doc = "           or an error code if it fails (which can be tested using ZSTD_isError())."]
+    pub fn ZSTD_compress2(
+        cctx: *mut ZSTD_CCtx,
+        dst: *mut libc::c_void,
+        dstCapacity: usize,
+        src: *const libc::c_void,
+        srcSize: usize,
+    ) -> usize;
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_EndDirective {
+    ZSTD_e_continue = 0,
+    ZSTD_e_flush = 1,
+    ZSTD_e_end = 2,
+}
+extern "C" {
+    #[doc = " ZSTD_compressStream2() :"]
+    #[doc = "  Behaves about the same as ZSTD_compressStream, with additional control on end directive."]
+    #[doc = "  - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_set*()"]
+    #[doc = "  - Compression parameters cannot be changed once compression is started (save a list of exceptions in multi-threading mode)"]
+    #[doc = "  - outpot->pos must be <= dstCapacity, input->pos must be <= srcSize"]
+    #[doc = "  - outpot->pos and input->pos will be updated. They are guaranteed to remain below their respective limit."]
+    #[doc = "  - When nbWorkers==0 (default), function is blocking : it completes its job before returning to caller."]
+    #[doc = "  - When nbWorkers>=1, function is non-blocking : it just acquires a copy of input, and distributes jobs to internal worker threads, flush whatever is available,"]
+    #[doc = "                                                  and then immediately returns, just indicating that there is some data remaining to be flushed."]
+    #[doc = "                                                  The function nonetheless guarantees forward progress : it will return only after it reads or write at least 1+ byte."]
+    #[doc = "  - Exception : if the first call requests a ZSTD_e_end directive and provides enough dstCapacity, the function delegates to ZSTD_compress2() which is always blocking."]
+    #[doc = "  - @return provides a minimum amount of data remaining to be flushed from internal buffers"]
+    #[doc = "            or an error code, which can be tested using ZSTD_isError()."]
+    #[doc = "            if @return != 0, flush is not fully completed, there is still some data left within internal buffers."]
+    #[doc = "            This is useful for ZSTD_e_flush, since in this case more flushes are necessary to empty all buffers."]
+    #[doc = "            For ZSTD_e_end, @return == 0 when internal buffers are fully flushed and frame is completed."]
+    #[doc = "  - after a ZSTD_e_end directive, if internal buffer is not fully flushed (@return != 0),"]
+    #[doc = "            only ZSTD_e_end or ZSTD_e_flush operations are allowed."]
+    #[doc = "            Before starting a new compression job, or changing compression parameters,"]
+    #[doc = "            it is required to fully flush internal buffers."]
+    pub fn ZSTD_compressStream2(
+        cctx: *mut ZSTD_CCtx,
+        output: *mut ZSTD_outBuffer,
+        input: *mut ZSTD_inBuffer,
+        endOp: ZSTD_EndDirective,
+    ) -> usize;
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_dParameter {
+    ZSTD_d_windowLogMax = 100,
+    ZSTD_d_experimentalParam1 = 1000,
+}
+extern "C" {
+    #[doc = " ZSTD_dParam_getBounds() :"]
+    #[doc = "  All parameters must belong to an interval with lower and upper bounds,"]
+    #[doc = "  otherwise they will either trigger an error or be automatically clamped."]
+    #[doc = " @return : a structure, ZSTD_bounds, which contains"]
+    #[doc = "         - an error status field, which must be tested using ZSTD_isError()"]
+    #[doc = "         - both lower and upper bounds, inclusive"]
+    pub fn ZSTD_dParam_getBounds(dParam: ZSTD_dParameter) -> ZSTD_bounds;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_setParameter() :"]
+    #[doc = "  Set one compression parameter, selected by enum ZSTD_dParameter."]
+    #[doc = "  All parameters have valid bounds. Bounds can be queried using ZSTD_dParam_getBounds()."]
+    #[doc = "  Providing a value beyond bound will either clamp it, or trigger an error (depending on parameter)."]
+    #[doc = "  Setting a parameter is only possible during frame initialization (before starting decompression)."]
+    #[doc = " @return : 0, or an error code (which can be tested using ZSTD_isError())."]
+    pub fn ZSTD_DCtx_setParameter(
+        dctx: *mut ZSTD_DCtx,
+        param: ZSTD_dParameter,
+        value: libc::c_int,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_loadDictionary() :"]
+    #[doc = "  Create an internal DDict from dict buffer,"]
+    #[doc = "  to be used to decompress next frames."]
+    #[doc = "  The dictionary remains valid for all future frames, until explicitly invalidated."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    #[doc = "  Special : Adding a NULL (or 0-size) dictionary invalidates any previous dictionary,"]
+    #[doc = "            meaning \"return to no-dictionary mode\"."]
+    #[doc = "  Note 1 : Loading a dictionary involves building tables,"]
+    #[doc = "           which has a non-negligible impact on CPU usage and latency."]
+    #[doc = "           It\'s recommended to \"load once, use many times\", to amortize the cost"]
+    #[doc = "  Note 2 :`dict` content will be copied internally, so `dict` can be released after loading."]
+    #[doc = "           Use ZSTD_DCtx_loadDictionary_byReference() to reference dictionary content instead."]
+    #[doc = "  Note 3 : Use ZSTD_DCtx_loadDictionary_advanced() to take control of"]
+    #[doc = "           how dictionary content is loaded and interpreted."]
+    pub fn ZSTD_DCtx_loadDictionary(
+        dctx: *mut ZSTD_DCtx,
+        dict: *const libc::c_void,
+        dictSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_refDDict() :"]
+    #[doc = "  Reference a prepared dictionary, to be used to decompress next frames."]
+    #[doc = "  The dictionary remains active for decompression of future frames using same DCtx."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    #[doc = "  Note 1 : Currently, only one dictionary can be managed."]
+    #[doc = "           Referencing a new dictionary effectively \"discards\" any previous one."]
+    #[doc = "  Special: referencing a NULL DDict means \"return to no-dictionary mode\"."]
+    #[doc = "  Note 2 : DDict is just referenced, its lifetime must outlive its usage from DCtx."]
+    pub fn ZSTD_DCtx_refDDict(
+        dctx: *mut ZSTD_DCtx,
+        ddict: *const ZSTD_DDict,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_refPrefix() :"]
+    #[doc = "  Reference a prefix (single-usage dictionary) to decompress next frame."]
+    #[doc = "  This is the reverse operation of ZSTD_CCtx_refPrefix(),"]
+    #[doc = "  and must use the same prefix as the one used during compression."]
+    #[doc = "  Prefix is **only used once**. Reference is discarded at end of frame."]
+    #[doc = "  End of frame is reached when ZSTD_decompressStream() returns 0."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    #[doc = "  Note 1 : Adding any prefix (including NULL) invalidates any previously set prefix or dictionary"]
+    #[doc = "  Note 2 : Prefix buffer is referenced. It **must** outlive decompression."]
+    #[doc = "           Prefix buffer must remain unmodified up to the end of frame,"]
+    #[doc = "           reached when ZSTD_decompressStream() returns 0."]
+    #[doc = "  Note 3 : By default, the prefix is treated as raw content (ZSTD_dm_rawContent)."]
+    #[doc = "           Use ZSTD_CCtx_refPrefix_advanced() to alter dictMode (Experimental section)"]
+    #[doc = "  Note 4 : Referencing a raw content prefix has almost no cpu nor memory cost."]
+    #[doc = "           A full dictionary is more costly, as it requires building tables."]
+    pub fn ZSTD_DCtx_refPrefix(
+        dctx: *mut ZSTD_DCtx,
+        prefix: *const libc::c_void,
+        prefixSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_reset() :"]
+    #[doc = "  Return a DCtx to clean state."]
+    #[doc = "  Session and parameters can be reset jointly or separately."]
+    #[doc = "  Parameters can only be reset when no active frame is being decompressed."]
+    #[doc = " @return : 0, or an error code, which can be tested with ZSTD_isError()"]
+    pub fn ZSTD_DCtx_reset(
+        dctx: *mut ZSTD_DCtx,
+        reset: ZSTD_ResetDirective,
+    ) -> usize;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZSTD_CCtx_params_s {
+    _unused: [u8; 0],
+}
+pub type ZSTD_CCtx_params = ZSTD_CCtx_params_s;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ZSTD_compressionParameters {
@@ -477,9 +894,10 @@ pub struct ZSTD_compressionParameters {
     #[doc = "< nb of searches : larger == more compression, slower"]
     pub searchLog: libc::c_uint,
     #[doc = "< match length searched : larger == faster decompression, sometimes less compression"]
-    pub searchLength: libc::c_uint,
+    pub minMatch: libc::c_uint,
     #[doc = "< acceptable match size for optimal parser (only) : larger == more compression, slower"]
     pub targetLength: libc::c_uint,
+    #[doc = "< see ZSTD_strategy definition above"]
     pub strategy: ZSTD_strategy,
 }
 #[test]
@@ -548,15 +966,15 @@ fn bindgen_test_layout_ZSTD_compressionParameters() {
     );
     assert_eq!(
         unsafe {
-            &(*(::core::ptr::null::<ZSTD_compressionParameters>()))
-                .searchLength as *const _ as usize
+            &(*(::core::ptr::null::<ZSTD_compressionParameters>())).minMatch
+                as *const _ as usize
         },
         16usize,
         concat!(
             "Offset of field: ",
             stringify!(ZSTD_compressionParameters),
             "::",
-            stringify!(searchLength)
+            stringify!(minMatch)
         )
     );
     assert_eq!(
@@ -590,11 +1008,11 @@ fn bindgen_test_layout_ZSTD_compressionParameters() {
 #[derive(Debug, Copy, Clone)]
 pub struct ZSTD_frameParameters {
     #[doc = "< 1: content size will be in frame header (when known)"]
-    pub contentSizeFlag: libc::c_uint,
-    #[doc = "< 1: generate a 32-bits checksum at end of frame, for error detection"]
-    pub checksumFlag: libc::c_uint,
-    #[doc = "< 1: no dictID will be saved into frame header (if dictionary compression)"]
-    pub noDictIDFlag: libc::c_uint,
+    pub contentSizeFlag: libc::c_int,
+    #[doc = "< 1: generate a 32-bits checksum using XXH64 algorithm at end of frame, for error detection"]
+    pub checksumFlag: libc::c_int,
+    #[doc = "< 1: no dictID will be saved into frame header (dictID is only useful for dictionary compression)"]
+    pub noDictIDFlag: libc::c_int,
 }
 #[test]
 fn bindgen_test_layout_ZSTD_frameParameters() {
@@ -693,12 +1111,6 @@ fn bindgen_test_layout_ZSTD_parameters() {
         )
     );
 }
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ZSTD_CCtx_params_s {
-    _unused: [u8; 0],
-}
-pub type ZSTD_CCtx_params = ZSTD_CCtx_params_s;
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ZSTD_dictContentType_e {
@@ -714,17 +1126,18 @@ pub enum ZSTD_dictLoadMethod_e {
     #[doc = "< Reference dictionary content -- the dictionary buffer must outlive its users."]
     ZSTD_dlm_byRef = 1,
 }
-extern "C" {
-    #[doc = " ZSTD_findFrameCompressedSize() :"]
-    #[doc = "  `src` should point to the start of a ZSTD encoded frame or skippable frame"]
-    #[doc = "  `srcSize` must be >= first frame size"]
-    #[doc = "  @return : the compressed size of the first frame starting at `src`,"]
-    #[doc = "            suitable to pass to `ZSTD_decompress` or similar,"]
-    #[doc = "            or an error code if input is invalid"]
-    pub fn ZSTD_findFrameCompressedSize(
-        src: *const libc::c_void,
-        srcSize: usize,
-    ) -> usize;
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_format_e {
+    ZSTD_f_zstd1 = 0,
+    ZSTD_f_zstd1_magicless = 1,
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ZSTD_dictAttachPref_e {
+    ZSTD_dictDefaultAttach = 0,
+    ZSTD_dictForceAttach = 1,
+    ZSTD_dictForceCopy = 2,
 }
 extern "C" {
     #[doc = " ZSTD_findDecompressedSize() :"]
@@ -755,34 +1168,13 @@ extern "C" {
 }
 extern "C" {
     #[doc = " ZSTD_frameHeaderSize() :"]
-    #[doc = "  srcSize must be >= ZSTD_frameHeaderSize_prefix."]
+    #[doc = "  srcSize must be >= ZSTD_FRAMEHEADERSIZE_PREFIX."]
     #[doc = " @return : size of the Frame Header,"]
     #[doc = "           or an error code (if srcSize is too small)"]
     pub fn ZSTD_frameHeaderSize(
         src: *const libc::c_void,
         srcSize: usize,
     ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_sizeof_*() :"]
-    #[doc = "  These functions give the current memory usage of selected object."]
-    #[doc = "  Object memory usage can evolve when re-used."]
-    pub fn ZSTD_sizeof_CCtx(cctx: *const ZSTD_CCtx) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_sizeof_DCtx(dctx: *const ZSTD_DCtx) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_sizeof_CStream(zcs: *const ZSTD_CStream) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_sizeof_DStream(zds: *const ZSTD_DStream) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_sizeof_CDict(cdict: *const ZSTD_CDict) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_sizeof_DDict(ddict: *const ZSTD_DDict) -> usize;
 }
 extern "C" {
     #[doc = " ZSTD_estimate*() :"]
@@ -792,7 +1184,7 @@ extern "C" {
     #[doc = "  It will also consider src size to be arbitrarily \"large\", which is worst case."]
     #[doc = "  If srcSize is known to always be small, ZSTD_estimateCCtxSize_usingCParams() can provide a tighter estimation."]
     #[doc = "  ZSTD_estimateCCtxSize_usingCParams() can be used in tandem with ZSTD_getCParams() to create cParams from compressionLevel."]
-    #[doc = "  ZSTD_estimateCCtxSize_usingCCtxParams() can be used in tandem with ZSTD_CCtxParam_setParameter(). Only single-threaded compression is supported. This function will return an error code if ZSTD_p_nbWorkers is >= 1."]
+    #[doc = "  ZSTD_estimateCCtxSize_usingCCtxParams() can be used in tandem with ZSTD_CCtxParam_setParameter(). Only single-threaded compression is supported. This function will return an error code if ZSTD_c_nbWorkers is >= 1."]
     #[doc = "  Note : CCtx size estimation is only correct for single-threaded compression."]
     pub fn ZSTD_estimateCCtxSize(compressionLevel: libc::c_int) -> usize;
 }
@@ -815,7 +1207,7 @@ extern "C" {
     #[doc = "  It will also consider src size to be arbitrarily \"large\", which is worst case."]
     #[doc = "  If srcSize is known to always be small, ZSTD_estimateCStreamSize_usingCParams() can provide a tighter estimation."]
     #[doc = "  ZSTD_estimateCStreamSize_usingCParams() can be used in tandem with ZSTD_getCParams() to create cParams from compressionLevel."]
-    #[doc = "  ZSTD_estimateCStreamSize_usingCCtxParams() can be used in tandem with ZSTD_CCtxParam_setParameter(). Only single-threaded compression is supported. This function will return an error code if ZSTD_p_nbWorkers is >= 1."]
+    #[doc = "  ZSTD_estimateCStreamSize_usingCCtxParams() can be used in tandem with ZSTD_CCtxParam_setParameter(). Only single-threaded compression is supported. This function will return an error code if ZSTD_c_nbWorkers is >= 1."]
     #[doc = "  Note : CStream size estimation is only correct for single-threaded compression."]
     #[doc = "  ZSTD_DStream memory budget depends on window Size."]
     #[doc = "  This information can be passed manually, using ZSTD_estimateDStreamSize,"]
@@ -1053,8 +1445,9 @@ extern "C" {
 extern "C" {
     #[doc = " ZSTD_createCDict_byReference() :"]
     #[doc = "  Create a digested dictionary for compression"]
-    #[doc = "  Dictionary content is simply referenced, and therefore stays in dictBuffer."]
-    #[doc = "  It is important that dictBuffer outlives CDict, it must remain read accessible throughout the lifetime of CDict"]
+    #[doc = "  Dictionary content is just referenced, not duplicated."]
+    #[doc = "  As a consequence, `dictBuffer` **must** outlive CDict,"]
+    #[doc = "  and its content must remain unmodified throughout the lifetime of CDict."]
     pub fn ZSTD_createCDict_byReference(
         dictBuffer: *const libc::c_void,
         dictSize: usize,
@@ -1098,7 +1491,7 @@ extern "C" {
 }
 extern "C" {
     #[doc = " ZSTD_compress_advanced() :"]
-    #[doc = "   Same as ZSTD_compress_usingDict(), with fine-tune control over each compression parameter"]
+    #[doc = "  Same as ZSTD_compress_usingDict(), with fine-tune control over compression parameters (by structure)"]
     pub fn ZSTD_compress_advanced(
         cctx: *mut ZSTD_CCtx,
         dst: *mut libc::c_void,
@@ -1112,7 +1505,7 @@ extern "C" {
 }
 extern "C" {
     #[doc = " ZSTD_compress_usingCDict_advanced() :"]
-    #[doc = "   Same as ZSTD_compress_usingCDict(), with fine-tune control over frame parameters"]
+    #[doc = "  Same as ZSTD_compress_usingCDict(), with fine-tune control over frame parameters"]
     pub fn ZSTD_compress_usingCDict_advanced(
         cctx: *mut ZSTD_CCtx,
         dst: *mut libc::c_void,
@@ -1121,6 +1514,148 @@ extern "C" {
         srcSize: usize,
         cdict: *const ZSTD_CDict,
         fParams: ZSTD_frameParameters,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_loadDictionary_byReference() :"]
+    #[doc = "  Same as ZSTD_CCtx_loadDictionary(), but dictionary content is referenced, instead of being copied into CCtx."]
+    #[doc = "  It saves some memory, but also requires that `dict` outlives its usage within `cctx`"]
+    pub fn ZSTD_CCtx_loadDictionary_byReference(
+        cctx: *mut ZSTD_CCtx,
+        dict: *const libc::c_void,
+        dictSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_loadDictionary_advanced() :"]
+    #[doc = "  Same as ZSTD_CCtx_loadDictionary(), but gives finer control over"]
+    #[doc = "  how to load the dictionary (by copy ? by reference ?)"]
+    #[doc = "  and how to interpret it (automatic ? force raw mode ? full mode only ?)"]
+    pub fn ZSTD_CCtx_loadDictionary_advanced(
+        cctx: *mut ZSTD_CCtx,
+        dict: *const libc::c_void,
+        dictSize: usize,
+        dictLoadMethod: ZSTD_dictLoadMethod_e,
+        dictContentType: ZSTD_dictContentType_e,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_refPrefix_advanced() :"]
+    #[doc = "  Same as ZSTD_CCtx_refPrefix(), but gives finer control over"]
+    #[doc = "  how to interpret prefix content (automatic ? force raw mode (default) ? full mode only ?)"]
+    pub fn ZSTD_CCtx_refPrefix_advanced(
+        cctx: *mut ZSTD_CCtx,
+        prefix: *const libc::c_void,
+        prefixSize: usize,
+        dictContentType: ZSTD_dictContentType_e,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_getParameter() :"]
+    #[doc = "  Get the requested compression parameter value, selected by enum ZSTD_cParameter,"]
+    #[doc = "  and store it into int* value."]
+    #[doc = " @return : 0, or an error code (which can be tested with ZSTD_isError())."]
+    pub fn ZSTD_CCtx_getParameter(
+        cctx: *mut ZSTD_CCtx,
+        param: ZSTD_cParameter,
+        value: *mut libc::c_int,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_params :"]
+    #[doc = "  Quick howto :"]
+    #[doc = "  - ZSTD_createCCtxParams() : Create a ZSTD_CCtx_params structure"]
+    #[doc = "  - ZSTD_CCtxParam_setParameter() : Push parameters one by one into"]
+    #[doc = "                                    an existing ZSTD_CCtx_params structure."]
+    #[doc = "                                    This is similar to"]
+    #[doc = "                                    ZSTD_CCtx_setParameter()."]
+    #[doc = "  - ZSTD_CCtx_setParametersUsingCCtxParams() : Apply parameters to"]
+    #[doc = "                                    an existing CCtx."]
+    #[doc = "                                    These parameters will be applied to"]
+    #[doc = "                                    all subsequent frames."]
+    #[doc = "  - ZSTD_compressStream2() : Do compression using the CCtx."]
+    #[doc = "  - ZSTD_freeCCtxParams() : Free the memory."]
+    #[doc = ""]
+    #[doc = "  This can be used with ZSTD_estimateCCtxSize_advanced_usingCCtxParams()"]
+    #[doc = "  for static allocation of CCtx for single-threaded compression."]
+    pub fn ZSTD_createCCtxParams() -> *mut ZSTD_CCtx_params;
+}
+extern "C" {
+    pub fn ZSTD_freeCCtxParams(params: *mut ZSTD_CCtx_params) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtxParams_reset() :"]
+    #[doc = "  Reset params to default values."]
+    pub fn ZSTD_CCtxParams_reset(params: *mut ZSTD_CCtx_params) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtxParams_init() :"]
+    #[doc = "  Initializes the compression parameters of cctxParams according to"]
+    #[doc = "  compression level. All other parameters are reset to their default values."]
+    pub fn ZSTD_CCtxParams_init(
+        cctxParams: *mut ZSTD_CCtx_params,
+        compressionLevel: libc::c_int,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtxParams_init_advanced() :"]
+    #[doc = "  Initializes the compression and frame parameters of cctxParams according to"]
+    #[doc = "  params. All other parameters are reset to their default values."]
+    pub fn ZSTD_CCtxParams_init_advanced(
+        cctxParams: *mut ZSTD_CCtx_params,
+        params: ZSTD_parameters,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtxParam_setParameter() :"]
+    #[doc = "  Similar to ZSTD_CCtx_setParameter."]
+    #[doc = "  Set one compression parameter, selected by enum ZSTD_cParameter."]
+    #[doc = "  Parameters must be applied to a ZSTD_CCtx using ZSTD_CCtx_setParametersUsingCCtxParams()."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    pub fn ZSTD_CCtxParam_setParameter(
+        params: *mut ZSTD_CCtx_params,
+        param: ZSTD_cParameter,
+        value: libc::c_int,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtxParam_getParameter() :"]
+    #[doc = " Similar to ZSTD_CCtx_getParameter."]
+    #[doc = " Get the requested value of one compression parameter, selected by enum ZSTD_cParameter."]
+    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
+    pub fn ZSTD_CCtxParam_getParameter(
+        params: *mut ZSTD_CCtx_params,
+        param: ZSTD_cParameter,
+        value: *mut libc::c_int,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_setParametersUsingCCtxParams() :"]
+    #[doc = "  Apply a set of ZSTD_CCtx_params to the compression context."]
+    #[doc = "  This can be done even after compression is started,"]
+    #[doc = "    if nbWorkers==0, this will have no impact until a new compression is started."]
+    #[doc = "    if nbWorkers>=1, new parameters will be picked up at next job,"]
+    #[doc = "       with a few restrictions (windowLog, pledgedSrcSize, nbWorkers, jobSize, and overlapLog are not updated)."]
+    pub fn ZSTD_CCtx_setParametersUsingCCtxParams(
+        cctx: *mut ZSTD_CCtx,
+        params: *const ZSTD_CCtx_params,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_compressStream2_simpleArgs() :"]
+    #[doc = "  Same as ZSTD_compressStream2(),"]
+    #[doc = "  but using only integral types as arguments."]
+    #[doc = "  This variant might be helpful for binders from dynamic languages"]
+    #[doc = "  which have troubles handling structures containing memory pointers."]
+    pub fn ZSTD_compressStream2_simpleArgs(
+        cctx: *mut ZSTD_CCtx,
+        dst: *mut libc::c_void,
+        dstCapacity: usize,
+        dstPos: *mut usize,
+        src: *const libc::c_void,
+        srcSize: usize,
+        srcPos: *mut usize,
+        endOp: ZSTD_EndDirective,
     ) -> usize;
 }
 extern "C" {
@@ -1179,7 +1714,86 @@ extern "C" {
     ) -> libc::c_uint;
 }
 extern "C" {
+    #[doc = " ZSTD_DCtx_loadDictionary_byReference() :"]
+    #[doc = "  Same as ZSTD_DCtx_loadDictionary(),"]
+    #[doc = "  but references `dict` content instead of copying it into `dctx`."]
+    #[doc = "  This saves memory if `dict` remains around.,"]
+    #[doc = "  However, it\'s imperative that `dict` remains accessible (and unmodified) while being used, so it must outlive decompression."]
+    pub fn ZSTD_DCtx_loadDictionary_byReference(
+        dctx: *mut ZSTD_DCtx,
+        dict: *const libc::c_void,
+        dictSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_loadDictionary_advanced() :"]
+    #[doc = "  Same as ZSTD_DCtx_loadDictionary(),"]
+    #[doc = "  but gives direct control over"]
+    #[doc = "  how to load the dictionary (by copy ? by reference ?)"]
+    #[doc = "  and how to interpret it (automatic ? force raw mode ? full mode only ?)."]
+    pub fn ZSTD_DCtx_loadDictionary_advanced(
+        dctx: *mut ZSTD_DCtx,
+        dict: *const libc::c_void,
+        dictSize: usize,
+        dictLoadMethod: ZSTD_dictLoadMethod_e,
+        dictContentType: ZSTD_dictContentType_e,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_refPrefix_advanced() :"]
+    #[doc = "  Same as ZSTD_DCtx_refPrefix(), but gives finer control over"]
+    #[doc = "  how to interpret prefix content (automatic ? force raw mode (default) ? full mode only ?)"]
+    pub fn ZSTD_DCtx_refPrefix_advanced(
+        dctx: *mut ZSTD_DCtx,
+        prefix: *const libc::c_void,
+        prefixSize: usize,
+        dictContentType: ZSTD_dictContentType_e,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_setMaxWindowSize() :"]
+    #[doc = "  Refuses allocating internal buffers for frames requiring a window size larger than provided limit."]
+    #[doc = "  This protects a decoder context from reserving too much memory for itself (potential attack scenario)."]
+    #[doc = "  This parameter is only useful in streaming mode, since no internal buffer is allocated in single-pass mode."]
+    #[doc = "  By default, a decompression context accepts all window sizes <= (1 << ZSTD_WINDOWLOG_LIMIT_DEFAULT)"]
+    #[doc = " @return : 0, or an error code (which can be tested using ZSTD_isError())."]
+    pub fn ZSTD_DCtx_setMaxWindowSize(
+        dctx: *mut ZSTD_DCtx,
+        maxWindowSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_DCtx_setFormat() :"]
+    #[doc = "  Instruct the decoder context about what kind of data to decode next."]
+    #[doc = "  This instruction is mandatory to decode data without a fully-formed header,"]
+    #[doc = "  such ZSTD_f_zstd1_magicless for example."]
+    #[doc = " @return : 0, or an error code (which can be tested using ZSTD_isError())."]
+    pub fn ZSTD_DCtx_setFormat(
+        dctx: *mut ZSTD_DCtx,
+        format: ZSTD_format_e,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_decompressStream_simpleArgs() :"]
+    #[doc = "  Same as ZSTD_decompressStream(),"]
+    #[doc = "  but using only integral types as arguments."]
+    #[doc = "  This can be helpful for binders from dynamic languages"]
+    #[doc = "  which have troubles handling structures containing memory pointers."]
+    pub fn ZSTD_decompressStream_simpleArgs(
+        dctx: *mut ZSTD_DCtx,
+        dst: *mut libc::c_void,
+        dstCapacity: usize,
+        dstPos: *mut usize,
+        src: *const libc::c_void,
+        srcSize: usize,
+        srcPos: *mut usize,
+    ) -> usize;
+}
+extern "C" {
     #[doc = "  Advanced streaming functions"]
+    #[doc = "  Warning : most of these functions are now redundant with the Advanced API."]
+    #[doc = "  Once Advanced API reaches \"stable\" status,"]
+    #[doc = "  redundant functions will be deprecated, and then at some point removed."]
     pub fn ZSTD_initCStream_srcSize(
         zcs: *mut ZSTD_CStream,
         compressionLevel: libc::c_int,
@@ -1219,7 +1833,7 @@ extern "C" {
 }
 extern "C" {
     #[doc = " ZSTD_resetCStream() :"]
-    #[doc = "  start a new compression job, using same parameters from previous job."]
+    #[doc = "  start a new frame, using same parameters from previous frame."]
     #[doc = "  This is typically useful to skip dictionary loading stage, since it will re-use it in-place."]
     #[doc = "  Note that zcs must be init at least once before using ZSTD_resetCStream()."]
     #[doc = "  If pledgedSrcSize is not known at reset time, use macro ZSTD_CONTENTSIZE_UNKNOWN."]
@@ -1349,21 +1963,9 @@ extern "C" {
     #[doc = "  + there is no active job (could be checked with ZSTD_frameProgression()), or"]
     #[doc = "  + oldest job is still actively compressing data,"]
     #[doc = "    but everything it has produced has also been flushed so far,"]
-    #[doc = "    therefore flushing speed is currently limited by production speed of oldest job"]
-    #[doc = "    irrespective of the speed of concurrent newer jobs."]
+    #[doc = "    therefore flush speed is limited by production speed of oldest job"]
+    #[doc = "    irrespective of the speed of concurrent (and newer) jobs."]
     pub fn ZSTD_toFlushNow(cctx: *mut ZSTD_CCtx) -> usize;
-}
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ZSTD_DStreamParameter_e {
-    DStream_p_maxWindowSize = 0,
-}
-extern "C" {
-    pub fn ZSTD_setDStreamParameter(
-        zds: *mut ZSTD_DStream,
-        paramType: ZSTD_DStreamParameter_e,
-        paramValue: libc::c_uint,
-    ) -> usize;
 }
 extern "C" {
     pub fn ZSTD_initDStream_usingDict(
@@ -1605,6 +2207,17 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
+    #[doc = " ZSTD_getFrameHeader_advanced() :"]
+    #[doc = "  same as ZSTD_getFrameHeader(),"]
+    #[doc = "  with added capability to select a format (like ZSTD_f_zstd1_magicless)"]
+    pub fn ZSTD_getFrameHeader_advanced(
+        zfhPtr: *mut ZSTD_frameHeader,
+        src: *const libc::c_void,
+        srcSize: usize,
+        format: ZSTD_format_e,
+    ) -> usize;
+}
+extern "C" {
     pub fn ZSTD_decodingBufferSize_min(
         windowSize: libc::c_ulonglong,
         frameContentSize: libc::c_ulonglong,
@@ -1654,474 +2267,6 @@ pub enum ZSTD_nextInputType_e {
 extern "C" {
     pub fn ZSTD_nextInputType(dctx: *mut ZSTD_DCtx) -> ZSTD_nextInputType_e;
 }
-#[repr(u32)]
-#[doc = "       New advanced API (experimental)"]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ZSTD_format_e {
-    ZSTD_f_zstd1 = 0,
-    ZSTD_f_zstd1_magicless = 1,
-}
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ZSTD_cParameter {
-    ZSTD_p_format = 10,
-    ZSTD_p_compressionLevel = 100,
-    ZSTD_p_windowLog = 101,
-    ZSTD_p_hashLog = 102,
-    ZSTD_p_chainLog = 103,
-    ZSTD_p_searchLog = 104,
-    ZSTD_p_minMatch = 105,
-    ZSTD_p_targetLength = 106,
-    ZSTD_p_compressionStrategy = 107,
-    ZSTD_p_enableLongDistanceMatching = 160,
-    ZSTD_p_ldmHashLog = 161,
-    ZSTD_p_ldmMinMatch = 162,
-    ZSTD_p_ldmBucketSizeLog = 163,
-    ZSTD_p_ldmHashEveryLog = 164,
-    ZSTD_p_contentSizeFlag = 200,
-    ZSTD_p_checksumFlag = 201,
-    ZSTD_p_dictIDFlag = 202,
-    ZSTD_p_nbWorkers = 400,
-    ZSTD_p_jobSize = 401,
-    ZSTD_p_overlapSizeLog = 402,
-    ZSTD_p_forceMaxWindow = 1100,
-    ZSTD_p_forceAttachDict = 1101,
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_setParameter() :"]
-    #[doc = "  Set one compression parameter, selected by enum ZSTD_cParameter."]
-    #[doc = "  Setting a parameter is generally only possible during frame initialization (before starting compression)."]
-    #[doc = "  Exception : when using multi-threading mode (nbThreads >= 1),"]
-    #[doc = "              following parameters can be updated _during_ compression (within same frame):"]
-    #[doc = "              => compressionLevel, hashLog, chainLog, searchLog, minMatch, targetLength and strategy."]
-    #[doc = "              new parameters will be active on next job, or after a flush()."]
-    #[doc = "  Note : when `value` type is not unsigned (int, or enum), cast it to unsigned for proper type checking."]
-    #[doc = "  @result : informational value (typically, value being set, correctly clamped),"]
-    #[doc = "            or an error code (which can be tested with ZSTD_isError())."]
-    pub fn ZSTD_CCtx_setParameter(
-        cctx: *mut ZSTD_CCtx,
-        param: ZSTD_cParameter,
-        value: libc::c_uint,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_getParameter() :"]
-    #[doc = " Get the requested value of one compression parameter, selected by enum ZSTD_cParameter."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    pub fn ZSTD_CCtx_getParameter(
-        cctx: *mut ZSTD_CCtx,
-        param: ZSTD_cParameter,
-        value: *mut libc::c_uint,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_setPledgedSrcSize() :"]
-    #[doc = "  Total input data size to be compressed as a single frame."]
-    #[doc = "  This value will be controlled at the end, and result in error if not respected."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    #[doc = "  Note 1 : 0 means zero, empty."]
-    #[doc = "           In order to mean \"unknown content size\", pass constant ZSTD_CONTENTSIZE_UNKNOWN."]
-    #[doc = "           ZSTD_CONTENTSIZE_UNKNOWN is default value for any new compression job."]
-    #[doc = "  Note 2 : If all data is provided and consumed in a single round,"]
-    #[doc = "           this value is overriden by srcSize instead."]
-    pub fn ZSTD_CCtx_setPledgedSrcSize(
-        cctx: *mut ZSTD_CCtx,
-        pledgedSrcSize: libc::c_ulonglong,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_loadDictionary() :"]
-    #[doc = "  Create an internal CDict from `dict` buffer."]
-    #[doc = "  Decompression will have to use same dictionary."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    #[doc = "  Special: Adding a NULL (or 0-size) dictionary invalidates previous dictionary,"]
-    #[doc = "           meaning \"return to no-dictionary mode\"."]
-    #[doc = "  Note 1 : Dictionary will be used for all future compression jobs."]
-    #[doc = "           To return to \"no-dictionary\" situation, load a NULL dictionary"]
-    #[doc = "  Note 2 : Loading a dictionary involves building tables, which are dependent on compression parameters."]
-    #[doc = "           For this reason, compression parameters cannot be changed anymore after loading a dictionary."]
-    #[doc = "           It\'s also a CPU consuming operation, with non-negligible impact on latency."]
-    #[doc = "  Note 3 :`dict` content will be copied internally."]
-    #[doc = "           Use ZSTD_CCtx_loadDictionary_byReference() to reference dictionary content instead."]
-    #[doc = "           In such a case, dictionary buffer must outlive its users."]
-    #[doc = "  Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()"]
-    #[doc = "           to precisely select how dictionary content must be interpreted."]
-    pub fn ZSTD_CCtx_loadDictionary(
-        cctx: *mut ZSTD_CCtx,
-        dict: *const libc::c_void,
-        dictSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_CCtx_loadDictionary_byReference(
-        cctx: *mut ZSTD_CCtx,
-        dict: *const libc::c_void,
-        dictSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_CCtx_loadDictionary_advanced(
-        cctx: *mut ZSTD_CCtx,
-        dict: *const libc::c_void,
-        dictSize: usize,
-        dictLoadMethod: ZSTD_dictLoadMethod_e,
-        dictContentType: ZSTD_dictContentType_e,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_refCDict() :"]
-    #[doc = "  Reference a prepared dictionary, to be used for all next compression jobs."]
-    #[doc = "  Note that compression parameters are enforced from within CDict,"]
-    #[doc = "  and supercede any compression parameter previously set within CCtx."]
-    #[doc = "  The dictionary will remain valid for future compression jobs using same CCtx."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    #[doc = "  Special : adding a NULL CDict means \"return to no-dictionary mode\"."]
-    #[doc = "  Note 1 : Currently, only one dictionary can be managed."]
-    #[doc = "           Adding a new dictionary effectively \"discards\" any previous one."]
-    #[doc = "  Note 2 : CDict is just referenced, its lifetime must outlive CCtx."]
-    pub fn ZSTD_CCtx_refCDict(
-        cctx: *mut ZSTD_CCtx,
-        cdict: *const ZSTD_CDict,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_refPrefix() :"]
-    #[doc = "  Reference a prefix (single-usage dictionary) for next compression job."]
-    #[doc = "  Decompression will need same prefix to properly regenerate data."]
-    #[doc = "  Compressing with a prefix is similar in outcome as performing a diff and compressing it,"]
-    #[doc = "  but performs much faster, especially during decompression (compression speed is tunable with compression level)."]
-    #[doc = "  Note that prefix is **only used once**. Tables are discarded at end of compression job (ZSTD_e_end)."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    #[doc = "  Special: Adding any prefix (including NULL) invalidates any previous prefix or dictionary"]
-    #[doc = "  Note 1 : Prefix buffer is referenced. It **must** outlive compression job."]
-    #[doc = "           Its contain must remain unmodified up to end of compression (ZSTD_e_end)."]
-    #[doc = "  Note 2 : If the intention is to diff some large src data blob with some prior version of itself,"]
-    #[doc = "           ensure that the window size is large enough to contain the entire source."]
-    #[doc = "           See ZSTD_p_windowLog."]
-    #[doc = "  Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters."]
-    #[doc = "           It\'s a CPU consuming operation, with non-negligible impact on latency."]
-    #[doc = "           If there is a need to use same prefix multiple times, consider loadDictionary instead."]
-    #[doc = "  Note 4 : By default, the prefix is treated as raw content (ZSTD_dm_rawContent)."]
-    #[doc = "           Use ZSTD_CCtx_refPrefix_advanced() to alter dictMode."]
-    pub fn ZSTD_CCtx_refPrefix(
-        cctx: *mut ZSTD_CCtx,
-        prefix: *const libc::c_void,
-        prefixSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_CCtx_refPrefix_advanced(
-        cctx: *mut ZSTD_CCtx,
-        prefix: *const libc::c_void,
-        prefixSize: usize,
-        dictContentType: ZSTD_dictContentType_e,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_reset() :"]
-    #[doc = "  Return a CCtx to clean state."]
-    #[doc = "  Useful after an error, or to interrupt an ongoing compression job and start a new one."]
-    #[doc = "  Any internal data not yet flushed is cancelled."]
-    #[doc = "  The parameters and dictionary are kept unchanged, to reset them use ZSTD_CCtx_resetParameters()."]
-    pub fn ZSTD_CCtx_reset(cctx: *mut ZSTD_CCtx);
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_resetParameters() :"]
-    #[doc = "  All parameters are back to default values (compression level is ZSTD_CLEVEL_DEFAULT)."]
-    #[doc = "  Dictionary (if any) is dropped."]
-    #[doc = "  Resetting parameters is only possible during frame initialization (before starting compression)."]
-    #[doc = "  To reset the context use ZSTD_CCtx_reset()."]
-    #[doc = "  @return 0 or an error code (which can be checked with ZSTD_isError())."]
-    pub fn ZSTD_CCtx_resetParameters(cctx: *mut ZSTD_CCtx) -> usize;
-}
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ZSTD_EndDirective {
-    ZSTD_e_continue = 0,
-    ZSTD_e_flush = 1,
-    ZSTD_e_end = 2,
-}
-extern "C" {
-    #[doc = " ZSTD_compress_generic() :"]
-    #[doc = "  Behave about the same as ZSTD_compressStream. To note :"]
-    #[doc = "  - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_setParameter()"]
-    #[doc = "  - Compression parameters cannot be changed once compression is started."]
-    #[doc = "  - outpot->pos must be <= dstCapacity, input->pos must be <= srcSize"]
-    #[doc = "  - outpot->pos and input->pos will be updated. They are guaranteed to remain below their respective limit."]
-    #[doc = "  - In single-thread mode (default), function is blocking : it completed its job before returning to caller."]
-    #[doc = "  - In multi-thread mode, function is non-blocking : it just acquires a copy of input, and distribute job to internal worker threads,"]
-    #[doc = "                                                     and then immediately returns, just indicating that there is some data remaining to be flushed."]
-    #[doc = "                                                     The function nonetheless guarantees forward progress : it will return only after it reads or write at least 1+ byte."]
-    #[doc = "  - Exception : in multi-threading mode, if the first call requests a ZSTD_e_end directive, it is blocking : it will complete compression before giving back control to caller."]
-    #[doc = "  - @return provides a minimum amount of data remaining to be flushed from internal buffers"]
-    #[doc = "            or an error code, which can be tested using ZSTD_isError()."]
-    #[doc = "            if @return != 0, flush is not fully completed, there is still some data left within internal buffers."]
-    #[doc = "            This is useful for ZSTD_e_flush, since in this case more flushes are necessary to empty all buffers."]
-    #[doc = "            For ZSTD_e_end, @return == 0 when internal buffers are fully flushed and frame is completed."]
-    #[doc = "  - after a ZSTD_e_end directive, if internal buffer is not fully flushed (@return != 0),"]
-    #[doc = "            only ZSTD_e_end or ZSTD_e_flush operations are allowed."]
-    #[doc = "            Before starting a new compression job, or changing compression parameters,"]
-    #[doc = "            it is required to fully flush internal buffers."]
-    pub fn ZSTD_compress_generic(
-        cctx: *mut ZSTD_CCtx,
-        output: *mut ZSTD_outBuffer,
-        input: *mut ZSTD_inBuffer,
-        endOp: ZSTD_EndDirective,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_compress_generic_simpleArgs() :"]
-    #[doc = "  Same as ZSTD_compress_generic(),"]
-    #[doc = "  but using only integral types as arguments."]
-    #[doc = "  Argument list is larger than ZSTD_{in,out}Buffer,"]
-    #[doc = "  but can be helpful for binders from dynamic languages"]
-    #[doc = "  which have troubles handling structures containing memory pointers."]
-    pub fn ZSTD_compress_generic_simpleArgs(
-        cctx: *mut ZSTD_CCtx,
-        dst: *mut libc::c_void,
-        dstCapacity: usize,
-        dstPos: *mut usize,
-        src: *const libc::c_void,
-        srcSize: usize,
-        srcPos: *mut usize,
-        endOp: ZSTD_EndDirective,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_params :"]
-    #[doc = "  Quick howto :"]
-    #[doc = "  - ZSTD_createCCtxParams() : Create a ZSTD_CCtx_params structure"]
-    #[doc = "  - ZSTD_CCtxParam_setParameter() : Push parameters one by one into"]
-    #[doc = "                                    an existing ZSTD_CCtx_params structure."]
-    #[doc = "                                    This is similar to"]
-    #[doc = "                                    ZSTD_CCtx_setParameter()."]
-    #[doc = "  - ZSTD_CCtx_setParametersUsingCCtxParams() : Apply parameters to"]
-    #[doc = "                                    an existing CCtx."]
-    #[doc = "                                    These parameters will be applied to"]
-    #[doc = "                                    all subsequent compression jobs."]
-    #[doc = "  - ZSTD_compress_generic() : Do compression using the CCtx."]
-    #[doc = "  - ZSTD_freeCCtxParams() : Free the memory."]
-    #[doc = ""]
-    #[doc = "  This can be used with ZSTD_estimateCCtxSize_advanced_usingCCtxParams()"]
-    #[doc = "  for static allocation for single-threaded compression."]
-    pub fn ZSTD_createCCtxParams() -> *mut ZSTD_CCtx_params;
-}
-extern "C" {
-    pub fn ZSTD_freeCCtxParams(params: *mut ZSTD_CCtx_params) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtxParams_reset() :"]
-    #[doc = "  Reset params to default values."]
-    pub fn ZSTD_CCtxParams_reset(params: *mut ZSTD_CCtx_params) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtxParams_init() :"]
-    #[doc = "  Initializes the compression parameters of cctxParams according to"]
-    #[doc = "  compression level. All other parameters are reset to their default values."]
-    pub fn ZSTD_CCtxParams_init(
-        cctxParams: *mut ZSTD_CCtx_params,
-        compressionLevel: libc::c_int,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtxParams_init_advanced() :"]
-    #[doc = "  Initializes the compression and frame parameters of cctxParams according to"]
-    #[doc = "  params. All other parameters are reset to their default values."]
-    pub fn ZSTD_CCtxParams_init_advanced(
-        cctxParams: *mut ZSTD_CCtx_params,
-        params: ZSTD_parameters,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtxParam_setParameter() :"]
-    #[doc = "  Similar to ZSTD_CCtx_setParameter."]
-    #[doc = "  Set one compression parameter, selected by enum ZSTD_cParameter."]
-    #[doc = "  Parameters must be applied to a ZSTD_CCtx using ZSTD_CCtx_setParametersUsingCCtxParams()."]
-    #[doc = "  Note : when `value` is an enum, cast it to unsigned for proper type checking."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    pub fn ZSTD_CCtxParam_setParameter(
-        params: *mut ZSTD_CCtx_params,
-        param: ZSTD_cParameter,
-        value: libc::c_uint,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtxParam_getParameter() :"]
-    #[doc = " Similar to ZSTD_CCtx_getParameter."]
-    #[doc = " Get the requested value of one compression parameter, selected by enum ZSTD_cParameter."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    pub fn ZSTD_CCtxParam_getParameter(
-        params: *mut ZSTD_CCtx_params,
-        param: ZSTD_cParameter,
-        value: *mut libc::c_uint,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_CCtx_setParametersUsingCCtxParams() :"]
-    #[doc = "  Apply a set of ZSTD_CCtx_params to the compression context."]
-    #[doc = "  This can be done even after compression is started,"]
-    #[doc = "    if nbWorkers==0, this will have no impact until a new compression is started."]
-    #[doc = "    if nbWorkers>=1, new parameters will be picked up at next job,"]
-    #[doc = "       with a few restrictions (windowLog, pledgedSrcSize, nbWorkers, jobSize, and overlapLog are not updated)."]
-    pub fn ZSTD_CCtx_setParametersUsingCCtxParams(
-        cctx: *mut ZSTD_CCtx,
-        params: *const ZSTD_CCtx_params,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_DCtx_loadDictionary() :"]
-    #[doc = "  Create an internal DDict from dict buffer,"]
-    #[doc = "  to be used to decompress next frames."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    #[doc = "  Special : Adding a NULL (or 0-size) dictionary invalidates any previous dictionary,"]
-    #[doc = "            meaning \"return to no-dictionary mode\"."]
-    #[doc = "  Note 1 : `dict` content will be copied internally."]
-    #[doc = "            Use ZSTD_DCtx_loadDictionary_byReference()"]
-    #[doc = "            to reference dictionary content instead."]
-    #[doc = "            In which case, the dictionary buffer must outlive its users."]
-    #[doc = "  Note 2 : Loading a dictionary involves building tables,"]
-    #[doc = "           which has a non-negligible impact on CPU usage and latency."]
-    #[doc = "  Note 3 : Use ZSTD_DCtx_loadDictionary_advanced() to select"]
-    #[doc = "           how dictionary content will be interpreted and loaded."]
-    pub fn ZSTD_DCtx_loadDictionary(
-        dctx: *mut ZSTD_DCtx,
-        dict: *const libc::c_void,
-        dictSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_DCtx_loadDictionary_byReference(
-        dctx: *mut ZSTD_DCtx,
-        dict: *const libc::c_void,
-        dictSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_DCtx_loadDictionary_advanced(
-        dctx: *mut ZSTD_DCtx,
-        dict: *const libc::c_void,
-        dictSize: usize,
-        dictLoadMethod: ZSTD_dictLoadMethod_e,
-        dictContentType: ZSTD_dictContentType_e,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_DCtx_refDDict() :"]
-    #[doc = "  Reference a prepared dictionary, to be used to decompress next frames."]
-    #[doc = "  The dictionary remains active for decompression of future frames using same DCtx."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    #[doc = "  Note 1 : Currently, only one dictionary can be managed."]
-    #[doc = "           Referencing a new dictionary effectively \"discards\" any previous one."]
-    #[doc = "  Special : adding a NULL DDict means \"return to no-dictionary mode\"."]
-    #[doc = "  Note 2 : DDict is just referenced, its lifetime must outlive its usage from DCtx."]
-    pub fn ZSTD_DCtx_refDDict(
-        dctx: *mut ZSTD_DCtx,
-        ddict: *const ZSTD_DDict,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_DCtx_refPrefix() :"]
-    #[doc = "  Reference a prefix (single-usage dictionary) for next compression job."]
-    #[doc = "  This is the reverse operation of ZSTD_CCtx_refPrefix(),"]
-    #[doc = "  and must use the same prefix as the one used during compression."]
-    #[doc = "  Prefix is **only used once**. Reference is discarded at end of frame."]
-    #[doc = "  End of frame is reached when ZSTD_DCtx_decompress_generic() returns 0."]
-    #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
-    #[doc = "  Note 1 : Adding any prefix (including NULL) invalidates any previously set prefix or dictionary"]
-    #[doc = "  Note 2 : Prefix buffer is referenced. It **must** outlive decompression job."]
-    #[doc = "           Prefix buffer must remain unmodified up to the end of frame,"]
-    #[doc = "           reached when ZSTD_DCtx_decompress_generic() returns 0."]
-    #[doc = "  Note 3 : By default, the prefix is treated as raw content (ZSTD_dm_rawContent)."]
-    #[doc = "           Use ZSTD_CCtx_refPrefix_advanced() to alter dictMode."]
-    #[doc = "  Note 4 : Referencing a raw content prefix has almost no cpu nor memory cost."]
-    #[doc = "           A fulldict prefix is more costly though."]
-    pub fn ZSTD_DCtx_refPrefix(
-        dctx: *mut ZSTD_DCtx,
-        prefix: *const libc::c_void,
-        prefixSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    pub fn ZSTD_DCtx_refPrefix_advanced(
-        dctx: *mut ZSTD_DCtx,
-        prefix: *const libc::c_void,
-        prefixSize: usize,
-        dictContentType: ZSTD_dictContentType_e,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_DCtx_setMaxWindowSize() :"]
-    #[doc = "  Refuses allocating internal buffers for frames requiring a window size larger than provided limit."]
-    #[doc = "  This is useful to prevent a decoder context from reserving too much memory for itself (potential attack scenario)."]
-    #[doc = "  This parameter is only useful in streaming mode, since no internal buffer is allocated in direct mode."]
-    #[doc = "  By default, a decompression context accepts all window sizes <= (1 << ZSTD_WINDOWLOG_MAX)"]
-    #[doc = " @return : 0, or an error code (which can be tested using ZSTD_isError())."]
-    pub fn ZSTD_DCtx_setMaxWindowSize(
-        dctx: *mut ZSTD_DCtx,
-        maxWindowSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_DCtx_setFormat() :"]
-    #[doc = "  Instruct the decoder context about what kind of data to decode next."]
-    #[doc = "  This instruction is mandatory to decode data without a fully-formed header,"]
-    #[doc = "  such ZSTD_f_zstd1_magicless for example."]
-    #[doc = " @return : 0, or an error code (which can be tested using ZSTD_isError())."]
-    pub fn ZSTD_DCtx_setFormat(
-        dctx: *mut ZSTD_DCtx,
-        format: ZSTD_format_e,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_getFrameHeader_advanced() :"]
-    #[doc = "  same as ZSTD_getFrameHeader(),"]
-    #[doc = "  with added capability to select a format (like ZSTD_f_zstd1_magicless)"]
-    pub fn ZSTD_getFrameHeader_advanced(
-        zfhPtr: *mut ZSTD_frameHeader,
-        src: *const libc::c_void,
-        srcSize: usize,
-        format: ZSTD_format_e,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_decompress_generic() :"]
-    #[doc = "  Behave the same as ZSTD_decompressStream."]
-    #[doc = "  Decompression parameters cannot be changed once decompression is started."]
-    #[doc = " @return : an error code, which can be tested using ZSTD_isError()"]
-    #[doc = "           if >0, a hint, nb of expected input bytes for next invocation."]
-    #[doc = "           `0` means : a frame has just been fully decoded and flushed."]
-    pub fn ZSTD_decompress_generic(
-        dctx: *mut ZSTD_DCtx,
-        output: *mut ZSTD_outBuffer,
-        input: *mut ZSTD_inBuffer,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_decompress_generic_simpleArgs() :"]
-    #[doc = "  Same as ZSTD_decompress_generic(),"]
-    #[doc = "  but using only integral types as arguments."]
-    #[doc = "  Argument list is larger than ZSTD_{in,out}Buffer,"]
-    #[doc = "  but can be helpful for binders from dynamic languages"]
-    #[doc = "  which have troubles handling structures containing memory pointers."]
-    pub fn ZSTD_decompress_generic_simpleArgs(
-        dctx: *mut ZSTD_DCtx,
-        dst: *mut libc::c_void,
-        dstCapacity: usize,
-        dstPos: *mut usize,
-        src: *const libc::c_void,
-        srcSize: usize,
-        srcPos: *mut usize,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_DCtx_reset() :"]
-    #[doc = "  Return a DCtx to clean state."]
-    #[doc = "  If a decompression was ongoing, any internal data not yet flushed is cancelled."]
-    #[doc = "  All parameters are back to default values, including sticky ones."]
-    #[doc = "  Dictionary (if any) is dropped."]
-    #[doc = "  Parameters can be modified again after a reset."]
-    pub fn ZSTD_DCtx_reset(dctx: *mut ZSTD_DCtx);
-}
 extern "C" {
     #[doc = "Block functions produce and decode raw zstd blocks, without frame metadata."]
     #[doc = "Frame metadata cost is typically ~18 bytes, which can be non-negligible for very small blocks (< 100 bytes)."]
@@ -2136,10 +2281,10 @@ extern "C" {
     #[doc = "+ copyCCtx() and copyDCtx() can be used too"]
     #[doc = "- Block size is limited, it must be <= ZSTD_getBlockSize() <= ZSTD_BLOCKSIZE_MAX == 128 KB"]
     #[doc = "+ If input is larger than a block size, it\'s necessary to split input data into multiple blocks"]
-    #[doc = "+ For inputs larger than a single block size, consider using the regular ZSTD_compress() instead."]
+    #[doc = "+ For inputs larger than a single block, really consider using regular ZSTD_compress() instead."]
     #[doc = "Frame metadata is not that costly, and quickly becomes negligible as source size grows larger."]
     #[doc = "- When a block is considered not compressible enough, ZSTD_compressBlock() result will be zero."]
-    #[doc = "In which case, nothing is produced into `dst`."]
+    #[doc = "In which case, nothing is produced into `dst` !"]
     #[doc = "+ User must test for such outcome and deal directly with uncompressed data"]
     #[doc = "+ ZSTD_decompressBlock() doesn\'t accept uncompressed data as input !!!"]
     #[doc = "+ In case of multiple successive blocks, should some of them be uncompressed,"]
@@ -2251,6 +2396,9 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
+    pub fn ZSTDMT_nextInputSizeHint(mtctx: *const ZSTDMT_CCtx) -> usize;
+}
+extern "C" {
     pub fn ZSTDMT_compressStream(
         mtctx: *mut ZSTDMT_CCtx,
         output: *mut ZSTD_outBuffer,
@@ -2278,7 +2426,7 @@ extern "C" {
         srcSize: usize,
         cdict: *const ZSTD_CDict,
         params: ZSTD_parameters,
-        overlapLog: libc::c_uint,
+        overlapLog: libc::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -2302,20 +2450,21 @@ extern "C" {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ZSTDMT_parameter {
     ZSTDMT_p_jobSize = 0,
-    ZSTDMT_p_overlapSectionLog = 1,
+    ZSTDMT_p_overlapLog = 1,
+    ZSTDMT_p_rsyncable = 2,
 }
 extern "C" {
     pub fn ZSTDMT_setMTCtxParameter(
         mtctx: *mut ZSTDMT_CCtx,
         parameter: ZSTDMT_parameter,
-        value: libc::c_uint,
+        value: libc::c_int,
     ) -> usize;
 }
 extern "C" {
     pub fn ZSTDMT_getMTCtxParameter(
         mtctx: *mut ZSTDMT_CCtx,
         parameter: ZSTDMT_parameter,
-        value: *mut libc::c_uint,
+        value: *mut libc::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -2348,7 +2497,7 @@ extern "C" {
     pub fn ZSTDMT_CCtxParam_setMTCtxParameter(
         params: *mut ZSTD_CCtx_params,
         parameter: ZSTDMT_parameter,
-        value: libc::c_uint,
+        value: libc::c_int,
     ) -> usize;
 }
 extern "C" {

@@ -41,7 +41,7 @@ fn decompress(source: &str) -> io::Result<()> {
         zstd::Decoder::new(file)?
     };
 
-    let mut target = fs::File::create(source.trim_right_matches(SUFFIX))?;
+    let mut target = fs::File::create(source.trim_end_matches(SUFFIX))?;
 
     io::copy(&mut decoder, &mut target)?;
 

@@ -106,6 +106,10 @@ fn compile_zstd() {
 
 fn main() {
     // println!("cargo:rustc-link-lib=zstd");
+    
+    if !PathBuf::from("zstd/lib").exists() {
+        panic!("Folder 'zstd/lib' does not exists. Maybe you forget clone 'zstd' submodule?");
+    }
 
     compile_zstd();
     generate_bindings();

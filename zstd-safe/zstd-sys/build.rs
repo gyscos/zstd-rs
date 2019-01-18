@@ -1,6 +1,9 @@
 #[cfg(feature = "bindgen")]
 extern crate bindgen;
 
+#[cfg(feature = "pkg-config")]
+extern crate pkg_config;
+
 extern crate cc;
 extern crate glob;
 
@@ -8,7 +11,7 @@ use std::path::PathBuf;
 use std::{env, fs};
 
 #[cfg(feature = "bindgen")]
-fn generate_bindings() {
+fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     use std::env;
     use std::path::PathBuf;
 
@@ -17,7 +20,12 @@ fn generate_bindings() {
         .blacklist_type("max_align_t")
         .use_core()
         .rustified_enum(".*")
-        .clang_arg("-Izstd/lib")
+        .clang_args(
+            headerpaths
+                .into_iter()
+                .map(|path| format!("-I{}", path.display())),
+        )
+        .clang_args(defs.into_iter().map(|def| format!("-D{}", def)))
         .clang_arg("-DZSTD_STATIC_LINKING_ONLY");
 
     #[cfg(not(feature = "std"))]
@@ -32,7 +40,22 @@ fn generate_bindings() {
 }
 
 #[cfg(not(feature = "bindgen"))]
-fn generate_bindings() {}
+fn generate_bindings(_: Vec<&str>, _: Vec<PathBuf>) {}
+
+#[cfg(feature = "pkg-config")]
+fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
+    let library = pkg_config::Config::new()
+        .statik(true)
+        .cargo_metadata(! cfg!(feature = "non-cargo"))
+        .probe("libzstd")
+        .expect("Can't probe for zstd in pkg-config");
+    (vec!["PKG_CONFIG"], library.include_paths)
+}
+
+#[cfg(not(feature = "pkg-config"))]
+fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
+    unimplemented!()
+}
 
 #[cfg(not(feature = "legacy"))]
 fn set_legacy(_config: &mut cc::Build) {}
@@ -106,11 +129,17 @@ fn compile_zstd() {
 
 fn main() {
     // println!("cargo:rustc-link-lib=zstd");
-    
-    if !PathBuf::from("zstd/lib").exists() {
-        panic!("Folder 'zstd/lib' does not exists. Maybe you forget clone 'zstd' submodule?");
-    }
 
-    compile_zstd();
-    generate_bindings();
+    let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
+        pkg_config()
+    } else {
+        if !PathBuf::from("zstd/lib").exists() {
+            panic!("Folder 'zstd/lib' does not exists. Maybe you forget clone 'zstd' submodule?");
+        }
+
+        compile_zstd();
+        (vec![], vec![PathBuf::from("zstd/lib")])
+    };
+
+    generate_bindings(defs, headerpaths);
 }

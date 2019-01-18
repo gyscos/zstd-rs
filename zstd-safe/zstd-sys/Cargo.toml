@@ -26,6 +26,10 @@ glob = "0.2.11"
 optional = true
 version = "0.46.0"
 
+[build-dependencies.pkg-config]
+optional = true
+version = "0.3"
+
 [build-dependencies.cc]
 version = "1.0.28"
 features = ["parallel"]
@@ -35,6 +39,7 @@ libc = "0.2.45"
 
 [features]
 default = ["legacy"]
+non-cargo = []
 legacy = []
 zstdmt = []
 std = ["bindgen"]

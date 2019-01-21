@@ -1,6 +1,12 @@
+#ifdef PKG_CONFIG
+/* Just use installed headers */
+#include <zstd.h>
+#include <zdict.h>
+#else
 #include "zstd/lib/zstd.h"
 #include "zstd/lib/dictBuilder/zdict.h"
 #include "zstd/lib/compress/zstdmt_compress.h"
+#endif
 
 /* This file is used to generate bindings for both headers.
  * Just run the following command to generate the bindings:

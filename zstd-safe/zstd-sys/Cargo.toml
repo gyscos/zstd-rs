@@ -19,7 +19,6 @@ repository = "https://github.com/gyscos/zstd-rs"
 version ="1.4.8+zstd.1.3.8"
 
 [build-dependencies]
-blob = "0.2.0"
 glob = "0.2.11"
 
 [build-dependencies.bindgen]

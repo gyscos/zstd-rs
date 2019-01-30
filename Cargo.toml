@@ -15,7 +15,7 @@ readme = "Readme.md"
 travis-ci = { repository = "gyscos/zstd-rs" }
 
 [dependencies]
-zstd-safe = { path="zstd-safe", version = "1.4.7", default-features = false }
+zstd-safe = { path="zstd-safe", version = "1.4.7", default-features = false, features = ["experimental"] }
 tokio-io = { version = "0.1", optional = true }
 futures = { version = "0.1", optional = true }
 

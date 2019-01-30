@@ -55,29 +55,51 @@ pub const VERSION_NUMBER: u32 = zstd_sys::ZSTD_VERSION_NUMBER;
 pub const CLEVEL_DEFAULT: i32 = zstd_sys::ZSTD_CLEVEL_DEFAULT as i32;
 pub const CONTENTSIZE_UNKNOWN: u64 = zstd_sys::ZSTD_CONTENTSIZE_UNKNOWN as u64;
 pub const CONTENTSIZE_ERROR: u64 = zstd_sys::ZSTD_CONTENTSIZE_ERROR as u64;
+#[cfg(feature = "experimental")]
 pub const MAGICNUMBER: u32 = zstd_sys::ZSTD_MAGICNUMBER;
+#[cfg(feature = "experimental")]
 pub const MAGIC_DICTIONARY: u32 = zstd_sys::ZSTD_MAGIC_DICTIONARY;
+#[cfg(feature = "experimental")]
 pub const MAGIC_SKIPPABLE_START: u32 = zstd_sys::ZSTD_MAGIC_SKIPPABLE_START;
+#[cfg(feature = "experimental")]
 pub const BLOCKSIZELOG_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZELOG_MAX;
+#[cfg(feature = "experimental")]
 pub const BLOCKSIZE_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZE_MAX;
+#[cfg(feature = "experimental")]
 pub const WINDOWLOG_MAX_32: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_32;
+#[cfg(feature = "experimental")]
 pub const WINDOWLOG_MAX_64: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_64;
+#[cfg(feature = "experimental")]
 pub const WINDOWLOG_MIN: u32 = zstd_sys::ZSTD_WINDOWLOG_MIN;
+#[cfg(feature = "experimental")]
 pub const HASHLOG_MIN: u32 = zstd_sys::ZSTD_HASHLOG_MIN;
+#[cfg(feature = "experimental")]
 pub const CHAINLOG_MAX_32: u32 = zstd_sys::ZSTD_CHAINLOG_MAX_32;
+#[cfg(feature = "experimental")]
 pub const CHAINLOG_MAX_64: u32 = zstd_sys::ZSTD_CHAINLOG_MAX_64;
+#[cfg(feature = "experimental")]
 pub const CHAINLOG_MIN: u32 = zstd_sys::ZSTD_CHAINLOG_MIN;
+#[cfg(feature = "experimental")]
 pub const HASHLOG3_MAX: u32 = zstd_sys::ZSTD_HASHLOG3_MAX;
+#[cfg(feature = "experimental")]
 pub const SEARCHLOG_MIN: u32 = zstd_sys::ZSTD_SEARCHLOG_MIN;
 // pub const SEARCHLENGTH_MAX: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MAX;
 // pub const SEARCHLENGTH_MIN: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MIN;
+#[cfg(feature = "experimental")]
 pub const TARGETLENGTH_MAX: u32 = zstd_sys::ZSTD_TARGETLENGTH_MAX;
+#[cfg(feature = "experimental")]
 pub const TARGETLENGTH_MIN: u32 = zstd_sys::ZSTD_TARGETLENGTH_MIN;
+#[cfg(feature = "experimental")]
 pub const LDM_MINMATCH_MAX: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MAX;
+#[cfg(feature = "experimental")]
 pub const LDM_MINMATCH_MIN: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MIN;
+#[cfg(feature = "experimental")]
 pub const LDM_BUCKETSIZELOG_MAX: u32 = zstd_sys::ZSTD_LDM_BUCKETSIZELOG_MAX;
+#[cfg(feature = "experimental")]
 pub const FRAMEHEADERSIZE_PREFIX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_PREFIX;
+#[cfg(feature = "experimental")]
 pub const FRAMEHEADERSIZE_MIN: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MIN;
+#[cfg(feature = "experimental")]
 pub const FRAMEHEADERSIZE_MAX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MAX;
 // pub const JOBSIZE_MIN: u32 = zstd_sys::ZSTDMT_JOBSIZE_MIN;
 
@@ -742,6 +764,7 @@ pub fn dstream_out_size() -> usize {
 ///
 /// Returns the compressed size of the frame pointed to by `src`, suitable to pass to
 /// `ZSTD_decompress` or similar, or an error code if given invalid input.
+#[cfg(feature = "experimental")]
 pub fn find_frame_compressed_size(src: &[u8]) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_findFrameCompressedSize(ptr_void(src), src.len())
@@ -762,6 +785,7 @@ pub fn find_frame_compressed_size(src: &[u8]) -> SafeResult {
 pub fn get_frame_content_size(src: &[u8]) -> u64 {
     unsafe { zstd_sys::ZSTD_getFrameContentSize(ptr_void(src), src.len()) }
 }
+
 /// `ZSTD_findDecompressedSize()`
 ///
 /// `src` should point the start of a series of ZSTD encoded and/or skippable frames
@@ -794,6 +818,7 @@ pub fn get_frame_content_size(src: &[u8]) -> u64 {
 /// note 5 : ZSTD_findDecompressedSize handles multiple frames, and so it must traverse the input to
 ///          read each contained frame header.  This is efficient as most of the data is skipped,
 ///          however it does mean that all frame data must be present and valid.
+#[cfg(feature = "experimental")]
 pub fn find_decompressed_size(src: &[u8]) -> u64 {
     unsafe { zstd_sys::ZSTD_findDecompressedSize(ptr_void(src), src.len()) }
 }
@@ -801,6 +826,7 @@ pub fn find_decompressed_size(src: &[u8]) -> u64 {
 /// `ZSTD_sizeofCCtx()`
 ///
 /// Gives the amount of memory used by a given ZSTD_CCtx
+#[cfg(feature = "experimental")]
 pub fn sizeof_cctx(cctx: &CCtx) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_CCtx(cctx.0) }
 }
@@ -808,25 +834,30 @@ pub fn sizeof_cctx(cctx: &CCtx) -> usize {
 /// `ZSTD_sizeof_DCtx()`
 ///
 /// Gives the amount of memory used by a given ZSTD_DCtx
+#[cfg(feature = "experimental")]
 pub fn sizeof_dctx(dctx: &DCtx) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_DCtx(dctx.0) }
 }
 
+#[cfg(feature = "experimental")]
 pub fn sizeof_cstream(zcs: &CStream) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_CStream(zcs.0) }
 }
+#[cfg(feature = "experimental")]
 pub fn sizeof_dstream(zds: &DStream) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_DStream(zds.0) }
 }
 /// `ZSTD_sizeof_CDict()`
 ///
 /// Gives the amount of memory used by a given ZSTD_sizeof_CDict
+#[cfg(feature = "experimental")]
 pub fn sizeof_cdict(cdict: &CDict) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_CDict(cdict.0) }
 }
 /// `ZSTD_sizeof_DDict()`
 ///
 /// Gives the amount of memory used by a given ZSTD_DDict
+#[cfg(feature = "experimental")]
 pub fn sizeof_ddict(ddict: &DDict) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_DDict(ddict.0) }
 }
@@ -837,6 +868,7 @@ pub fn sizeof_ddict(ddict: &DDict) -> usize {
 /// Dictionary content is simply referenced, and therefore stays in dictBuffer.
 ///
 /// It is important that dictBuffer outlives CDict, it must remain read accessible throughout the lifetime of CDict
+#[cfg(feature = "experimental")]
 pub fn create_cdict_by_reference(
     dict_buffer: &[u8],
     compression_level: i32,
@@ -862,6 +894,7 @@ pub fn create_cdict_by_reference(
 /// Note 2 : Legacy Frame Identifiers are considered valid only if Legacy Support is enabled.
 ///
 /// Note 3 : Skippable Frame Identifiers are considered valid.
+#[cfg(feature = "experimental")]
 pub fn is_frame(buffer: &[u8]) -> u32 {
     unsafe { zstd_sys::ZSTD_isFrame(ptr_void(buffer), buffer.len()) as u32 }
 }
@@ -873,6 +906,7 @@ pub fn is_frame(buffer: &[u8]) -> u32 {
 /// Dictionary content is simply referenced, and therefore stays in dictBuffer.
 ///
 /// It is important that dictBuffer outlives DDict, it must remain read accessible throughout the lifetime of DDict
+#[cfg(feature = "experimental")]
 pub fn create_ddict_by_reference(dict_buffer: &[u8]) -> DDict {
     DDict(
         unsafe {
@@ -891,6 +925,7 @@ pub fn create_ddict_by_reference(dict_buffer: &[u8]) -> DDict {
 /// if @return == 0, the dictionary is not conformant with Zstandard specification.
 ///
 /// It can still be loaded, but as a content-only dictionary.
+#[cfg(feature = "experimental")]
 pub fn get_dict_id_from_dict(dict: &[u8]) -> u32 {
     unsafe {
         zstd_sys::ZSTD_getDictID_fromDict(ptr_void(dict), dict.len()) as u32
@@ -903,6 +938,7 @@ pub fn get_dict_id_from_dict(dict: &[u8]) -> u32 {
 /// If @return == 0, the dictionary is not conformant to Zstandard specification, or empty.
 ///
 /// Non-conformant dictionaries can still be loaded, but as content-only dictionaries.
+#[cfg(feature = "experimental")]
 pub fn get_dict_id_from_ddict(ddict: &DDict) -> u32 {
     unsafe { zstd_sys::ZSTD_getDictID_fromDDict(ddict.0) as u32 }
 }
@@ -921,11 +957,14 @@ pub fn get_dict_id_from_ddict(ddict: &DDict) -> u32 {
 /// * This is not a Zstandard frame.
 ///
 /// When identifying the exact failure cause, it's possible to use ZSTD_getFrameParams(), which will provide a more precise error code.
+#[cfg(feature = "experimental")]
 pub fn get_dict_id_from_frame(src: &[u8]) -> u32 {
     unsafe {
         zstd_sys::ZSTD_getDictID_fromFrame(ptr_void(src), src.len()) as u32
     }
 }
+
+#[cfg(feature = "experimental")]
 pub fn init_cstream_src_size(
     zcs: &mut CStream,
     compression_level: i32,
@@ -939,6 +978,8 @@ pub fn init_cstream_src_size(
         )
     }
 }
+
+#[cfg(feature = "experimental")]
 pub fn init_cstream_using_dict(
     zcs: &mut CStream,
     dict: &[u8],
@@ -954,6 +995,8 @@ pub fn init_cstream_using_dict(
     };
     parse_code(code)
 }
+
+#[cfg(feature = "experimental")]
 pub fn init_cstream_using_cdict(
     zcs: &mut CStream,
     cdict: &CDict,
@@ -979,18 +1022,21 @@ pub fn init_cstream_using_cdict(
 /// but it will change to mean "empty" in future version, so use macro ZSTD_CONTENTSIZE_UNKNOWN instead.
 ///
 /// Returns 0, or an error code (which can be tested using ZSTD_isError())
+#[cfg(feature = "experimental")]
 pub fn reset_cstream(zcs: &mut CStream, pledged_src_size: u64) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_resetCStream(zcs.0, pledged_src_size as c_ulonglong)
     };
     parse_code(code)
 }
+#[cfg(feature = "experimental")]
 pub fn init_dstream_using_dict(zds: &mut DStream, dict: &[u8]) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_initDStream_usingDict(zds.0, ptr_void(dict), dict.len())
     };
     parse_code(code)
 }
+#[cfg(feature = "experimental")]
 pub fn init_dstream_using_ddict(
     zds: &mut DStream,
     ddict: &DDict,
@@ -999,6 +1045,7 @@ pub fn init_dstream_using_ddict(
         unsafe { zstd_sys::ZSTD_initDStream_usingDDict(zds.0, ddict.0) };
     parse_code(code)
 }
+#[cfg(feature = "experimental")]
 pub fn reset_dstream(zds: &mut DStream) -> SafeResult {
     let code = unsafe { zstd_sys::ZSTD_resetDStream(zds.0) };
     parse_code(code)
@@ -1129,6 +1176,7 @@ pub enum CParameter {
 ///
 /// @result : informational value (typically, the one being set, possibly corrected),
 /// or an error code (which can be tested with ZSTD_isError()).
+#[cfg(feature = "experimental")]
 pub fn cctx_set_parameter(cctx: &mut CCtx, param: CParameter) -> SafeResult {
     use zstd_sys::ZSTD_cParameter;
     // TODO: Until bindgen properly generates a binding for this, we'll need to do it here.
@@ -1222,9 +1270,11 @@ pub fn train_from_buffer(
     };
     parse_code(code)
 }
+#[cfg(feature = "experimental")]
 pub fn get_block_size(cctx: &mut CCtx) -> usize {
     unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0) }
 }
+#[cfg(feature = "experimental")]
 pub fn compress_block(
     cctx: &mut CCtx,
     dst: &mut [u8],
@@ -1241,6 +1291,7 @@ pub fn compress_block(
     };
     parse_code(code)
 }
+#[cfg(feature = "experimental")]
 pub fn decompress_block(dctx: &mut DCtx, dst: &mut [u8], src: &[u8]) -> usize {
     unsafe {
         zstd_sys::ZSTD_decompressBlock(
@@ -1252,6 +1303,7 @@ pub fn decompress_block(dctx: &mut DCtx, dst: &mut [u8], src: &[u8]) -> usize {
         )
     }
 }
+#[cfg(feature = "experimental")]
 pub fn insert_block(dctx: &mut DCtx, block: &[u8]) -> usize {
     unsafe { zstd_sys::ZSTD_insertBlock(dctx.0, ptr_void(block), block.len()) }
 }

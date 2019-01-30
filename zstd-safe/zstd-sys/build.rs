@@ -25,8 +25,10 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
                 .into_iter()
                 .map(|path| format!("-I{}", path.display())),
         )
-        .clang_args(defs.into_iter().map(|def| format!("-D{}", def)))
-        .clang_arg("-DZSTD_STATIC_LINKING_ONLY");
+        .clang_args(defs.into_iter().map(|def| format!("-D{}", def)));
+
+    #[cfg(feature = "experimental")]
+    let bindings = bindings.clang_arg("-DZSTD_STATIC_LINKING_ONLY");
 
     #[cfg(not(feature = "std"))]
     let bindings = bindings.ctypes_prefix("libc");
@@ -46,7 +48,7 @@ fn generate_bindings(_: Vec<&str>, _: Vec<PathBuf>) {}
 fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
     let library = pkg_config::Config::new()
         .statik(true)
-        .cargo_metadata(! cfg!(feature = "non-cargo"))
+        .cargo_metadata(!cfg!(feature = "non-cargo"))
         .probe("libzstd")
         .expect("Can't probe for zstd in pkg-config");
     (vec!["PKG_CONFIG"], library.include_paths)
@@ -129,6 +131,10 @@ fn compile_zstd() {
 
 fn main() {
     // println!("cargo:rustc-link-lib=zstd");
+
+    if !PathBuf::from("zstd/lib").exists() {
+        panic!("Folder 'zstd/lib' does not exists. Maybe you forget clone 'zstd' submodule?");
+    }
 
     let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
         pkg_config()

@@ -8,8 +8,38 @@ extern crate libc;
 #[cfg(feature = "std")]
 extern crate std;
 
+// If running bindgen, we'll end up with the correct bindings anyway.
 #[cfg(feature = "bindgen")]
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-#[cfg(not(feature = "bindgen"))]
+// The bindings used depend on a few feature flags.
+
+// No-std (libc-based)
+#[cfg(all(
+    not(feature = "std"),
+    not(feature = "experimental"),
+    not(feature = "bindgen")
+))]
 include!("bindings.rs");
+
+#[cfg(all(
+    not(feature = "std"),
+    feature = "experimental",
+    not(feature = "bindgen")
+))]
+include!("bindings_experimental.rs");
+
+// Std-based (no libc)
+#[cfg(all(
+    feature = "std",
+    not(feature = "experimental"),
+    not(feature = "bindgen")
+))]
+include!("bindings_std.rs");
+
+#[cfg(all(
+    feature = "std",
+    feature = "experimental",
+    not(feature = "bindgen")
+))]
+include!("bindings_std_experimental.rs");

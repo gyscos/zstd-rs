@@ -9,8 +9,8 @@ then
     git checkout $TAG
     cd ..
     git add zstd
-    bindgen zstd.h --ctypes-prefix ::libc --blacklist-type max_align_t --rustified-enum '.*' --use-core -o src/bindings.rs -- -DZSTD_STATIC_LINKING_ONLY 2> /dev/null
-    git add src/bindings.rs
+    ./update_bindings.sh
+    git add src/bindings*.rs
 
     # Note: You'll need a forked version of cargo-dump that supports metadata
     # For instance https://github.com/gyscos/cargo-dump

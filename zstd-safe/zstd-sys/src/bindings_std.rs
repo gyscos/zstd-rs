@@ -7,12 +7,12 @@ pub const ZSTD_VERSION_NUMBER: u32 = 10308;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_CONTENTSIZE_UNKNOWN: i32 = -1;
 pub const ZSTD_CONTENTSIZE_ERROR: i32 = -2;
-pub type wchar_t = ::libc::c_int;
+pub type wchar_t = ::std::os::raw::c_int;
 extern "C" {
-    pub fn ZSTD_versionNumber() -> ::libc::c_uint;
+    pub fn ZSTD_versionNumber() -> ::std::os::raw::c_uint;
 }
 extern "C" {
-    pub fn ZSTD_versionString() -> *const ::libc::c_char;
+    pub fn ZSTD_versionString() -> *const ::std::os::raw::c_char;
 }
 extern "C" {
     #[doc = "  Simple API"]
@@ -21,11 +21,11 @@ extern "C" {
     #[doc = "  @return : compressed size written into `dst` (<= `dstCapacity),"]
     #[doc = "            or an error code if it fails (which can be tested using ZSTD_isError())."]
     pub fn ZSTD_compress(
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
-        compressionLevel: ::libc::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -36,17 +36,17 @@ extern "C" {
     #[doc = "  @return : the number of bytes decompressed into `dst` (<= `dstCapacity`),"]
     #[doc = "            or an errorCode if it fails (which can be tested using ZSTD_isError())."]
     pub fn ZSTD_decompress(
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         compressedSize: usize,
     ) -> usize;
 }
 extern "C" {
     pub fn ZSTD_getFrameContentSize(
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
-    ) -> ::libc::c_ulonglong;
+    ) -> ::std::os::raw::c_ulonglong;
 }
 extern "C" {
     #[doc = " ZSTD_getDecompressedSize() :"]
@@ -56,21 +56,21 @@ extern "C" {
     #[doc = "  while ZSTD_getFrameContentSize() gives them separate return values."]
     #[doc = " @return : decompressed size of `src` frame content _if known and not empty_, 0 otherwise."]
     pub fn ZSTD_getDecompressedSize(
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
-    ) -> ::libc::c_ulonglong;
+    ) -> ::std::os::raw::c_ulonglong;
 }
 extern "C" {
     pub fn ZSTD_compressBound(srcSize: usize) -> usize;
 }
 extern "C" {
-    pub fn ZSTD_isError(code: usize) -> ::libc::c_uint;
+    pub fn ZSTD_isError(code: usize) -> ::std::os::raw::c_uint;
 }
 extern "C" {
-    pub fn ZSTD_getErrorName(code: usize) -> *const ::libc::c_char;
+    pub fn ZSTD_getErrorName(code: usize) -> *const ::std::os::raw::c_char;
 }
 extern "C" {
-    pub fn ZSTD_maxCLevel() -> ::libc::c_int;
+    pub fn ZSTD_maxCLevel() -> ::std::os::raw::c_int;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -92,11 +92,11 @@ extern "C" {
     #[doc = "  ignoring any other parameter"]
     pub fn ZSTD_compressCCtx(
         cctx: *mut ZSTD_CCtx,
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
-        compressionLevel: ::libc::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 #[repr(C)]
@@ -118,9 +118,9 @@ extern "C" {
     #[doc = "  Compatible with sticky parameters."]
     pub fn ZSTD_decompressDCtx(
         dctx: *mut ZSTD_DCtx,
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
     ) -> usize;
 }
@@ -134,13 +134,13 @@ extern "C" {
     #[doc = "  Note 2 : When `dict == NULL || dictSize < 8` no dictionary is used."]
     pub fn ZSTD_compress_usingDict(
         ctx: *mut ZSTD_CCtx,
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
-        dict: *const ::libc::c_void,
+        dict: *const ::std::os::raw::c_void,
         dictSize: usize,
-        compressionLevel: ::libc::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -152,11 +152,11 @@ extern "C" {
     #[doc = "  Note : When `dict == NULL || dictSize < 8` no dictionary is used."]
     pub fn ZSTD_decompress_usingDict(
         dctx: *mut ZSTD_DCtx,
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
-        dict: *const ::libc::c_void,
+        dict: *const ::std::os::raw::c_void,
         dictSize: usize,
     ) -> usize;
 }
@@ -176,9 +176,9 @@ extern "C" {
     #[doc = "  Consider experimental function `ZSTD_createCDict_byReference()` if you prefer to not duplicate `dictBuffer` content."]
     #[doc = "  Note : A ZSTD_CDict can be created from an empty dictBuffer, but it is inefficient when used to compress small data."]
     pub fn ZSTD_createCDict(
-        dictBuffer: *const ::libc::c_void,
+        dictBuffer: *const ::std::os::raw::c_void,
         dictSize: usize,
-        compressionLevel: ::libc::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> *mut ZSTD_CDict;
 }
 extern "C" {
@@ -194,9 +194,9 @@ extern "C" {
     #[doc = "     and frame parameters are hardcoded (dictID=yes, contentSize=yes, checksum=no)"]
     pub fn ZSTD_compress_usingCDict(
         cctx: *mut ZSTD_CCtx,
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
         cdict: *const ZSTD_CDict,
     ) -> usize;
@@ -212,7 +212,7 @@ extern "C" {
     #[doc = "  Create a digested dictionary, ready to start decompression operation without startup delay."]
     #[doc = "  dictBuffer can be released after DDict creation, as its content is copied inside DDict."]
     pub fn ZSTD_createDDict(
-        dictBuffer: *const ::libc::c_void,
+        dictBuffer: *const ::std::os::raw::c_void,
         dictSize: usize,
     ) -> *mut ZSTD_DDict;
 }
@@ -227,9 +227,9 @@ extern "C" {
     #[doc = "  Recommended when same dictionary is used multiple times."]
     pub fn ZSTD_decompress_usingDDict(
         dctx: *mut ZSTD_DCtx,
-        dst: *mut ::libc::c_void,
+        dst: *mut ::std::os::raw::c_void,
         dstCapacity: usize,
-        src: *const ::libc::c_void,
+        src: *const ::std::os::raw::c_void,
         srcSize: usize,
         ddict: *const ZSTD_DDict,
     ) -> usize;
@@ -239,7 +239,7 @@ extern "C" {
 #[derive(Debug, Copy, Clone)]
 pub struct ZSTD_inBuffer_s {
     #[doc = "< start of input buffer"]
-    pub src: *const ::libc::c_void,
+    pub src: *const ::std::os::raw::c_void,
     #[doc = "< size of input buffer"]
     pub size: usize,
     #[doc = "< position where reading stopped. Will be updated. Necessarily 0 <= pos <= size"]
@@ -302,7 +302,7 @@ pub type ZSTD_inBuffer = ZSTD_inBuffer_s;
 #[derive(Debug, Copy, Clone)]
 pub struct ZSTD_outBuffer_s {
     #[doc = "< start of output buffer"]
-    pub dst: *mut ::libc::c_void,
+    pub dst: *mut ::std::os::raw::c_void,
     #[doc = "< size of output buffer"]
     pub size: usize,
     #[doc = "< position where writing stopped. Will be updated. Necessarily 0 <= pos <= size"]
@@ -371,7 +371,7 @@ extern "C" {
 extern "C" {
     pub fn ZSTD_initCStream(
         zcs: *mut ZSTD_CStream,
-        compressionLevel: ::libc::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -438,22 +438,24 @@ extern "C" {
     #[doc = "        In general, it\'s recommended to provide a few thousands samples, though this can vary a lot."]
     #[doc = "        It\'s recommended that total size of all samples be about ~x100 times the target size of dictionary."]
     pub fn ZDICT_trainFromBuffer(
-        dictBuffer: *mut ::libc::c_void,
+        dictBuffer: *mut ::std::os::raw::c_void,
         dictBufferCapacity: usize,
-        samplesBuffer: *const ::libc::c_void,
+        samplesBuffer: *const ::std::os::raw::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::libc::c_uint,
+        nbSamples: ::std::os::raw::c_uint,
     ) -> usize;
 }
 extern "C" {
     pub fn ZDICT_getDictID(
-        dictBuffer: *const ::libc::c_void,
+        dictBuffer: *const ::std::os::raw::c_void,
         dictSize: usize,
-    ) -> ::libc::c_uint;
+    ) -> ::std::os::raw::c_uint;
 }
 extern "C" {
-    pub fn ZDICT_isError(errorCode: usize) -> ::libc::c_uint;
+    pub fn ZDICT_isError(errorCode: usize) -> ::std::os::raw::c_uint;
 }
 extern "C" {
-    pub fn ZDICT_getErrorName(errorCode: usize) -> *const ::libc::c_char;
+    pub fn ZDICT_getErrorName(
+        errorCode: usize,
+    ) -> *const ::std::os::raw::c_char;
 }

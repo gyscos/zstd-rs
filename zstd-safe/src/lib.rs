@@ -523,28 +523,13 @@ pub fn decompress_using_ddict(
     parse_code(code)
 }
 
-pub struct CStream(*mut zstd_sys::ZSTD_CStream);
+pub type CStream = CCtx;
 
-impl Default for CStream {
-    fn default() -> Self {
-        create_cstream()
-    }
-}
+// CStream can't be shared across threads, so it does not implement Sync.
 
 pub fn create_cstream() -> CStream {
-    CStream(unsafe { zstd_sys::ZSTD_createCStream() })
+    CCtx(unsafe { zstd_sys::ZSTD_createCStream() })
 }
-
-impl Drop for CStream {
-    fn drop(&mut self) {
-        unsafe {
-            zstd_sys::ZSTD_freeCStream(self.0);
-        }
-    }
-}
-
-unsafe impl Send for CStream {}
-// CStream can't be shared across threads, so it does not implement Sync.
 
 pub fn init_cstream(zcs: &mut CStream, compression_level: i32) -> usize {
     unsafe { zstd_sys::ZSTD_initCStream(zcs.0, compression_level) }
@@ -704,28 +689,11 @@ pub fn cstream_out_size() -> usize {
     unsafe { zstd_sys::ZSTD_CStreamOutSize() }
 }
 
-pub struct DStream(*mut zstd_sys::ZSTD_DStream);
-
-impl Default for DStream {
-    fn default() -> Self {
-        create_dstream()
-    }
-}
+pub type DStream = DCtx;
 
 pub fn create_dstream() -> DStream {
-    DStream(unsafe { zstd_sys::ZSTD_createDStream() })
+    DCtx(unsafe { zstd_sys::ZSTD_createDStream() })
 }
-
-impl Drop for DStream {
-    fn drop(&mut self) {
-        unsafe {
-            zstd_sys::ZSTD_freeDStream(self.0);
-        }
-    }
-}
-
-unsafe impl Send for DStream {}
-// DStream can't be shared across threads, so it does not implement Sync.
 
 pub fn init_dstream(zds: &mut DStream) -> usize {
     unsafe { zstd_sys::ZSTD_initDStream(zds.0) }

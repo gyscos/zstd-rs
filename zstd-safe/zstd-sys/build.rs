@@ -12,9 +12,6 @@ use std::{env, fs};
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
-    use std::env;
-    use std::path::PathBuf;
-
     let bindings = bindgen::Builder::default()
         .header("zstd.h")
         .blacklist_type("max_align_t")

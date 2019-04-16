@@ -14,13 +14,14 @@ then
 
     # Note: You'll need a forked version of cargo-dump that supports metadata
     # For instance https://github.com/gyscos/cargo-dump
-    cargo bump patch --metadata ${TAG/v/} > /dev/null
+    METADATA="zstd.${TAG/v/}"
+    cargo bump patch --metadata $METADATA > /dev/null
     git add Cargo.toml
     cd ..
-    cargo bump patch --metadata ${TAG/v/} > /dev/null
+    cargo bump patch --metadata $METADATA > /dev/null
     git add Cargo.toml
     cd ..
-    V=$(cargo bump patch --metadata ${TAG/v/})
+    V=$(cargo bump patch --metadata $METADATA)
     V=$(echo $V | cut -d' ' -f4 | cut -d'+' -f1)
 
     git add Cargo.toml

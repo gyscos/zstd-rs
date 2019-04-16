@@ -31,8 +31,6 @@ fn test_cycle() {
 /// internal implementation details.
 #[test]
 fn test_partial_write_flush() {
-    use std::io::Write;
-
     let input = vec![b'b'; 128 * 1024];
     let mut z = setup_partial_write(&input);
 
@@ -57,8 +55,6 @@ fn test_partial_write_finish() {
 }
 
 fn setup_partial_write(input_data: &[u8]) -> Encoder<PartialWrite<Vec<u8>>> {
-    use std::io::Write;
-
     let buf =
         PartialWrite::new(Vec::new(), iter::repeat(PartialOp::Limited(1)));
     let mut z = Encoder::new(buf, 1).unwrap();

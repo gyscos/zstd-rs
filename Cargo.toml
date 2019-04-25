@@ -7,7 +7,7 @@ categories = ["compression", "api-bindings"]
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
-version ="0.4.23+zstd.1.4.0"
+version ="0.4.24+zstd.1.4.0"
 exclude = ["assets/**"]
 readme = "Readme.md"
 
@@ -21,7 +21,7 @@ futures = { version = "0.1", optional = true }
 
 [dev-dependencies]
 clap = "2.0"
-partial-io = "0.3"
+partial-io = { version = "0.3", features=["quickcheck", "tokio"] }
 quickcheck = "0.6"
 humansize = "1.0"
 walkdir = "2.2"
@@ -30,5 +30,5 @@ walkdir = "2.2"
 default = ["legacy"]
 legacy = ["zstd-safe/legacy"]
 bindgen = ["zstd-safe/bindgen"]
-tokio = ["tokio-io", "futures", "partial-io/quickcheck", "partial-io/tokio"]
+tokio = ["tokio-io", "futures"]
 wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc

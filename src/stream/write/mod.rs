@@ -45,7 +45,7 @@ pub struct AutoFinishEncoder<W: Write> {
     encoder: Option<Encoder<W>>,
 
     // TODO: make this a FnOnce once it works in a Box
-    on_finish: Option<Box<FnMut(io::Result<W>)>>,
+    on_finish: Option<Box<dyn FnMut(io::Result<W>)>>,
 }
 
 impl<W: Write> AutoFinishEncoder<W> {

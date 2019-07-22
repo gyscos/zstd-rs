@@ -16,7 +16,7 @@ links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
-version ="1.4.10+zstd.1.4.0"
+version ="1.4.11+zstd.1.4.1"
 
 [build-dependencies]
 glob = "0.3"

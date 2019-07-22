@@ -2,8 +2,8 @@
 
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 4;
-pub const ZSTD_VERSION_RELEASE: u32 = 0;
-pub const ZSTD_VERSION_NUMBER: u32 = 10400;
+pub const ZSTD_VERSION_RELEASE: u32 = 1;
+pub const ZSTD_VERSION_NUMBER: u32 = 10401;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
@@ -38,7 +38,7 @@ extern "C" {
     #[doc = " ZSTD_decompress() :"]
     #[doc = "  `compressedSize` : must be the _exact_ size of some number of compressed and/or skippable frames."]
     #[doc = "  `dstCapacity` is an upper bound of originalSize to regenerate."]
-    #[doc = "  If user cannot imply a maximum upper bound, it\'s better to use streaming mode to decompress data."]
+    #[doc = "  If user cannot imply a maximum upper bound, it's better to use streaming mode to decompress data."]
     #[doc = "  @return : the number of bytes decompressed into `dst` (<= `dstCapacity`),"]
     #[doc = "            or an errorCode if it fails (which can be tested using ZSTD_isError())."]
     pub fn ZSTD_decompress(
@@ -186,6 +186,7 @@ pub enum ZSTD_cParameter {
     ZSTD_c_experimentalParam3 = 1000,
     ZSTD_c_experimentalParam4 = 1001,
     ZSTD_c_experimentalParam5 = 1002,
+    ZSTD_c_experimentalParam6 = 1003,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -281,7 +282,7 @@ extern "C" {
     #[doc = "           In order to mean \"unknown content size\", pass constant ZSTD_CONTENTSIZE_UNKNOWN."]
     #[doc = "           ZSTD_CONTENTSIZE_UNKNOWN is default value for any new frame."]
     #[doc = "  Note 2 : pledgedSrcSize is only valid once, for the next frame."]
-    #[doc = "           It\'s discarded at the end of the frame, and replaced by ZSTD_CONTENTSIZE_UNKNOWN."]
+    #[doc = "           It's discarded at the end of the frame, and replaced by ZSTD_CONTENTSIZE_UNKNOWN."]
     #[doc = "  Note 3 : Whenever all input data is provided and consumed in a single round,"]
     #[doc = "           for example with ZSTD_compress2(),"]
     #[doc = "           or invoking immediately ZSTD_compressStream2(,,,ZSTD_e_end),"]
@@ -565,7 +566,7 @@ extern "C" {
     #[doc = " Alternative for ZSTD_compressStream2(zcs, output, input, ZSTD_e_continue)."]
     #[doc = " NOTE: The return value is different. ZSTD_compressStream() returns a hint for"]
     #[doc = " the next read size (if non-zero and not an error). ZSTD_compressStream2()"]
-    #[doc = " returns the number of bytes left to flush (if non-zero and not an error)."]
+    #[doc = " returns the minimum nb of bytes left to flush (if non-zero and not an error)."]
     pub fn ZSTD_compressStream(
         zcs: *mut ZSTD_CStream,
         output: *mut ZSTD_outBuffer,
@@ -615,7 +616,7 @@ extern "C" {
     #[doc = "  A dictionary can be any arbitrary data segment (also called a prefix),"]
     #[doc = "  or a buffer with specified information (see dictBuilder/zdict.h)."]
     #[doc = "  Note : This function loads the dictionary, resulting in significant startup delay."]
-    #[doc = "         It\'s intended for a dictionary used only once."]
+    #[doc = "         It's intended for a dictionary used only once."]
     #[doc = "  Note 2 : When `dict == NULL || dictSize < 8` no dictionary is used."]
     pub fn ZSTD_compress_usingDict(
         ctx: *mut ZSTD_CCtx,
@@ -633,7 +634,7 @@ extern "C" {
     #[doc = "  Decompression using a known Dictionary."]
     #[doc = "  Dictionary must be identical to the one used during compression."]
     #[doc = "  Note : This function loads the dictionary, resulting in significant startup delay."]
-    #[doc = "         It\'s intended for a dictionary used only once."]
+    #[doc = "         It's intended for a dictionary used only once."]
     #[doc = "  Note : When `dict == NULL || dictSize < 8` no dictionary is used."]
     pub fn ZSTD_decompress_usingDict(
         dctx: *mut ZSTD_DCtx,
@@ -654,7 +655,7 @@ pub struct ZSTD_CDict_s {
 pub type ZSTD_CDict = ZSTD_CDict_s;
 extern "C" {
     #[doc = " ZSTD_createCDict() :"]
-    #[doc = "  When compressing multiple messages / blocks using the same dictionary, it\'s recommended to load it only once."]
+    #[doc = "  When compressing multiple messages / blocks using the same dictionary, it's recommended to load it only once."]
     #[doc = "  ZSTD_createCDict() will create a digested dictionary, ready to start future compression operations without startup cost."]
     #[doc = "  ZSTD_CDict can be created once and shared by multiple threads concurrently, since its usage is read-only."]
     #[doc = " `dictBuffer` can be released after ZSTD_CDict creation, because its content is copied within CDict."]
@@ -748,7 +749,7 @@ extern "C" {
     #[doc = "    Note : this use case also happens when using a non-conformant dictionary."]
     #[doc = "  - `srcSize` is too small, and as a result, the frame header could not be decoded (only possible if `srcSize < ZSTD_FRAMEHEADERSIZE_MAX`)."]
     #[doc = "  - This is not a Zstandard frame."]
-    #[doc = "  When identifying the exact failure cause, it\'s possible to use ZSTD_getFrameHeader(), which will provide a more precise error code."]
+    #[doc = "  When identifying the exact failure cause, it's possible to use ZSTD_getFrameHeader(), which will provide a more precise error code."]
     pub fn ZSTD_getDictID_fromFrame(
         src: *const ::std::os::raw::c_void,
         srcSize: usize,
@@ -764,7 +765,7 @@ extern "C" {
     #[doc = "  Note 1 : Dictionary is sticky, it will be used for all future compressed frames."]
     #[doc = "           To return to \"no-dictionary\" situation, load a NULL dictionary (or reset parameters)."]
     #[doc = "  Note 2 : Loading a dictionary involves building tables."]
-    #[doc = "           It\'s also a CPU consuming operation, with non-negligible impact on latency."]
+    #[doc = "           It's also a CPU consuming operation, with non-negligible impact on latency."]
     #[doc = "           Tables are dependent on compression parameters, and for this reason,"]
     #[doc = "           compression parameters can no longer be changed after loading a dictionary."]
     #[doc = "  Note 3 :`dict` content will be copied internally."]
@@ -811,7 +812,7 @@ extern "C" {
     #[doc = "           ensure that the window size is large enough to contain the entire source."]
     #[doc = "           See ZSTD_c_windowLog."]
     #[doc = "  Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters."]
-    #[doc = "           It\'s a CPU consuming operation, with non-negligible impact on latency."]
+    #[doc = "           It's a CPU consuming operation, with non-negligible impact on latency."]
     #[doc = "           If there is a need to use the same prefix multiple times, consider loadDictionary instead."]
     #[doc = "  Note 4 : By default, the prefix is interpreted as raw content (ZSTD_dm_rawContent)."]
     #[doc = "           Use experimental ZSTD_CCtx_refPrefix_advanced() to alter dictionary interpretation."]
@@ -831,7 +832,7 @@ extern "C" {
     #[doc = "            meaning \"return to no-dictionary mode\"."]
     #[doc = "  Note 1 : Loading a dictionary involves building tables,"]
     #[doc = "           which has a non-negligible impact on CPU usage and latency."]
-    #[doc = "           It\'s recommended to \"load once, use many times\", to amortize the cost"]
+    #[doc = "           It's recommended to \"load once, use many times\", to amortize the cost"]
     #[doc = "  Note 2 :`dict` content will be copied internally, so `dict` can be released after loading."]
     #[doc = "           Use ZSTD_DCtx_loadDictionary_byReference() to reference dictionary content instead."]
     #[doc = "  Note 3 : Use ZSTD_DCtx_loadDictionary_advanced() to take control of"]
@@ -912,13 +913,13 @@ extern "C" {
     #[doc = "  Note:  Dictionary training will fail if there are not enough samples to construct a"]
     #[doc = "         dictionary, or if most of the samples are too small (< 8 bytes being the lower limit)."]
     #[doc = "         If dictionary training fails, you should use zstd without a dictionary, as the dictionary"]
-    #[doc = "         would\'ve been ineffective anyways. If you believe your samples would benefit from a dictionary"]
+    #[doc = "         would've been ineffective anyways. If you believe your samples would benefit from a dictionary"]
     #[doc = "         please open an issue with details, and we can look into it."]
-    #[doc = "  Note: ZDICT_trainFromBuffer()\'s memory usage is about 6 MB."]
+    #[doc = "  Note: ZDICT_trainFromBuffer()'s memory usage is about 6 MB."]
     #[doc = "  Tips: In general, a reasonable dictionary has a size of ~ 100 KB."]
-    #[doc = "        It\'s possible to select smaller or larger size, just by specifying `dictBufferCapacity`."]
-    #[doc = "        In general, it\'s recommended to provide a few thousands samples, though this can vary a lot."]
-    #[doc = "        It\'s recommended that total size of all samples be about ~x100 times the target size of dictionary."]
+    #[doc = "        It's possible to select smaller or larger size, just by specifying `dictBufferCapacity`."]
+    #[doc = "        In general, it's recommended to provide a few thousands samples, though this can vary a lot."]
+    #[doc = "        It's recommended that total size of all samples be about ~x100 times the target size of dictionary."]
     pub fn ZDICT_trainFromBuffer(
         dictBuffer: *mut ::std::os::raw::c_void,
         dictBufferCapacity: usize,

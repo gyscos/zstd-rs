@@ -1,7 +1,7 @@
 #!/bin/bash
 cd zstd
 CURRENT=$(git describe --tags)
-git fetch
+git fetch -q
 TAG=$(git tag -l | grep '^v' | sort | tail -n 1)
 
 if [ $CURRENT != $TAG ]
@@ -15,15 +15,15 @@ then
     # Note: You'll need a forked version of cargo-dump that supports metadata
     # For instance https://github.com/gyscos/cargo-dump
     METADATA="zstd.${TAG/v/}"
-    cargo bump patch --metadata $METADATA > /dev/null
+    ZSTD_SYS_VERSION=$(cargo bump patch --metadata $METADATA | cut -d' ' -f4 | cut -d'+' -f1)
     git add Cargo.toml
     cd ..
-    cargo bump patch --metadata $METADATA > /dev/null
+    cargo add zstd-sys --path ./zstd-sys --vers "+${ZSTD_SYS_VERSION}" --no-default-features
+    ZSTD_SAFE_VERSION=$(cargo bump patch --metadata $METADATA | cut -d' ' -f4 | cut -d'+' -f1)
     git add Cargo.toml
     cd ..
-    V=$(cargo bump patch --metadata $METADATA)
-    V=$(echo $V | cut -d' ' -f4 | cut -d'+' -f1)
-
+    cargo add zstd-safe --path ./zstd-safe --vers "+${ZSTD_SAFE_VERSION}" --no-default-features
+    ZSTD_RS_VERSION=$(cargo bump patch --metadata $METADATA | cut -d' ' -f4 | cut -d'+' -f1)
     git add Cargo.toml
 
     git commit -m "Update zstd to $TAG"
@@ -39,9 +39,9 @@ then
         cargo publish
         cd ..
         cargo publish
-        git tag $V
+        git tag $ZSTD_RS_VERSION
     else
-        echo "Would have published $V"
+        echo "Would have published $ZSTD_RS_VERSION"
     fi
 
 else

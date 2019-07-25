@@ -34,9 +34,10 @@ then
     if [[ $REPLY =~ ^[Yy]$ ]]
     then
         cd zstd-safe/zstd-sys
-        cargo publish
+        # Need to wait so that the index refreshes.
+        cargo publish && sleep 5
         cd ..
-        cargo publish
+        cargo publish && sleep 5
         cd ..
         cargo publish
         git tag $ZSTD_RS_VERSION

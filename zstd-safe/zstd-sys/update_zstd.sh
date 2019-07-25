@@ -18,11 +18,11 @@ then
     ZSTD_SYS_VERSION=$(cargo bump patch --metadata $METADATA | cut -d' ' -f4 | cut -d'+' -f1)
     git add Cargo.toml
     cd ..
-    cargo add zstd-sys --path ./zstd-sys --vers "+${ZSTD_SYS_VERSION}" --no-default-features
+    cargo add zstd-sys --path ./zstd-sys --vers "=${ZSTD_SYS_VERSION}" --no-default-features
     ZSTD_SAFE_VERSION=$(cargo bump patch --metadata $METADATA | cut -d' ' -f4 | cut -d'+' -f1)
     git add Cargo.toml
     cd ..
-    cargo add zstd-safe --path ./zstd-safe --vers "+${ZSTD_SAFE_VERSION}" --no-default-features
+    cargo add zstd-safe --path ./zstd-safe --vers "=${ZSTD_SAFE_VERSION}" --no-default-features
     ZSTD_RS_VERSION=$(cargo bump patch --metadata $METADATA | cut -d' ' -f4 | cut -d'+' -f1)
     git add Cargo.toml
 

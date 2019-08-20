@@ -2,8 +2,8 @@
 
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 4;
-pub const ZSTD_VERSION_RELEASE: u32 = 2;
-pub const ZSTD_VERSION_NUMBER: u32 = 10402;
+pub const ZSTD_VERSION_RELEASE: u32 = 3;
+pub const ZSTD_VERSION_NUMBER: u32 = 10403;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
@@ -2390,7 +2390,7 @@ extern "C" {
 extern "C" {
     #[doc = "Block functions produce and decode raw zstd blocks, without frame metadata."]
     #[doc = "Frame metadata cost is typically ~18 bytes, which can be non-negligible for very small blocks (< 100 bytes)."]
-    #[doc = "User will have to take in charge required information to regenerate data, such as compressed and content sizes."]
+    #[doc = "But users will have to take in charge needed metadata to regenerate data, such as compressed and content sizes."]
     #[doc = ""]
     #[doc = "A few rules to respect :"]
     #[doc = "- Compressing and decompressing require a context structure"]
@@ -2401,12 +2401,14 @@ extern "C" {
     #[doc = "+ copyCCtx() and copyDCtx() can be used too"]
     #[doc = "- Block size is limited, it must be <= ZSTD_getBlockSize() <= ZSTD_BLOCKSIZE_MAX == 128 KB"]
     #[doc = "+ If input is larger than a block size, it's necessary to split input data into multiple blocks"]
-    #[doc = "+ For inputs larger than a single block, really consider using regular ZSTD_compress() instead."]
-    #[doc = "Frame metadata is not that costly, and quickly becomes negligible as source size grows larger."]
-    #[doc = "- When a block is considered not compressible enough, ZSTD_compressBlock() result will be zero."]
-    #[doc = "In which case, nothing is produced into `dst` !"]
-    #[doc = "+ User must test for such outcome and deal directly with uncompressed data"]
-    #[doc = "+ ZSTD_decompressBlock() doesn't accept uncompressed data as input !!!"]
+    #[doc = "+ For inputs larger than a single block, consider using regular ZSTD_compress() instead."]
+    #[doc = "Frame metadata is not that costly, and quickly becomes negligible as source size grows larger than a block."]
+    #[doc = "- When a block is considered not compressible enough, ZSTD_compressBlock() result will be 0 (zero) !"]
+    #[doc = "===> In which case, nothing is produced into `dst` !"]
+    #[doc = "+ User __must__ test for such outcome and deal directly with uncompressed data"]
+    #[doc = "+ A block cannot be declared incompressible if ZSTD_compressBlock() return value was != 0."]
+    #[doc = "Doing so would mess up with statistics history, leading to potential data corruption."]
+    #[doc = "+ ZSTD_decompressBlock() _doesn't accept uncompressed data as input_ !!"]
     #[doc = "+ In case of multiple successive blocks, should some of them be uncompressed,"]
     #[doc = "decoder must be informed of their existence in order to follow proper history."]
     #[doc = "Use ZSTD_insertBlock() for such a case."]

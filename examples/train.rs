@@ -9,7 +9,7 @@ use std::io;
 // to make future compression of similar small files more efficient.
 //
 // The dictionary will need to be present during decompression,
-// but it you need to compress many small files individually,
+// but if you need to compress many small files individually,
 // it may be worth the trouble.
 fn main() {
     let matches = App::new("train")

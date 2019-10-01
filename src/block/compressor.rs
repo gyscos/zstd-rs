@@ -9,7 +9,7 @@ use zstd_safe;
 /// The compressed blocks are still completely independent.
 #[derive(Default)]
 pub struct Compressor {
-    context: zstd_safe::CCtx,
+    context: zstd_safe::CCtx<'static>,
     dict: Vec<u8>,
 }
 
@@ -39,13 +39,14 @@ impl Compressor {
         destination: &mut [u8],
         level: i32,
     ) -> io::Result<usize> {
-            zstd_safe::compress_using_dict(
-                &mut self.context,
-                destination,
-                source,
-                &self.dict[..],
-                level,
-            ).map_err(map_error_code)
+        zstd_safe::compress_using_dict(
+            &mut self.context,
+            destination,
+            source,
+            &self.dict[..],
+            level,
+        )
+        .map_err(map_error_code)
     }
 
     /// Compresses a block of data and returns the compressed result.

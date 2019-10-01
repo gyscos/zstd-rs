@@ -55,15 +55,10 @@ pub const VERSION_NUMBER: u32 = zstd_sys::ZSTD_VERSION_NUMBER;
 pub const CLEVEL_DEFAULT: i32 = zstd_sys::ZSTD_CLEVEL_DEFAULT as i32;
 pub const CONTENTSIZE_UNKNOWN: u64 = zstd_sys::ZSTD_CONTENTSIZE_UNKNOWN as u64;
 pub const CONTENTSIZE_ERROR: u64 = zstd_sys::ZSTD_CONTENTSIZE_ERROR as u64;
-#[cfg(feature = "experimental")]
 pub const MAGICNUMBER: u32 = zstd_sys::ZSTD_MAGICNUMBER;
-#[cfg(feature = "experimental")]
 pub const MAGIC_DICTIONARY: u32 = zstd_sys::ZSTD_MAGIC_DICTIONARY;
-#[cfg(feature = "experimental")]
 pub const MAGIC_SKIPPABLE_START: u32 = zstd_sys::ZSTD_MAGIC_SKIPPABLE_START;
-#[cfg(feature = "experimental")]
 pub const BLOCKSIZELOG_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZELOG_MAX;
-#[cfg(feature = "experimental")]
 pub const BLOCKSIZE_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZE_MAX;
 #[cfg(feature = "experimental")]
 pub const WINDOWLOG_MAX_32: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_32;
@@ -83,8 +78,6 @@ pub const CHAINLOG_MIN: u32 = zstd_sys::ZSTD_CHAINLOG_MIN;
 pub const HASHLOG3_MAX: u32 = zstd_sys::ZSTD_HASHLOG3_MAX;
 #[cfg(feature = "experimental")]
 pub const SEARCHLOG_MIN: u32 = zstd_sys::ZSTD_SEARCHLOG_MIN;
-// pub const SEARCHLENGTH_MAX: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MAX;
-// pub const SEARCHLENGTH_MIN: u32 = zstd_sys::ZSTD_SEARCHLENGTH_MIN;
 #[cfg(feature = "experimental")]
 pub const TARGETLENGTH_MAX: u32 = zstd_sys::ZSTD_TARGETLENGTH_MAX;
 #[cfg(feature = "experimental")]
@@ -101,8 +94,10 @@ pub const FRAMEHEADERSIZE_PREFIX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_PREFIX;
 pub const FRAMEHEADERSIZE_MIN: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MIN;
 #[cfg(feature = "experimental")]
 pub const FRAMEHEADERSIZE_MAX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MAX;
-// pub const JOBSIZE_MIN: u32 = zstd_sys::ZSTDMT_JOBSIZE_MIN;
 
+/// Wrapper result around most zstd functions.
+///
+/// Either a success code (usually number of bytes written), or an error code.
 type SafeResult = Result<usize, usize>;
 
 /// Returns true if code represents error.
@@ -132,6 +127,14 @@ fn ptr_mut_void(dst: &mut [u8]) -> *mut c_void {
 
 pub fn version_number() -> u32 {
     unsafe { zstd_sys::ZSTD_versionNumber() as u32 }
+}
+
+pub fn min_c_level() -> i32 {
+    unsafe { zstd_sys::ZSTD_minCLevel() as i32 }
+}
+
+pub fn max_c_level() -> i32 {
+    unsafe { zstd_sys::ZSTD_maxCLevel() as i32 }
 }
 
 /// `ZSTD_compress`
@@ -225,23 +228,24 @@ pub fn max_clevel() -> i32 {
     unsafe { zstd_sys::ZSTD_maxCLevel() as i32 }
 }
 
+/// maximum compressed size in worst case single-pass scenario
 pub fn compress_bound(src_size: usize) -> usize {
     unsafe { zstd_sys::ZSTD_compressBound(src_size) }
 }
 
-pub struct CCtx(*mut zstd_sys::ZSTD_CCtx);
+pub struct CCtx<'a>(*mut zstd_sys::ZSTD_CCtx, PhantomData<&'a ()>);
 
-impl Default for CCtx {
+impl<'a> Default for CCtx<'a> {
     fn default() -> Self {
         create_cctx()
     }
 }
 
-pub fn create_cctx() -> CCtx {
-    CCtx(unsafe { zstd_sys::ZSTD_createCCtx() })
+pub fn create_cctx<'a>() -> CCtx<'a> {
+    CCtx(unsafe { zstd_sys::ZSTD_createCCtx() }, PhantomData)
 }
 
-impl Drop for CCtx {
+impl<'a> Drop for CCtx<'a> {
     fn drop(&mut self) {
         unsafe {
             zstd_sys::ZSTD_freeCCtx(self.0);
@@ -249,7 +253,7 @@ impl Drop for CCtx {
     }
 }
 
-unsafe impl Send for CCtx {}
+unsafe impl<'a> Send for CCtx<'a> {}
 // CCtx can't be shared across threads, so it does not implement Sync.
 
 #[cfg(not(feature = "std"))]
@@ -302,19 +306,44 @@ pub fn compress_cctx(
     parse_code(code)
 }
 
-pub struct DCtx(*mut zstd_sys::ZSTD_DCtx);
+/// `ZSTD_compress2()`
+///
+/// Behave the same as `ZSTD_compressCCtx()`, but compression parameters are set using the advanced API.
+/// `ZSTD_compress2()` always starts a new frame.
+///
+/// Should cctx hold data from a previously unfinished frame, everything about it is forgotten.
+/// - Compression parameters are pushed into CCtx before starting compression, using `ZSTD_CCtx_set*()`
+/// - The function is always blocking, returns when compression is completed.
+///
+/// Hint : compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`.
+///
+/// Return : compressed size written into `dst` (<= `dstCapacity),
+///          or an error code if it fails (which can be tested using `ZSTD_isError()`).
+pub fn compress2(ctx: &mut CCtx, dst: &mut [u8], src: &[u8]) -> SafeResult {
+    parse_code(unsafe {
+        zstd_sys::ZSTD_compress2(
+            ctx.0,
+            ptr_mut_void(dst),
+            dst.len(),
+            ptr_void(src),
+            src.len(),
+        )
+    })
+}
 
-impl Default for DCtx {
+pub struct DCtx<'a>(*mut zstd_sys::ZSTD_DCtx, PhantomData<&'a ()>);
+
+impl Default for DCtx<'_> {
     fn default() -> Self {
         create_dctx()
     }
 }
 
-pub fn create_dctx() -> DCtx {
-    DCtx(unsafe { zstd_sys::ZSTD_createDCtx() })
+pub fn create_dctx<'a>() -> DCtx<'a> {
+    DCtx(unsafe { zstd_sys::ZSTD_createDCtx() }, PhantomData)
 }
 
-impl Drop for DCtx {
+impl Drop for DCtx<'_> {
     fn drop(&mut self) {
         unsafe {
             zstd_sys::ZSTD_freeDCtx(self.0);
@@ -322,7 +351,7 @@ impl Drop for DCtx {
     }
 }
 
-unsafe impl Send for DCtx {}
+unsafe impl Send for DCtx<'_> {}
 // DCtx can't be shared across threads, so it does not implement Sync.
 
 /// `ZSTD_decompressDCtx()`
@@ -523,12 +552,12 @@ pub fn decompress_using_ddict(
     parse_code(code)
 }
 
-pub type CStream = CCtx;
+pub type CStream<'a> = CCtx<'a>;
 
 // CStream can't be shared across threads, so it does not implement Sync.
 
-pub fn create_cstream() -> CStream {
-    CCtx(unsafe { zstd_sys::ZSTD_createCStream() })
+pub fn create_cstream<'a>() -> CStream<'a> {
+    CCtx(unsafe { zstd_sys::ZSTD_createCStream() }, PhantomData)
 }
 
 pub fn init_cstream(zcs: &mut CStream, compression_level: i32) -> usize {
@@ -667,6 +696,45 @@ pub fn compress_stream(
     parse_code(code)
 }
 
+/// `ZSTD_compressStream2()`
+///
+/// Behaves about the same as `ZSTD_compressStream`, with additional control on end directive.
+/// - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_set*()
+/// - Compression parameters cannot be changed once compression is started (save a list of exceptions in multi-threading mode)
+/// - output->pos must be <= dstCapacity, input->pos must be <= srcSize
+/// - output->pos and input->pos will be updated. They are guaranteed to remain below their respective limit.
+/// - When nbWorkers==0 (default), function is blocking : it completes its job before returning to caller.
+/// - When nbWorkers>=1, function is non-blocking : it just acquires a copy of input, and distributes jobs to internal worker threads, flush whatever is available,
+///                                                 and then immediately returns, just indicating that there is some data remaining to be flushed.
+///                                                 The function nonetheless guarantees forward progress : it will return only after it reads or write at least 1+ byte.
+/// - Exception : if the first call requests a ZSTD_e_end directive and provides enough dstCapacity, the function delegates to ZSTD_compress2() which is always blocking.
+/// - @return provides a minimum amount of data remaining to be flushed from internal buffers
+///           or an error code, which can be tested using ZSTD_isError().
+///           if @return != 0, flush is not fully completed, there is still some data left within internal buffers.
+///           This is useful for ZSTD_e_flush, since in this case more flushes are necessary to empty all buffers.
+///           For ZSTD_e_end, @return == 0 when internal buffers are fully flushed and frame is completed.
+/// - after a ZSTD_e_end directive, if internal buffer is not fully flushed (@return != 0),
+///           only ZSTD_e_end or ZSTD_e_flush operations are allowed.
+///           Before starting a new compression job, or changing compression parameters,
+///           it is required to fully flush internal buffers.
+pub fn compress_stream2(
+    cctx: &mut CCtx,
+    output: &mut OutBuffer,
+    input: &mut InBuffer,
+    end_op: zstd_sys::ZSTD_EndDirective,
+) -> SafeResult {
+    let mut output = output.wrap();
+    let mut input = input.wrap();
+    parse_code(unsafe {
+        zstd_sys::ZSTD_compressStream2(
+            cctx.0,
+            ptr_mut(&mut output),
+            ptr_mut(&mut input),
+            end_op,
+        )
+    })
+}
+
 pub fn flush_stream(zcs: &mut CStream, output: &mut OutBuffer) -> SafeResult {
     let mut output = output.wrap();
     let code =
@@ -689,10 +757,10 @@ pub fn cstream_out_size() -> usize {
     unsafe { zstd_sys::ZSTD_CStreamOutSize() }
 }
 
-pub type DStream = DCtx;
+pub type DStream<'a> = DCtx<'a>;
 
-pub fn create_dstream() -> DStream {
-    DCtx(unsafe { zstd_sys::ZSTD_createDStream() })
+pub fn create_dstream<'a>() -> DStream<'a> {
+    DCtx(unsafe { zstd_sys::ZSTD_createDStream() }, PhantomData)
 }
 
 pub fn init_dstream(zds: &mut DStream) -> usize {
@@ -732,7 +800,6 @@ pub fn dstream_out_size() -> usize {
 ///
 /// Returns the compressed size of the frame pointed to by `src`, suitable to pass to
 /// `ZSTD_decompress` or similar, or an error code if given invalid input.
-#[cfg(feature = "experimental")]
 pub fn find_frame_compressed_size(src: &[u8]) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_findFrameCompressedSize(ptr_void(src), src.len())
@@ -794,7 +861,6 @@ pub fn find_decompressed_size(src: &[u8]) -> u64 {
 /// `ZSTD_sizeofCCtx()`
 ///
 /// Gives the amount of memory used by a given ZSTD_CCtx
-#[cfg(feature = "experimental")]
 pub fn sizeof_cctx(cctx: &CCtx) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_CCtx(cctx.0) }
 }
@@ -802,30 +868,27 @@ pub fn sizeof_cctx(cctx: &CCtx) -> usize {
 /// `ZSTD_sizeof_DCtx()`
 ///
 /// Gives the amount of memory used by a given ZSTD_DCtx
-#[cfg(feature = "experimental")]
 pub fn sizeof_dctx(dctx: &DCtx) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_DCtx(dctx.0) }
 }
 
-#[cfg(feature = "experimental")]
 pub fn sizeof_cstream(zcs: &CStream) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_CStream(zcs.0) }
 }
-#[cfg(feature = "experimental")]
+
 pub fn sizeof_dstream(zds: &DStream) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_DStream(zds.0) }
 }
+
 /// `ZSTD_sizeof_CDict()`
 ///
 /// Gives the amount of memory used by a given ZSTD_sizeof_CDict
-#[cfg(feature = "experimental")]
 pub fn sizeof_cdict(cdict: &CDict) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_CDict(cdict.0) }
 }
 /// `ZSTD_sizeof_DDict()`
 ///
 /// Gives the amount of memory used by a given ZSTD_DDict
-#[cfg(feature = "experimental")]
 pub fn sizeof_ddict(ddict: &DDict) -> usize {
     unsafe { zstd_sys::ZSTD_sizeof_DDict(ddict.0) }
 }
@@ -837,10 +900,10 @@ pub fn sizeof_ddict(ddict: &DDict) -> usize {
 ///
 /// It is important that dictBuffer outlives CDict, it must remain read accessible throughout the lifetime of CDict
 #[cfg(feature = "experimental")]
-pub fn create_cdict_by_reference(
+pub fn create_cdict_by_reference<'a>(
     dict_buffer: &[u8],
     compression_level: i32,
-) -> CDict {
+) -> CDict<'a> {
     CDict(
         unsafe {
             zstd_sys::ZSTD_createCDict_byReference(
@@ -893,7 +956,6 @@ pub fn create_ddict_by_reference(dict_buffer: &[u8]) -> DDict {
 /// if @return == 0, the dictionary is not conformant with Zstandard specification.
 ///
 /// It can still be loaded, but as a content-only dictionary.
-#[cfg(feature = "experimental")]
 pub fn get_dict_id_from_dict(dict: &[u8]) -> u32 {
     unsafe {
         zstd_sys::ZSTD_getDictID_fromDict(ptr_void(dict), dict.len()) as u32
@@ -906,7 +968,6 @@ pub fn get_dict_id_from_dict(dict: &[u8]) -> u32 {
 /// If @return == 0, the dictionary is not conformant to Zstandard specification, or empty.
 ///
 /// Non-conformant dictionaries can still be loaded, but as content-only dictionaries.
-#[cfg(feature = "experimental")]
 pub fn get_dict_id_from_ddict(ddict: &DDict) -> u32 {
     unsafe { zstd_sys::ZSTD_getDictID_fromDDict(ddict.0) as u32 }
 }
@@ -925,7 +986,6 @@ pub fn get_dict_id_from_ddict(ddict: &DDict) -> u32 {
 /// * This is not a Zstandard frame.
 ///
 /// When identifying the exact failure cause, it's possible to use ZSTD_getFrameParams(), which will provide a more precise error code.
-#[cfg(feature = "experimental")]
 pub fn get_dict_id_from_frame(src: &[u8]) -> u32 {
     unsafe {
         zstd_sys::ZSTD_getDictID_fromFrame(ptr_void(src), src.len()) as u32
@@ -972,6 +1032,214 @@ pub fn init_cstream_using_cdict(
     let code =
         unsafe { zstd_sys::ZSTD_initCStream_usingCDict(zcs.0, cdict.0) };
     parse_code(code)
+}
+
+/// `ZSTD_CCtx_loadDictionary()`
+///
+/// Create an internal CDict from `dict` buffer.
+///
+/// Decompression will have to use same dictionary.
+///
+/// result : 0, or an error code (which can be tested with ZSTD_isError()).
+///
+/// Special: Loading a NULL (or 0-size) dictionary invalidates previous dictionary,
+///          meaning "return to no-dictionary mode".
+///
+/// Note 1 : Dictionary is sticky, it will be used for all future compressed frames.
+///          To return to "no-dictionary" situation, load a NULL dictionary (or reset parameters).
+///
+/// Note 2 : Loading a dictionary involves building tables.
+///          It's also a CPU consuming operation, with non-negligible impact on latency.
+///          Tables are dependent on compression parameters, and for this reason,
+///          compression parameters can no longer be changed after loading a dictionary.
+///
+/// Note 3 :`dict` content will be copied internally.
+///          Use experimental ZSTD_CCtx_loadDictionary_byReference() to reference content instead.
+///          In such a case, dictionary buffer must outlive its users.
+///
+/// Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()
+///          to precisely select how dictionary content must be interpreted. */
+pub fn cctx_load_dictionary(cctx: &mut CCtx, dict: &[u8]) -> SafeResult {
+    parse_code(unsafe {
+        zstd_sys::ZSTD_CCtx_loadDictionary(cctx.0, ptr_void(dict), dict.len())
+    })
+}
+
+/// `ZSTD_CCtx_refCDict()`
+///
+/// Reference a prepared dictionary, to be used for all next compressed frames.
+///
+/// Note that compression parameters are enforced from within CDict,
+/// and supersede any compression parameter previously set within CCtx.
+///
+/// The parameters ignored are labled as "superseded-by-cdict" in the ZSTD_cParameter enum docs.
+///
+/// The ignored parameters will be used again if the CCtx is returned to no-dictionary mode.
+///
+/// The dictionary will remain valid for future compressed frames using same CCtx.
+///
+/// result : 0, or an error code (which can be tested with ZSTD_isError()).
+///
+/// Special : Referencing a NULL CDict means "return to no-dictionary mode".
+/// Note 1 : Currently, only one dictionary can be managed.
+///          Referencing a new dictionary effectively "discards" any previous one.
+/// Note 2 : CDict is just referenced, its lifetime must outlive its usage within CCtx. */
+pub fn cctx_ref_cdict<'a>(
+    cctx: &mut CCtx<'a>,
+    cdict: &CDict<'a>,
+) -> SafeResult {
+    parse_code(unsafe { zstd_sys::ZSTD_CCtx_refCDict(cctx.0, cdict.0) })
+}
+
+/// `ZSTD_CCtx_refPrefix()`
+///
+/// Reference a prefix (single-usage dictionary) for next compressed frame.
+///
+/// A prefix is **only used once**. Tables are discarded at end of frame (ZSTD_e_end).
+/// Decompression will need same prefix to properly regenerate data.
+///
+/// Compressing with a prefix is similar in outcome as performing a diff and compressing it,
+/// but performs much faster, especially during decompression (compression speed is tunable with compression level).
+///
+/// result : 0, or an error code (which can be tested with ZSTD_isError()).
+///
+/// Special: Adding any prefix (including NULL) invalidates any previous prefix or dictionary
+///
+/// Note 1 : Prefix buffer is referenced. It **must** outlive compression.
+///          Its content must remain unmodified during compression.
+///
+/// Note 2 : If the intention is to diff some large src data blob with some prior version of itself,
+///          ensure that the window size is large enough to contain the entire source.
+///          See ZSTD_c_windowLog.
+///
+/// Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters.
+///          It's a CPU consuming operation, with non-negligible impact on latency.
+///          If there is a need to use the same prefix multiple times, consider loadDictionary instead.
+///
+/// Note 4 : By default, the prefix is interpreted as raw content (ZSTD_dm_rawContent).
+///          Use experimental ZSTD_CCtx_refPrefix_advanced() to alter dictionary interpretation. */
+pub fn cctx_ref_prefix<'a>(
+    cctx: &mut CCtx<'a>,
+    prefix: &'a [u8],
+) -> SafeResult {
+    parse_code(unsafe {
+        zstd_sys::ZSTD_CCtx_refPrefix(cctx.0, ptr_void(prefix), prefix.len())
+    })
+}
+
+/// `ZSTD_DCtx_loadDictionary()`
+///
+/// Create an internal DDict from dict buffer,
+/// to be used to decompress next frames.
+///
+/// The dictionary remains valid for all future frames, until explicitly invalidated.
+///
+/// result : 0, or an error code (which can be tested with ZSTD_isError()).
+///
+/// Special : Adding a NULL (or 0-size) dictionary invalidates any previous dictionary,
+///           meaning "return to no-dictionary mode".
+/// Note 1 : Loading a dictionary involves building tables,
+///          which has a non-negligible impact on CPU usage and latency.
+///          It's recommended to "load once, use many times", to amortize the cost
+/// Note 2 :`dict` content will be copied internally, so `dict` can be released after loading.
+///          Use ZSTD_DCtx_loadDictionary_byReference() to reference dictionary content instead.
+/// Note 3 : Use ZSTD_DCtx_loadDictionary_advanced() to take control of
+///          how dictionary content is loaded and interpreted.
+pub fn dctx_load_dictionary(dctx: &mut DCtx<'_>, dict: &[u8]) -> SafeResult {
+    parse_code(unsafe {
+        zstd_sys::ZSTD_DCtx_loadDictionary(dctx.0, ptr_void(dict), dict.len())
+    })
+}
+
+/// `ZSTD_DCtx_refDDict()`
+///
+/// Reference a prepared dictionary, to be used to decompress next frames.
+///
+/// The dictionary remains active for decompression of future frames using same DCtx.
+///
+/// result : 0, or an error code (which can be tested with ZSTD_isError()).
+///
+/// Note 1 : Currently, only one dictionary can be managed.
+///          Referencing a new dictionary effectively "discards" any previous one.
+/// Special: referencing a NULL DDict means "return to no-dictionary mode".
+///
+/// Note 2 : DDict is just referenced, its lifetime must outlive its usage from DCtx.
+pub fn dctx_ref_ddict<'a>(
+    dctx: &mut DCtx<'a>,
+    ddict: &'a DDict,
+) -> SafeResult {
+    parse_code(unsafe { zstd_sys::ZSTD_DCtx_refDDict(dctx.0, ddict.0) })
+}
+
+/// `ZSTD_DCtx_refPrefix()`
+///
+/// Reference a prefix (single-usage dictionary) to decompress next frame.
+///
+/// This is the reverse operation of ZSTD_CCtx_refPrefix(),
+/// and must use the same prefix as the one used during compression.
+///
+/// Prefix is **only used once**. Reference is discarded at end of frame.
+///
+/// End of frame is reached when ZSTD_decompressStream() returns 0.
+///
+/// result : 0, or an error code (which can be tested with ZSTD_isError()).
+///
+/// Note 1 : Adding any prefix (including NULL) invalidates any previously set prefix or dictionary
+///
+/// Note 2 : Prefix buffer is referenced. It **must** outlive decompression.
+///          Prefix buffer must remain unmodified up to the end of frame,
+///          reached when ZSTD_decompressStream() returns 0.
+///
+/// Note 3 : By default, the prefix is treated as raw content (ZSTD_dm_rawContent).
+///          Use ZSTD_CCtx_refPrefix_advanced() to alter dictMode (Experimental section)
+///
+/// Note 4 : Referencing a raw content prefix has almost no cpu nor memory cost.
+///          A full dictionary is more costly, as it requires building tables.
+pub fn dctx_ref_prefix<'a>(
+    dctx: &mut DCtx<'a>,
+    prefix: &'a [u8],
+) -> SafeResult {
+    parse_code(unsafe {
+        zstd_sys::ZSTD_DCtx_refPrefix(dctx.0, ptr_void(prefix), prefix.len())
+    })
+}
+
+/// `ZSTD_CCtx_reset()`
+///
+/// There are 2 different things that can be reset, independently or jointly :
+/// - The session : will stop compressing current frame, and make CCtx ready to start a new one.
+///                 Useful after an error, or to interrupt any ongoing compression.
+///                 Any internal data not yet flushed is cancelled.
+///                 Compression parameters and dictionary remain unchanged.
+///                 They will be used to compress next frame.
+///                 Resetting session never fails.
+/// - The parameters : changes all parameters back to "default".
+///                 This removes any reference to any dictionary too.
+///                 Parameters can only be changed between 2 sessions (i.e. no compression is currently ongoing)
+///                 otherwise the reset fails, and function returns an error value (which can be tested using ZSTD_isError())
+/// - Both : similar to resetting the session, followed by resetting parameters.
+///
+pub fn cctx_reset(
+    cctx: &mut CCtx,
+    reset: zstd_sys::ZSTD_ResetDirective,
+) -> SafeResult {
+    parse_code(unsafe { zstd_sys::ZSTD_CCtx_reset(cctx.0, reset) })
+}
+
+/// `ZSTD_DCtx_reset()`
+///
+/// Return a DCtx to clean state.
+///
+/// Session and parameters can be reset jointly or separately.
+///
+/// Parameters can only be reset when no active frame is being decompressed.
+///
+/// return : 0, or an error code, which can be tested with ZSTD_isError()
+pub fn reset_dctx(
+    dctx: &mut DCtx,
+    reset: zstd_sys::ZSTD_ResetDirective,
+) -> SafeResult {
+    parse_code(unsafe { zstd_sys::ZSTD_DCtx_reset(dctx.0, reset) })
 }
 
 /// `ZSTD_resetCStream()`
@@ -1033,6 +1301,7 @@ pub enum FrameFormat {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CParameter {
     /// See `FrameFormat`.
+    #[cfg(feature = "experimental")]
     Format(FrameFormat),
 
     /// Update all compression parameters according to pre-defined cLevel table.
@@ -1100,6 +1369,52 @@ pub enum CParameter {
     /// Special: value 0 means "do not change targetLength".
     TargetLength(u32),
 
+    /// Compression strategy. Affects compression ratio and speed.
+    Strategy(zstd_sys::ZSTD_strategy),
+
+    /// Enables long distance matching to improve compression ratio for large inputs.
+    ///
+    /// Increases memory usage and window size.
+    EnableLongDistanceMatching(bool),
+
+    /// Size of the table for long distance matching, as a power of 2.
+    ///
+    /// Larger values increase memory usage and compression ratio, but decrease compression speed.
+    /// Must be clamped between ZSTD_HASHLOG_MIN and ZSTD_HASHLOG_MAX
+    ///
+    /// Default: `windowlog - 7`.
+    ///
+    /// Special: value 0 means "automatically determine hashlog".
+    LdmHashLog(u32),
+
+    /// Minimum match size for long distance matcher.
+    ///
+    /// Larger/too small values usually decrease compression ratio.
+    ///
+    /// Must be clamped between `ZSTD_LDM_MINMATCH_MIN` and `ZSTD_LDM_MINMATCH_MAX`.
+    ///
+    /// Special: value 0 means "use default value" (default: 64).
+    LdmMinMatch(u32),
+
+    /// Log size of each bucket in the LDM hash table for collision resolution.
+    ///
+    /// Larger values improve collision resolution but decrease compression speed.
+    /// The maximum value is `ZSTD_LDM_BUCKETSIZELOG_MAX`.
+    ///
+    /// Special: value 0 means "use default value" (default: 3).
+    LdmBucketSizeLog(u32),
+
+    /// Frequency of inserting/looking up entries into the LDM hash table.
+    ///
+    /// Must be clamped between 0 and `(ZSTD_WINDOWLOG_MAX - ZSTD_HASHLOG_MIN)`.
+    /// Default is `MAX(0, (windowLog - ldmHashLog))`, optimizing hash table usage.
+    /// Larger values improve compression speed.
+    ///
+    /// Deviating far from default value will likely result in a compression ratio decrease.
+    ///
+    /// Special: value 0 means "automatically determine hashRateLog".
+    LdmHashRateLog(u32),
+
     /// Content size will be written into frame header _whenever known_ (default:1)
     ///
     /// Content size must be known at the beginning of compression,
@@ -1112,93 +1427,157 @@ pub enum CParameter {
     /// When applicable, dictionary's ID is written into frame header (default:1)
     DictIdFlag(bool),
 
-    /// Select how many threads a compression job can spawn (default:1)
+    /// Select how many threads will be spawned to compress in parallel.
     ///
-    /// More threads improve speed, but also increase memory usage.
+    /// When nbWorkers >= 1, triggers asynchronous mode when used with ZSTD_compressStream*() :
+    /// `ZSTD_compressStream*()` consumes input and flush output if possible, but immediately gives back control to caller,
+    /// while compression work is performed in parallel, within worker threads.
     ///
-    /// Special: value 0 means "do not change nbThreads"
-    #[cfg(feature = "zstdmt")]
-    ThreadCount(u32),
+    /// (note : a strong exception to this rule is when first invocation of `ZSTD_compressStream2()` sets `ZSTD_e_end` :
+    ///  in which case, `ZSTD_compressStream2()` delegates to `ZSTD_compress2()`, which is always a blocking call).
+    ///
+    /// More workers improve speed, but also increase memory usage.
+    ///
+    /// Default value is `0`, aka "single-threaded mode" : no worker is spawned, compression is performed inside Caller's thread, all invocations are blocking.
+    NbWorkers(u32),
 
-    /// Size of a compression job. This value is only enforced in streaming (non-blocking) mode.
+    /// Size of a compression job. This value is enforced only when `nbWorkers >= 1`.
     ///
-    /// Each compression job is completed in parallel, so indirectly controls the nb of active threads.
+    /// Each compression job is completed in parallel, so this value can indirectly impact the nb of active threads.
+    ///
     /// 0 means default, which is dynamically determined based on compression parameters.
     ///
-    /// Job size must be a minimum of overlapSize, or 1 KB, whichever is largest
+    /// Job size must be a minimum of overlap size, or 1 MB, whichever is largest.
     ///
     /// The minimum size is automatically and transparently enforced
-    #[cfg(feature = "zstdmt")]
     JobSize(u32),
 
-    /// Size of previous input reloaded at the beginning of each job.
+    /// Control the overlap size, as a fraction of window size.
     ///
-    /// 0 => no overlap, 6(default) => use 1/8th of windowSize, >=9 => use full windowSize
-    #[cfg(feature = "zstdmt")]
+    /// The overlap size is an amount of data reloaded from previous job at the beginning of a new job.
+    ///
+    /// It helps preserve compression ratio, while each job is compressed in parallel.
+    ///
+    /// This value is enforced only when nbWorkers >= 1.
+    ///
+    /// Larger values increase compression ratio, but decrease speed.
+    ///
+    /// Possible values range from 0 to 9 :
+    /// - 0 means "default" : value will be determined by the library, depending on strategy
+    /// - 1 means "no overlap"
+    /// - 9 means "full overlap", using a full window size.
+    ///
+    /// Each intermediate rank increases/decreases load size by a factor 2 :
+    /// 9: full window;  8: w/2;  7: w/4;  6: w/8;  5:w/16;  4: w/32;  3:w/64;  2:w/128;  1:no overlap;  0:default
+    ///
+    /// default value varies between 6 and 9, depending on strategy.
     OverlapSizeLog(u32),
-    // CompressionStrategy, and parameters marked as "advanced", are currently missing on purpose,
-    // as they will see the most API churn.
+}
+
+pub enum DParameter {
+    /// Select a size limit (in power of 2) beyond which
+    /// the streaming API will refuse to allocate memory buffer
+    /// in order to protect the host from unreasonable memory requirements.
+    ///
+    /// This parameter is only useful in streaming mode, since no internal buffer is allocated in single-pass mode.
+    ///
+    /// By default, a decompression context accepts window sizes <= `(1 << ZSTD_WINDOWLOG_LIMIT_DEFAULT)`.
+    ///
+    /// Special: value 0 means "use default maximum windowLog". */
+    WindowLogMax(u32),
+
+    /// See `FrameFormat`.
+    #[cfg(feature = "experimental")]
+    Format(FrameFormat),
+}
+
+/// `ZSTD_DCtx_setParameter()`
+///
+/// Set one compression parameter, selected by enum ZSTD_dParameter.
+///
+/// All parameters have valid bounds. Bounds can be queried using ZSTD_dParam_getBounds().
+///
+/// Providing a value beyond bound will either clamp it, or trigger an error (depending on parameter).
+///
+/// Setting a parameter is only possible during frame initialization (before starting decompression).
+///
+/// return : 0, or an error code (which can be tested using ZSTD_isError()).
+pub fn dctx_set_parameter(dctx: &mut DCtx, param: DParameter) -> SafeResult {
+    #[cfg(feature = "experimental")]
+    use zstd_sys::ZSTD_dParameter::ZSTD_d_experimentalParam1 as ZSTD_d_format;
+    #[cfg(feature = "experimental")]
+    use zstd_sys::ZSTD_format_e;
+
+    use zstd_sys::ZSTD_dParameter::*;
+    use DParameter::*;
+
+    let (param, value) = match param {
+        #[cfg(feature = "experimental")]
+        Format(FrameFormat::One) => {
+            (ZSTD_d_format, ZSTD_format_e::ZSTD_f_zstd1 as c_int)
+        }
+        #[cfg(feature = "experimental")]
+        Format(FrameFormat::Magicless) => (
+            ZSTD_d_format,
+            ZSTD_format_e::ZSTD_f_zstd1_magicless as c_int,
+        ),
+
+        WindowLogMax(value) => (ZSTD_d_windowLogMax, value as c_int),
+    };
+
+    parse_code(unsafe {
+        zstd_sys::ZSTD_DCtx_setParameter(dctx.0, param, value)
+    })
 }
 
 /// Set one compression parameter, selected by enum ZSTD_cParameter.
 ///
 /// @result : informational value (typically, the one being set, possibly corrected),
 /// or an error code (which can be tested with ZSTD_isError()).
-#[cfg(feature = "experimental")]
 pub fn cctx_set_parameter(cctx: &mut CCtx, param: CParameter) -> SafeResult {
-    use zstd_sys::ZSTD_cParameter;
     // TODO: Until bindgen properly generates a binding for this, we'll need to do it here.
+    #[cfg(feature = "experimental")]
     use zstd_sys::ZSTD_cParameter::ZSTD_c_experimentalParam2 as ZSTD_c_format;
+    #[cfg(feature = "experimental")]
     use zstd_sys::ZSTD_format_e;
+
+    use zstd_sys::ZSTD_cParameter::*;
     use CParameter::*;
 
     let (param, value) = match param {
+        #[cfg(feature = "experimental")]
         Format(FrameFormat::One) => {
             (ZSTD_c_format, ZSTD_format_e::ZSTD_f_zstd1 as c_int)
         }
+        #[cfg(feature = "experimental")]
         Format(FrameFormat::Magicless) => (
             ZSTD_c_format,
             ZSTD_format_e::ZSTD_f_zstd1_magicless as c_int,
         ),
-        CompressionLevel(level) => {
-            (ZSTD_cParameter::ZSTD_c_compressionLevel, level)
+        CompressionLevel(level) => (ZSTD_c_compressionLevel, level),
+        WindowLog(value) => (ZSTD_c_windowLog, value as c_int),
+        HashLog(value) => (ZSTD_c_hashLog, value as c_int),
+        ChainLog(value) => (ZSTD_c_chainLog, value as c_int),
+        SearchLog(value) => (ZSTD_c_searchLog, value as c_int),
+        MinMatch(value) => (ZSTD_c_minMatch, value as c_int),
+        TargetLength(value) => (ZSTD_c_targetLength, value as c_int),
+        Strategy(strategy) => (ZSTD_c_strategy, strategy as c_int),
+        EnableLongDistanceMatching(flag) => {
+            (ZSTD_c_enableLongDistanceMatching, flag as c_int)
         }
-        WindowLog(value) => {
-            (ZSTD_cParameter::ZSTD_c_windowLog, value as c_int)
-        }
-        HashLog(value) => (ZSTD_cParameter::ZSTD_c_hashLog, value as c_int),
-        ChainLog(value) => (ZSTD_cParameter::ZSTD_c_chainLog, value as c_int),
-        SearchLog(value) => {
-            (ZSTD_cParameter::ZSTD_c_searchLog, value as c_int)
-        }
-        MinMatch(value) => (ZSTD_cParameter::ZSTD_c_minMatch, value as c_int),
-        TargetLength(value) => {
-            (ZSTD_cParameter::ZSTD_c_targetLength, value as c_int)
-        }
-        ContentSizeFlag(flag) => (
-            ZSTD_cParameter::ZSTD_c_contentSizeFlag,
-            if flag { 1 } else { 0 },
-        ),
-        ChecksumFlag(flag) => (
-            ZSTD_cParameter::ZSTD_c_checksumFlag,
-            if flag { 1 } else { 0 },
-        ),
-        DictIdFlag(flag) => {
-            (ZSTD_cParameter::ZSTD_c_dictIDFlag, if flag { 1 } else { 0 })
-        }
+        LdmHashLog(value) => (ZSTD_c_ldmHashLog, value as c_int),
+        LdmMinMatch(value) => (ZSTD_c_ldmMinMatch, value as c_int),
+        LdmBucketSizeLog(value) => (ZSTD_c_ldmBucketSizeLog, value as c_int),
+        LdmHashRateLog(value) => (ZSTD_c_ldmHashRateLog, value as c_int),
+        ContentSizeFlag(flag) => (ZSTD_c_contentSizeFlag, flag as c_int),
+        ChecksumFlag(flag) => (ZSTD_c_checksumFlag, flag as c_int),
+        DictIdFlag(flag) => (ZSTD_c_dictIDFlag, flag as c_int),
 
-        #[cfg(feature = "zstdmt")]
-        ThreadCount(value) => {
-            (ZSTD_cParameter::ZSTD_c_nbWorkers, value as c_int)
-        }
+        NbWorkers(value) => (ZSTD_c_nbWorkers, value as c_int),
 
-        #[cfg(feature = "zstdmt")]
-        JobSize(value) => (ZSTD_cParameter::ZSTD_c_jobSize, value as c_int),
+        JobSize(value) => (ZSTD_c_jobSize, value as c_int),
 
-        #[cfg(feature = "zstdmt")]
-        OverlapSizeLog(value) => {
-            (ZSTD_cParameter::ZSTD_c_overlapLog, value as c_int)
-        }
+        OverlapSizeLog(value) => (ZSTD_c_overlapLog, value as c_int),
     };
 
     let code =

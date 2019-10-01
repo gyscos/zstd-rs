@@ -8,7 +8,7 @@ use zstd_safe;
 /// This reduces memory usage compared to calling `decompress` multiple times.
 #[derive(Default)]
 pub struct Decompressor {
-    context: zstd_safe::DCtx,
+    context: zstd_safe::DCtx<'static>,
     dict: Vec<u8>,
 }
 
@@ -40,7 +40,8 @@ impl Decompressor {
             destination,
             source,
             &self.dict,
-        ).map_err(map_error_code)
+        )
+        .map_err(map_error_code)
     }
 
     /// Decompress a block of data, and return the result in a `Vec<u8>`.

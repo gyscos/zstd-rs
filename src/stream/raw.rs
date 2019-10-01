@@ -121,7 +121,7 @@ pub struct Status {
 
 /// An in-memory decoder for streams of data.
 pub struct Decoder {
-    context: DStream,
+    context: DStream<'static>,
 }
 
 impl Decoder {
@@ -133,10 +133,8 @@ impl Decoder {
     /// Creates a new decoder initialized with the given dictionary.
     pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
         let mut context = zstd_safe::create_dstream();
-        zstd_safe::init_dstream_using_dict(
-            &mut context,
-            dictionary,
-        ).map_err(map_error_code)?;
+        zstd_safe::init_dstream_using_dict(&mut context, dictionary)
+            .map_err(map_error_code)?;
         Ok(Decoder { context })
     }
 
@@ -148,7 +146,8 @@ impl Decoder {
         zstd_safe::init_dstream_using_ddict(
             &mut context,
             dictionary.as_ddict(),
-        ).map_err(map_error_code)?;
+        )
+        .map_err(map_error_code)?;
         Ok(Decoder { context })
     }
 }
@@ -159,11 +158,8 @@ impl Operation for Decoder {
         input: &mut InBuffer,
         output: &mut OutBuffer,
     ) -> io::Result<usize> {
-        zstd_safe::decompress_stream(
-            &mut self.context,
-            output,
-            input,
-        ).map_err(map_error_code)
+        zstd_safe::decompress_stream(&mut self.context, output, input)
+            .map_err(map_error_code)
     }
 
     fn reinit(&mut self) -> io::Result<()> {
@@ -188,7 +184,7 @@ impl Operation for Decoder {
 
 /// An in-memory encoder for streams of data.
 pub struct Encoder {
-    context: CStream,
+    context: CStream<'static>,
 }
 
 impl Encoder {
@@ -200,11 +196,8 @@ impl Encoder {
     /// Creates a new encoder initialized with the given dictionary.
     pub fn with_dictionary(level: i32, dictionary: &[u8]) -> io::Result<Self> {
         let mut context = zstd_safe::create_cstream();
-        zstd_safe::init_cstream_using_dict(
-            &mut context,
-            dictionary,
-            level,
-        ).map_err(map_error_code)?;
+        zstd_safe::init_cstream_using_dict(&mut context, dictionary, level)
+            .map_err(map_error_code)?;
         Ok(Encoder { context })
     }
 
@@ -216,7 +209,8 @@ impl Encoder {
         zstd_safe::init_cstream_using_cdict(
             &mut context,
             dictionary.as_cdict(),
-        ).map_err(map_error_code)?;
+        )
+        .map_err(map_error_code)?;
         Ok(Encoder { context })
     }
 }
@@ -227,15 +221,13 @@ impl Operation for Encoder {
         input: &mut InBuffer,
         output: &mut OutBuffer,
     ) -> io::Result<usize> {
-        zstd_safe::compress_stream(
-            &mut self.context,
-            output,
-            input,
-        ).map_err(map_error_code)
+        zstd_safe::compress_stream(&mut self.context, output, input)
+            .map_err(map_error_code)
     }
 
     fn flush(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
-        zstd_safe::flush_stream(&mut self.context, output).map_err(map_error_code)
+        zstd_safe::flush_stream(&mut self.context, output)
+            .map_err(map_error_code)
     }
 
     fn finish(
@@ -243,14 +235,16 @@ impl Operation for Encoder {
         output: &mut OutBuffer,
         _finished_frame: bool,
     ) -> io::Result<usize> {
-        zstd_safe::end_stream(&mut self.context, output).map_err(map_error_code)
+        zstd_safe::end_stream(&mut self.context, output)
+            .map_err(map_error_code)
     }
 
     fn reinit(&mut self) -> io::Result<()> {
         zstd_safe::reset_cstream(
             &mut self.context,
             zstd_safe::CONTENTSIZE_UNKNOWN,
-        ).map_err(map_error_code)?;
+        )
+        .map_err(map_error_code)?;
         Ok(())
     }
 }

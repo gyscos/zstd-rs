@@ -181,6 +181,27 @@ impl<R: BufRead> Encoder<R> {
     pub fn finish(self) -> R {
         self.reader.into_inner()
     }
+
+    /// Controls whether zstd should include a content checksum at the end of each frame.
+    pub fn include_checksum(
+        &mut self,
+        include_checksum: bool,
+    ) -> io::Result<()> {
+        self.reader.operation_mut().set_parameter(
+            zstd_safe::CParameter::ChecksumFlag(include_checksum),
+        )
+    }
+
+    /// Enables multithreaded compression
+    ///
+    /// * If `n_workers == 0` (default), then multithreaded will be disabled.
+    /// * If `n_workers >= 1`, then compression will be done in separate threads.
+    ///   So even `n_workers = 1` may increase performance by separating IO and compression.
+    pub fn multithread(&mut self, n_workers: u32) -> io::Result<()> {
+        self.reader
+            .operation_mut()
+            .set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
+    }
 }
 
 impl<R: BufRead> Read for Encoder<R> {

@@ -24,10 +24,6 @@
 //! [zstd]: https://github.com/facebook/zstd
 #![deny(missing_docs)]
 
-#[cfg(feature = "tokio")]
-#[macro_use]
-extern crate tokio_io;
-
 pub mod block;
 pub mod dict;
 pub mod stream;

@@ -37,7 +37,6 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
-
 /// How to compress data.
 pub use zstd_sys::ZSTD_strategy as Strategy;
 
@@ -270,14 +269,14 @@ impl<'a> Drop for CCtx<'a> {
 unsafe impl<'a> Send for CCtx<'a> {}
 // CCtx can't be shared across threads, so it does not implement Sync.
 
-unsafe fn c_char_to_str(test: *const c_char) -> &'static str {
+unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
     #[cfg(not(feature = "std"))]
     {
         // To be safe, we need to compute right now its length
-        let len = libc::strlen(test);
+        let len = libc::strlen(text);
 
         // Cast it to a slice
-        let slice = core::slice::from_raw_parts(test as *mut u8, len);
+        let slice = core::slice::from_raw_parts(text as *mut u8, len);
         // And hope it's still text.
         str::from_utf8(slice).expect("bad error message from zstd")
     }

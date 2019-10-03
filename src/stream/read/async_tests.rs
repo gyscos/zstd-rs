@@ -2,11 +2,11 @@ use futures::Future;
 use partial_io::{GenWouldBlock, PartialAsyncRead, PartialWithErrors};
 use quickcheck::quickcheck;
 use std::io::{self, Cursor};
-use tokio_io::{io as tokio_io, AsyncRead, AsyncWrite};
+use tokio_io::{AsyncRead, AsyncWrite};
 
 #[test]
 fn test_async_read() {
-    use stream::encode_all;
+    use crate::stream::encode_all;
 
     let source = "abc".repeat(1024 * 10).into_bytes();
     let encoded = encode_all(&source[..], 1).unwrap();
@@ -25,7 +25,7 @@ fn test_async_read_partial() {
     // would not compile.
     // Plus, it's still not clear it's a good idea.
     fn test(encode_ops: PartialWithErrors<GenWouldBlock>) {
-        use stream::encode_all;
+        use crate::stream::encode_all;
 
         let source = "abc".repeat(1024 * 10).into_bytes();
         let encoded = encode_all(&source[..], 1).unwrap();
@@ -44,6 +44,6 @@ fn test_async_read_worker<R: AsyncRead, W: AsyncWrite>(
     use super::Decoder;
 
     let decoder = Decoder::new(r).unwrap();
-    let (_, _, w) = tokio_io::copy(decoder, w).wait()?;
+    let (_, _, w) = tokio_io::io::copy(decoder, w).wait()?;
     Ok(w)
 }

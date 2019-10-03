@@ -247,6 +247,8 @@ impl<W: Write> Write for Encoder<W> {
 #[cfg(feature = "tokio")]
 impl<W: AsyncWrite> AsyncWrite for Encoder<W> {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
+        use tokio_io::try_nb;
+
         try_nb!(self.do_finish());
         self.writer.writer_mut().shutdown()
     }

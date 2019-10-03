@@ -4,11 +4,11 @@ use partial_io::{
 };
 use quickcheck::quickcheck;
 use std::io::{self, Cursor};
-use tokio_io::{io as tokio_io, AsyncRead, AsyncWrite};
+use tokio_io::{AsyncRead, AsyncWrite};
 
 #[test]
 fn test_async_write() {
-    use stream::decode_all;
+    use crate::stream::decode_all;
 
     let source = "abc".repeat(1024 * 100).into_bytes();
     let encoded_output =
@@ -24,7 +24,7 @@ fn test_async_write_partial() {
     quickcheck(test as fn(_) -> _);
 
     fn test(encode_ops: PartialWithErrors<GenInterruptedWouldBlock>) {
-        use stream::decode_all;
+        use crate::stream::decode_all;
 
         let source = "abc".repeat(1024 * 100).into_bytes();
         let writer =
@@ -76,7 +76,7 @@ fn test_async_write_worker<
     use super::Encoder;
 
     let encoder = Encoder::new(w, 1).unwrap();
-    let copy_future = tokio_io::copy(r, encoder)
+    let copy_future = tokio_io::io::copy(r, encoder)
         .and_then(|(_, _, encoder)| Finish {
             encoder: Some(encoder),
         })

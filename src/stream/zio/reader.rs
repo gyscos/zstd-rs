@@ -1,8 +1,6 @@
 use std::io::{self, BufRead, Read};
 
-use stream::raw::Operation;
-
-use zstd_safe;
+use stream::raw::{InBuffer, Operation, OutBuffer};
 
 // [ reader -> zstd ] -> output
 /// Implements the [`Read`] API around an [`Operation`].
@@ -104,8 +102,8 @@ where
                 // (In this case we may still have zstd's own buffer to clear.)
                 let eof = input.is_empty();
 
-                let mut src = zstd_safe::InBuffer::around(input);
-                let mut dst = zstd_safe::OutBuffer::around(buf);
+                let mut src = InBuffer::around(input);
+                let mut dst = OutBuffer::around(buf);
 
                 // This can only fail with invalid data.
                 // The return value is a hint for the next input size,

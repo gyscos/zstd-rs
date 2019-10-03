@@ -3,10 +3,10 @@
 //! This module defines a `Decoder` and an `Encoder` to decode/encode streams
 //! of data using buffers.
 //!
-//! They are mostly thin wrappers around `zstd_safe::{DStream, CStream}`.
+//! They are mostly thin wrappers around `zstd_safe::{DCtx, CCtx}`.
 use std::io;
 
-use zstd_safe::{self, CStream, DStream, InBuffer, OutBuffer};
+pub use zstd_safe::{CParameter, DParameter, InBuffer, OutBuffer};
 
 use dict::{DecoderDictionary, EncoderDictionary};
 use map_error_code;
@@ -121,7 +121,7 @@ pub struct Status {
 
 /// An in-memory decoder for streams of data.
 pub struct Decoder {
-    context: DStream<'static>,
+    context: zstd_safe::DCtx<'static>,
 }
 
 impl Decoder {
@@ -149,6 +149,13 @@ impl Decoder {
         )
         .map_err(map_error_code)?;
         Ok(Decoder { context })
+    }
+
+    /// Sets a decompression parameter for this decoder.
+    pub fn set_parameter(&mut self, parameter: DParameter) -> io::Result<()> {
+        zstd_safe::dctx_set_parameter(&mut self.context, parameter)
+            .map_err(map_error_code)?;
+        Ok(())
     }
 }
 
@@ -184,7 +191,7 @@ impl Operation for Decoder {
 
 /// An in-memory encoder for streams of data.
 pub struct Encoder {
-    context: CStream<'static>,
+    context: zstd_safe::CCtx<'static>,
 }
 
 impl Encoder {
@@ -212,6 +219,13 @@ impl Encoder {
         )
         .map_err(map_error_code)?;
         Ok(Encoder { context })
+    }
+
+    /// Sets a compression parameter for this encoder.
+    pub fn set_parameter(&mut self, parameter: CParameter) -> io::Result<()> {
+        zstd_safe::cctx_set_parameter(&mut self.context, parameter)
+            .map_err(map_error_code)?;
+        Ok(())
     }
 }
 

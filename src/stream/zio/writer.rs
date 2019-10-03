@@ -1,8 +1,6 @@
 use std::io::{self, Write};
 
-use stream::raw::Operation;
-
-use zstd_safe;
+use stream::raw::{InBuffer, Operation, OutBuffer};
 
 // input -> [ zstd -> buffer -> writer ]
 
@@ -103,13 +101,13 @@ where
     /// It is only safe to write in this buffer, not to read from there.
     unsafe fn with_full_buffer<F, T>(&mut self, f: F) -> T
     where
-        F: FnOnce(&mut zstd_safe::OutBuffer, &mut D) -> T,
+        F: FnOnce(&mut OutBuffer, &mut D) -> T,
     {
         let capacity = self.buffer.capacity();
         self.buffer.set_len(capacity);
 
         let (bytes_written, result) = {
-            let mut output = zstd_safe::OutBuffer::around(&mut self.buffer);
+            let mut output = OutBuffer::around(&mut self.buffer);
             let result = f(&mut output, &mut self.operation);
             (output.pos, result)
         };
@@ -151,6 +149,16 @@ where
         &mut self.writer
     }
 
+    /// Gives a reference to the inner operation.
+    pub fn operation(&self) -> &D {
+        &self.operation
+    }
+
+    /// Gives a mutable reference to the inner operation.
+    pub fn operation_mut(&mut self) -> &mut D {
+        &mut self.operation
+    }
+
     /// Returns the offset in the current buffer. Only useful for debugging.
     #[cfg(test)]
     pub fn offset(&self) -> usize {
@@ -186,7 +194,7 @@ where
                 self.finished_frame = false;
             }
 
-            let mut src = zstd_safe::InBuffer::around(buf);
+            let mut src = InBuffer::around(buf);
             let hint = unsafe {
                 self.with_full_buffer(|dst, op| op.run(&mut src, dst))
             };

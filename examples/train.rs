@@ -1,8 +1,4 @@
-use zstd;
-#[macro_use]
-extern crate clap;
-
-use clap::{App, Arg};
+use clap::{value_t, App, Arg};
 use std::io;
 
 // This program trains a dictionary from one or more files,

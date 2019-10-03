@@ -1,8 +1,4 @@
-use zstd;
-
-#[macro_use]
-extern crate clap;
-
+use clap::value_t;
 
 use humansize::{file_size_opts, FileSize};
 use std::io::Read;

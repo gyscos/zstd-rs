@@ -1,5 +1,3 @@
-use zstd;
-
 use std::env;
 use std::io::{self, Write};
 use std::str::FromStr;

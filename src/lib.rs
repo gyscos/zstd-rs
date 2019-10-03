@@ -24,17 +24,9 @@
 //! [zstd]: https://github.com/facebook/zstd
 #![deny(missing_docs)]
 
-
-
-use zstd_safe;
-
 #[cfg(feature = "tokio")]
 #[macro_use]
 extern crate tokio_io;
-#[cfg(feature = "tokio")]
-extern crate futures;
-#[cfg(all(test, feature = "tokio"))]
-extern crate quickcheck;
 
 pub mod block;
 pub mod dict;

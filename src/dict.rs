@@ -85,7 +85,8 @@ pub fn from_continuous(
             &mut result,
             sample_data,
             sample_sizes,
-        ).map_err(map_error_code)?;
+        )
+        .map_err(map_error_code)?;
         result.set_len(written);
     }
     Ok(result)
@@ -157,9 +158,13 @@ mod tests {
             file.read_to_end(&mut content).unwrap();
             io::copy(
                 &mut &content[..],
-                &mut crate::stream::Encoder::with_dictionary(&mut buffer, 1, &dict)
-                    .unwrap()
-                    .auto_finish(),
+                &mut crate::stream::Encoder::with_dictionary(
+                    &mut buffer,
+                    1,
+                    &dict,
+                )
+                .unwrap()
+                .auto_finish(),
             )
             .unwrap();
 

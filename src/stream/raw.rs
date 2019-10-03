@@ -265,8 +265,7 @@ impl Operation for Encoder {
 
 #[cfg(test)]
 mod tests {
-    use super::{Decoder, Encoder, Operation};
-    use zstd_safe::{InBuffer, OutBuffer};
+    use super::{Decoder, Encoder, InBuffer, Operation, OutBuffer};
 
     #[test]
     fn test_cycle() {

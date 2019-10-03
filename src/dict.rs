@@ -19,11 +19,12 @@ use std::fs;
 
 use std::io::{self, Read};
 use std::path;
-use zstd_safe;
+
+pub use zstd_safe::{CDict, DDict};
 
 /// Prepared dictionary for compression
 pub struct EncoderDictionary<'a> {
-    cdict: zstd_safe::CDict<'a>,
+    cdict: CDict<'a>,
 }
 
 impl<'a> EncoderDictionary<'a> {
@@ -37,14 +38,14 @@ impl<'a> EncoderDictionary<'a> {
     }
 
     /// Returns reference to `CDict` inner object
-    pub fn as_cdict(&self) -> &zstd_safe::CDict<'_> {
+    pub fn as_cdict(&self) -> &CDict<'_> {
         &self.cdict
     }
 }
 
 /// Prepared dictionary for decompression
 pub struct DecoderDictionary<'a> {
-    ddict: zstd_safe::DDict<'a>,
+    ddict: DDict<'a>,
 }
 
 impl<'a> DecoderDictionary<'a> {
@@ -56,7 +57,7 @@ impl<'a> DecoderDictionary<'a> {
     }
 
     /// Returns reference to `DDict` inner object
-    pub fn as_ddict(&self) -> &zstd_safe::DDict<'_> {
+    pub fn as_ddict(&self) -> &DDict<'_> {
         &self.ddict
     }
 }

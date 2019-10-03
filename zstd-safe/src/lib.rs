@@ -37,13 +37,12 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
-// pub use zstd_sys::{ZSTD_ResetDirective, ZSTD_strategy};
 
 /// How to compress data.
-pub type Strategy = zstd_sys::ZSTD_strategy;
+pub use zstd_sys::ZSTD_strategy as Strategy;
 
 /// Reset directive.
-pub type ResetDirective = zstd_sys::ZSTD_ResetDirective;
+pub use zstd_sys::ZSTD_ResetDirective as ResetDirective;
 
 #[cfg(feature = "std")]
 use std::os::raw::{c_char, c_int, c_ulonglong, c_void};

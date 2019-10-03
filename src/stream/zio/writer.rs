@@ -101,7 +101,7 @@ where
     /// It is only safe to write in this buffer, not to read from there.
     unsafe fn with_full_buffer<F, T>(&mut self, f: F) -> T
     where
-        F: FnOnce(&mut OutBuffer, &mut D) -> T,
+        F: FnOnce(&mut OutBuffer<'_>, &mut D) -> T,
     {
         let capacity = self.buffer.capacity();
         self.buffer.set_len(capacity);

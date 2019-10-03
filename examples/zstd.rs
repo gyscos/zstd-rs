@@ -1,4 +1,4 @@
-extern crate zstd;
+use zstd;
 
 use std::env;
 use std::fs;

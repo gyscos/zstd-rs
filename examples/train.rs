@@ -1,4 +1,4 @@
-extern crate zstd;
+use zstd;
 #[macro_use]
 extern crate clap;
 

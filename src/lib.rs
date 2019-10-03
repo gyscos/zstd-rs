@@ -24,10 +24,9 @@
 //! [zstd]: https://github.com/facebook/zstd
 #![deny(missing_docs)]
 
-#[cfg(test)]
-extern crate partial_io;
 
-extern crate zstd_safe;
+
+use zstd_safe;
 
 #[cfg(feature = "tokio")]
 #[macro_use]

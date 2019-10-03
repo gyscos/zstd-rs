@@ -1,5 +1,5 @@
-extern crate clap;
-extern crate zstd;
+
+use zstd;
 
 use clap::{App, Arg};
 use std::fs;

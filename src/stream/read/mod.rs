@@ -66,7 +66,7 @@ impl<R: BufRead> Decoder<R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_prepared_dictionary(
         reader: R,
-        dictionary: &DecoderDictionary,
+        dictionary: &DecoderDictionary<'_>,
     ) -> io::Result<Self> {
         let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
         let reader = zio::Reader::new(reader, decoder);
@@ -148,7 +148,7 @@ impl<R: BufRead> Encoder<R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_prepared_dictionary(
         reader: R,
-        dictionary: &EncoderDictionary,
+        dictionary: &EncoderDictionary<'_>,
     ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         let reader = zio::Reader::new(reader, encoder);

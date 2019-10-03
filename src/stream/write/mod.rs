@@ -124,7 +124,7 @@ impl<W: Write> Encoder<W> {
     /// but requires the dictionary to be present during decompression.)
     pub fn with_prepared_dictionary(
         writer: W,
-        dictionary: &EncoderDictionary,
+        dictionary: &EncoderDictionary<'_>,
     ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         let writer = zio::Writer::new(writer, encoder);
@@ -274,7 +274,7 @@ impl<W: Write> Decoder<W> {
     /// but requires the dictionary to be present during decompression.)
     pub fn with_prepared_dictionary(
         writer: W,
-        dictionary: &DecoderDictionary,
+        dictionary: &DecoderDictionary<'_>,
     ) -> io::Result<Self> {
         let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
         let writer = zio::Writer::new(writer, decoder);

@@ -23,8 +23,8 @@ pub trait Operation {
     /// finished.
     fn run(
         &mut self,
-        input: &mut InBuffer,
-        output: &mut OutBuffer,
+        input: &mut InBuffer<'_>,
+        output: &mut OutBuffer<'_>,
     ) -> io::Result<usize>;
 
     /// Performs a single step of this operation.
@@ -52,7 +52,7 @@ pub trait Operation {
     ///
     /// Returns the number of bytes still in the buffer.
     /// To flush entirely, keep calling until it returns `Ok(0)`.
-    fn flush(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+    fn flush(&mut self, output: &mut OutBuffer<'_>) -> io::Result<usize> {
         let _ = output;
         Ok(0)
     }
@@ -72,7 +72,7 @@ pub trait Operation {
     /// and then don't ever call this method.
     fn finish(
         &mut self,
-        output: &mut OutBuffer,
+        output: &mut OutBuffer<'_>,
         finished_frame: bool,
     ) -> io::Result<usize> {
         let _ = output;
@@ -87,8 +87,8 @@ pub struct NoOp;
 impl Operation for NoOp {
     fn run(
         &mut self,
-        input: &mut InBuffer,
-        output: &mut OutBuffer,
+        input: &mut InBuffer<'_>,
+        output: &mut OutBuffer<'_>,
     ) -> io::Result<usize> {
         let src = &input.src[input.pos..];
         let dst = &mut output.dst[output.pos..];
@@ -140,7 +140,7 @@ impl Decoder {
 
     /// Creates a new decoder, using an existing `DecoderDictionary`.
     pub fn with_prepared_dictionary(
-        dictionary: &DecoderDictionary,
+        dictionary: &DecoderDictionary<'_>,
     ) -> io::Result<Self> {
         let mut context = zstd_safe::create_dstream();
         zstd_safe::init_dstream_using_ddict(
@@ -162,8 +162,8 @@ impl Decoder {
 impl Operation for Decoder {
     fn run(
         &mut self,
-        input: &mut InBuffer,
-        output: &mut OutBuffer,
+        input: &mut InBuffer<'_>,
+        output: &mut OutBuffer<'_>,
     ) -> io::Result<usize> {
         zstd_safe::decompress_stream(&mut self.context, output, input)
             .map_err(map_error_code)
@@ -175,7 +175,7 @@ impl Operation for Decoder {
     }
     fn finish(
         &mut self,
-        _output: &mut OutBuffer,
+        _output: &mut OutBuffer<'_>,
         finished_frame: bool,
     ) -> io::Result<usize> {
         if finished_frame {
@@ -210,7 +210,7 @@ impl Encoder {
 
     /// Creates a new encoder using an existing `EncoderDictionary`.
     pub fn with_prepared_dictionary(
-        dictionary: &EncoderDictionary,
+        dictionary: &EncoderDictionary<'_>,
     ) -> io::Result<Self> {
         let mut context = zstd_safe::create_cstream();
         zstd_safe::init_cstream_using_cdict(
@@ -232,21 +232,21 @@ impl Encoder {
 impl Operation for Encoder {
     fn run(
         &mut self,
-        input: &mut InBuffer,
-        output: &mut OutBuffer,
+        input: &mut InBuffer<'_>,
+        output: &mut OutBuffer<'_>,
     ) -> io::Result<usize> {
         zstd_safe::compress_stream(&mut self.context, output, input)
             .map_err(map_error_code)
     }
 
-    fn flush(&mut self, output: &mut OutBuffer) -> io::Result<usize> {
+    fn flush(&mut self, output: &mut OutBuffer<'_>) -> io::Result<usize> {
         zstd_safe::flush_stream(&mut self.context, output)
             .map_err(map_error_code)
     }
 
     fn finish(
         &mut self,
-        output: &mut OutBuffer,
+        output: &mut OutBuffer<'_>,
         _finished_frame: bool,
     ) -> io::Result<usize> {
         zstd_safe::end_stream(&mut self.context, output)

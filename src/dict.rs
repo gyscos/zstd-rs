@@ -37,7 +37,7 @@ impl<'a> EncoderDictionary<'a> {
     }
 
     /// Returns reference to `CDict` inner object
-    pub fn as_cdict(&self) -> &zstd_safe::CDict {
+    pub fn as_cdict(&self) -> &zstd_safe::CDict<'_> {
         &self.cdict
     }
 }
@@ -56,7 +56,7 @@ impl<'a> DecoderDictionary<'a> {
     }
 
     /// Returns reference to `DDict` inner object
-    pub fn as_ddict(&self) -> &zstd_safe::DDict {
+    pub fn as_ddict(&self) -> &zstd_safe::DDict<'_> {
         &self.ddict
     }
 }
@@ -136,7 +136,7 @@ mod tests {
     use std::io;
     use std::io::Read;
 
-    extern crate walkdir;
+    use walkdir;
 
     #[test]
     fn test_dict_training() {

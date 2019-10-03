@@ -37,6 +37,14 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
+// pub use zstd_sys::{ZSTD_ResetDirective, ZSTD_strategy};
+
+/// How to compress data.
+pub type Strategy = zstd_sys::ZSTD_strategy;
+
+/// Reset directive.
+pub type ResetDirective = zstd_sys::ZSTD_ResetDirective;
+
 #[cfg(feature = "std")]
 use std::os::raw::{c_char, c_int, c_ulonglong, c_void};
 
@@ -1231,10 +1239,7 @@ pub fn dctx_ref_prefix<'a>(
 ///                 otherwise the reset fails, and function returns an error value (which can be tested using ZSTD_isError())
 /// - Both : similar to resetting the session, followed by resetting parameters.
 ///
-pub fn cctx_reset(
-    cctx: &mut CCtx,
-    reset: zstd_sys::ZSTD_ResetDirective,
-) -> SafeResult {
+pub fn cctx_reset(cctx: &mut CCtx, reset: ResetDirective) -> SafeResult {
     parse_code(unsafe { zstd_sys::ZSTD_CCtx_reset(cctx.0, reset) })
 }
 
@@ -1247,10 +1252,7 @@ pub fn cctx_reset(
 /// Parameters can only be reset when no active frame is being decompressed.
 ///
 /// return : 0, or an error code, which can be tested with ZSTD_isError()
-pub fn dctx_reset(
-    dctx: &mut DCtx,
-    reset: zstd_sys::ZSTD_ResetDirective,
-) -> SafeResult {
+pub fn dctx_reset(dctx: &mut DCtx, reset: ResetDirective) -> SafeResult {
     parse_code(unsafe { zstd_sys::ZSTD_DCtx_reset(dctx.0, reset) })
 }
 
@@ -1382,7 +1384,7 @@ pub enum CParameter {
     TargetLength(u32),
 
     /// Compression strategy. Affects compression ratio and speed.
-    Strategy(zstd_sys::ZSTD_strategy),
+    Strategy(Strategy),
 
     /// Enables long distance matching to improve compression ratio for large inputs.
     ///

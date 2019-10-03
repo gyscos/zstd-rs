@@ -73,7 +73,7 @@ mod tests {
                     ramps pabst farm-to-table art party kombucha artisan \
                     fanny pack. Flannel salvia ennui viral leggings selfies.";
 
-        ::test_cycle_unwrap(
+        crate::test_cycle_unwrap(
             text.as_bytes(),
             |data| compress(data, 1),
             |data| decompress(data, text.len()),

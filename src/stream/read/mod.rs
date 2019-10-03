@@ -4,8 +4,8 @@ use std::io::{self, BufRead, BufReader, Read};
 #[cfg(feature = "tokio")]
 use tokio_io::AsyncRead;
 
-use dict::{DecoderDictionary, EncoderDictionary};
-use stream::{raw, zio};
+use crate::dict::{DecoderDictionary, EncoderDictionary};
+use crate::stream::{raw, zio};
 use zstd_safe;
 
 #[cfg(test)]

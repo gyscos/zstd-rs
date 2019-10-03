@@ -8,8 +8,8 @@ use std::io;
 
 pub use zstd_safe::{CParameter, DParameter, InBuffer, OutBuffer};
 
-use dict::{DecoderDictionary, EncoderDictionary};
-use map_error_code;
+use crate::dict::{DecoderDictionary, EncoderDictionary};
+use crate::map_error_code;
 
 /// Represents an abstract compression/decompression operation.
 ///

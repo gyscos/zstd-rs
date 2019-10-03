@@ -47,7 +47,7 @@ use std::io;
 pub use zstd_safe::CLEVEL_DEFAULT as DEFAULT_COMPRESSION_LEVEL;
 
 #[doc(no_inline)]
-pub use stream::{decode_all, encode_all, Decoder, Encoder};
+pub use crate::stream::{decode_all, encode_all, Decoder, Encoder};
 
 /// Returns the error message as io::Error based on error_code.
 fn map_error_code(code: usize) -> io::Error {

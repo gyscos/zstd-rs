@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Read};
 
-use stream::raw::{InBuffer, Operation, OutBuffer};
+use crate::stream::raw::{InBuffer, Operation, OutBuffer};
 
 // [ reader -> zstd ] -> output
 /// Implements the [`Read`] API around an [`Operation`].
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_noop() {
-        use stream::raw::NoOp;
+        use crate::stream::raw::NoOp;
 
         let input = b"AbcdefghAbcdefgh.";
 
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_compress() {
-        use stream::raw::Encoder;
+        use crate::stream::raw::Encoder;
 
         let input = b"AbcdefghAbcdefgh.";
 
@@ -191,7 +191,7 @@ mod tests {
             reader.read_to_end(&mut output).unwrap();
         }
         // println!("{:?}", output);
-        let decoded = ::decode_all(&output[..]).unwrap();
+        let decoded = crate::decode_all(&output[..]).unwrap();
         assert_eq!(&decoded, input);
     }
 }

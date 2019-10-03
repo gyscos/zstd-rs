@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use stream::raw::{InBuffer, Operation, OutBuffer};
+use crate::stream::raw::{InBuffer, Operation, OutBuffer};
 
 // input -> [ zstd -> buffer -> writer ]
 
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_noop() {
-        use stream::raw::NoOp;
+        use crate::stream::raw::NoOp;
 
         let input = b"AbcdefghAbcdefgh.";
 
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_compress() {
-        use stream::raw::Encoder;
+        use crate::stream::raw::Encoder;
 
         let input = b"AbcdefghAbcdefgh.";
 
@@ -274,16 +274,16 @@ mod tests {
             writer.finish().unwrap();
         }
         // println!("Output: {:?}", output);
-        let decoded = ::decode_all(&output[..]).unwrap();
+        let decoded = crate::decode_all(&output[..]).unwrap();
         assert_eq!(&decoded, input);
     }
 
     #[test]
     fn test_decompress() {
-        use stream::raw::Decoder;
+        use crate::stream::raw::Decoder;
 
         let input = b"AbcdefghAbcdefgh.";
-        let compressed = ::encode_all(&input[..], 1).unwrap();
+        let compressed = crate::encode_all(&input[..], 1).unwrap();
 
         // Test writer
         let mut output = Vec::new();

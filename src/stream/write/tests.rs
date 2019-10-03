@@ -3,8 +3,8 @@ use std::iter;
 
 use partial_io::{PartialOp, PartialWrite};
 
-use stream::decode_all;
-use stream::write::{Decoder, Encoder};
+use crate::stream::decode_all;
+use crate::stream::write::{Decoder, Encoder};
 
 #[test]
 fn test_cycle() {

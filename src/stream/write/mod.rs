@@ -8,8 +8,8 @@ use tokio_io::AsyncWrite;
 
 use zstd_safe;
 
-use dict::{DecoderDictionary, EncoderDictionary};
-use stream::{raw, zio};
+use crate::dict::{DecoderDictionary, EncoderDictionary};
+use crate::stream::{raw, zio};
 
 #[cfg(test)]
 #[cfg(feature = "tokio")]

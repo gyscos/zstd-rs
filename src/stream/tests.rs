@@ -217,7 +217,7 @@ fn test_legacy() {
 
 // Check that compressing+decompressing some data gives back the original
 fn test_full_cycle(input: &[u8], level: i32) {
-    ::test_cycle_unwrap(
+    crate::test_cycle_unwrap(
         input,
         |data| encode_all(data, level),
         |data| decode_all(data),

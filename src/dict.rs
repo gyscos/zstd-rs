@@ -14,7 +14,7 @@
 //! [`Encoder::with_dictionary`]: ../struct.Encoder.html#method.with_dictionary
 //! [`Decoder::with_dictionary`]: ../struct.Decoder.html#method.with_dictionary
 
-use map_error_code;
+use crate::map_error_code;
 use std::fs;
 
 use std::io::{self, Read};
@@ -157,7 +157,7 @@ mod tests {
             file.read_to_end(&mut content).unwrap();
             io::copy(
                 &mut &content[..],
-                &mut ::stream::Encoder::with_dictionary(&mut buffer, 1, &dict)
+                &mut crate::stream::Encoder::with_dictionary(&mut buffer, 1, &dict)
                     .unwrap()
                     .auto_finish(),
             )
@@ -165,7 +165,7 @@ mod tests {
 
             let mut result = Vec::new();
             io::copy(
-                &mut ::stream::Decoder::with_dictionary(
+                &mut crate::stream::Decoder::with_dictionary(
                     &buffer[..],
                     &dict[..],
                 )

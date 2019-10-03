@@ -1,4 +1,4 @@
-use map_error_code;
+use crate::map_error_code;
 
 use std::io;
 use zstd_safe;

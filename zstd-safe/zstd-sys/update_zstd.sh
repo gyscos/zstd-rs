@@ -32,6 +32,8 @@ then
     ZSTD_RS_VERSION=$(cargo read-manifest | jq -r .version | cut -d+ -f1)
     git add Cargo.toml
 
+    cargo check
+
     git commit -m "Update zstd to $TAG"
 
     # Publish?

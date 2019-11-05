@@ -97,12 +97,6 @@ pub const LDM_MINMATCH_MAX: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MAX;
 pub const LDM_MINMATCH_MIN: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MIN;
 #[cfg(feature = "experimental")]
 pub const LDM_BUCKETSIZELOG_MAX: u32 = zstd_sys::ZSTD_LDM_BUCKETSIZELOG_MAX;
-#[cfg(feature = "experimental")]
-pub const FRAMEHEADERSIZE_PREFIX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_PREFIX;
-#[cfg(feature = "experimental")]
-pub const FRAMEHEADERSIZE_MIN: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MIN;
-#[cfg(feature = "experimental")]
-pub const FRAMEHEADERSIZE_MAX: u32 = zstd_sys::ZSTD_FRAMEHEADERSIZE_MAX;
 
 /// Wrapper result around most zstd functions.
 ///

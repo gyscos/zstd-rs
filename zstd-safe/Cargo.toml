@@ -1,7 +1,7 @@
 [package]
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 name = "zstd-safe"
-version ="2.0.0+zstd.1.4.3"
+version = "2.0.3+zstd.1.4.4"
 description = "Safe low-level bindings for the zstd compression library."
 keywords = ["zstd", "zstandard", "compression"]
 categories = ["api-bindings", "compression"]
@@ -10,7 +10,7 @@ license = "MIT/Apache-2.0"
 readme = "Readme.md"
 
 [dependencies]
-zstd-sys = { path = "./zstd-sys", version = "=1.4.14", default-features = false }
+zstd-sys = { path = "./zstd-sys", version = "=1.4.15", default-features = false }
 libc = "0.2.21"
 
 [features]

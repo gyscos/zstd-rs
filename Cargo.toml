@@ -1,35 +1,8 @@
-[package]
-authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
-description = "Binding for the zstd compression library."
-documentation = "https://docs.rs/zstd"
-keywords = ["zstd", "zstandard", "compression"]
-categories = ["compression", "api-bindings"]
-license = "MIT"
-name = "zstd"
-repository = "https://github.com/gyscos/zstd-rs"
-version = "0.5.1+zstd.1.4.4"
-exclude = ["assets/**"]
-readme = "Readme.md"
-edition = "2018"
+[workspace]
 
-[badges]
-travis-ci = { repository = "gyscos/zstd-rs" }
+members = [
+    "zstd",
+    "zstd-safe",
+    "zstd-sys",
+]
 
-[dependencies]
-zstd-safe = { path = "./zstd-safe", version = "=2.0.3", default-features = false, features = ["experimental"] }
-tokio-io = { version = "0.1", optional = true }
-futures = { version = "0.1", optional = true }
-
-[dev-dependencies]
-clap = "2.0"
-partial-io = { version = "0.3", features=["quickcheck", "tokio"] }
-quickcheck = "0.6"
-humansize = "1.0"
-walkdir = "2.2"
-
-[features]
-default = ["legacy"]
-legacy = ["zstd-safe/legacy"]
-bindgen = ["zstd-safe/bindgen"]
-tokio = ["tokio-io", "futures"]
-wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc

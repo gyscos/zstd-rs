@@ -10,7 +10,7 @@ license = "MIT/Apache-2.0"
 readme = "Readme.md"
 
 [dependencies]
-zstd-sys = { path = "./zstd-sys", version = "=1.4.15", default-features = false }
+zstd-sys = { path = "../zstd-sys", version = "=1.4.15", default-features = false }
 libc = "0.2.21"
 
 [features]

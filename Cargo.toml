@@ -11,6 +11,7 @@ version = "0.5.1+zstd.1.4.4"
 exclude = ["assets/**"]
 readme = "Readme.md"
 edition = "2018"
+links = "zstd"
 
 [badges]
 travis-ci = { repository = "gyscos/zstd-rs" }

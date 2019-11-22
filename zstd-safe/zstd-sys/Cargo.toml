@@ -20,6 +20,7 @@ version = "1.4.15+zstd.1.4.4"
 
 [build-dependencies]
 glob = "0.3"
+itertools = "0.8.1"
 
 [build-dependencies.bindgen]
 optional = true

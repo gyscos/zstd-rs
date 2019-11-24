@@ -2,9 +2,9 @@
 //!
 //! This crate provides:
 //!
-//! * An [encoder](stream/struct.Encoder.html) to compress data using zstd
+//! * An [encoder](stream/write/struct.Encoder.html) to compress data using zstd
 //!   and send the output to another write.
-//! * A [decoder](stream/struct.Decoder.html) to read input data from a `Read`
+//! * A [decoder](stream/read/struct.Decoder.html) to read input data from a `Read`
 //!   and decompress it.
 //! * Convenient functions for common tasks.
 //!

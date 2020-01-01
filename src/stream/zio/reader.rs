@@ -159,8 +159,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::Reader;
-    use std::io::{Cursor, Read};
+    use super::{Operation, Reader};
+    use std::io::{self, Cursor, Error, Read};
+    use zstd_safe::{InBuffer, OutBuffer};
 
     #[test]
     fn test_noop() {
@@ -193,5 +194,58 @@ mod tests {
         // println!("{:?}", output);
         let decoded = crate::decode_all(&output[..]).unwrap();
         assert_eq!(&decoded, input);
+    }
+
+    struct Naughty {
+        buf: &'static [u8],
+        pos: usize,
+    }
+
+    impl Read for Naughty {
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+            if buf.is_empty() {
+                return Ok(0);
+            }
+
+            if self.pos == self.buf.len() {
+                return Ok(0);
+            }
+
+            buf[0] = self.buf[self.pos];
+            self.pos += 1;
+
+            Ok(1)
+        }
+    }
+
+    struct Pairs {}
+
+    impl Operation for Pairs {
+        fn run(
+            &mut self,
+            input: &mut InBuffer<'_>,
+            output: &mut OutBuffer<'_>,
+        ) -> Result<usize, Error> {
+            if input.src.len() >= 2 && output.dst.len() >= 2 {
+                output.dst[0] = input.src[0];
+                output.dst[1] = input.src[1];
+                input.pos = 2;
+                output.pos = 2;
+            }
+            Ok(2)
+        }
+    }
+
+    #[test]
+    fn test_evil_reader() {
+        let mut reader = Reader::new(
+            io::BufReader::new(Naughty {
+                buf: b"abcd",
+                pos: 0,
+            }),
+            Pairs {},
+        );
+        assert_eq!(2, reader.read(&mut [0u8; 2]).unwrap());
+        assert_eq!(2, reader.read(&mut [0u8; 2]).unwrap());
     }
 }

@@ -6,9 +6,12 @@ extern crate pkg_config;
 
 extern crate cc;
 extern crate glob;
+extern crate itertools;
 
 use std::path::PathBuf;
 use std::{env, fs};
+
+use itertools::Itertools;
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
@@ -133,11 +136,6 @@ fn compile_zstd() {
 
 fn main() {
     // println!("cargo:rustc-link-lib=zstd");
-
-    if !PathBuf::from("zstd/lib").exists() {
-        panic!("Folder 'zstd/lib' does not exists. Maybe you forget clone 'zstd' submodule?");
-    }
-
     let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
         pkg_config()
     } else {
@@ -145,9 +143,16 @@ fn main() {
             panic!("Folder 'zstd/lib' does not exists. Maybe you forget clone 'zstd' submodule?");
         }
 
+        let manifest_dir = PathBuf::from(
+            env::var("CARGO_MANIFEST_DIR")
+                .expect("Manifest dir is always set by cargo"),
+        );
+
         compile_zstd();
-        (vec![], vec![PathBuf::from("zstd/lib")])
+        (vec![], vec![manifest_dir.join("zstd/lib")])
     };
+
+    println!("cargo:include={}", headerpaths.iter().map(|p| p.display().to_string()).join(";"));
 
     generate_bindings(defs, headerpaths);
 }

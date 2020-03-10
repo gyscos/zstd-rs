@@ -2,6 +2,9 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![no_std]
+//! Low-level bindings to the [zstd] library.
+//!
+//! [zstd]: https://facebook.github.io/zstd/
 
 extern crate libc;
 

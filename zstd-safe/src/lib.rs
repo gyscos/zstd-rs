@@ -6,6 +6,10 @@
 //!
 //! [zstd]: https://crates.io/crates/zstd
 //!
+//! A good part of the documentation comes directly from the underlying [zstd][zstd-c] library.
+//!
+//! [zstd-c]: https://facebook.github.io/zstd/
+//!
 //! # Introduction
 //!
 //! zstd, short for Zstandard, is a fast lossless compression algorithm, targeting real-time compression scenarios

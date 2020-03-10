@@ -18,6 +18,9 @@ readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "1.4.15+zstd.1.4.4"
 
+[lib]
+doctest=false  # Documentation is for C code, good luck testing that.
+
 [build-dependencies]
 glob = "0.3"
 itertools = "0.8.1"

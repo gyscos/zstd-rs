@@ -9,6 +9,12 @@ for NO_STD_ARG in "$no_std" ""; do
         if [ -z "$EXPERIMENTAL_ARG" ]; then EXPERIMENTAL=""; else EXPERIMENTAL="_experimental"; fi
         filename=src/bindings${STD}${EXPERIMENTAL}.rs
         (
+        echo "/*
+This file is auto-generated from the public API of the zstd library.
+It is released under the same BSD license.
+
+$(cat zstd/LICENSE)
+*/"
             $bindgen zstd.h $NO_STD_ARG -- -Izstd/lib $EXPERIMENTAL_ARG
         ) > $filename
     done

@@ -76,6 +76,14 @@ fn set_pthread(config: &mut cc::Build) {
 #[cfg(not(feature = "zstdmt"))]
 fn set_pthread(_config: &mut cc::Build) {}
 
+#[cfg(feature = "zstdmt")]
+fn enable_threading(config: &mut cc::Build) {
+    config.define("ZSTD_MULTITHREAD", Some(""));
+}
+
+#[cfg(not(feature = "zstdmt"))]
+fn enable_threading(_config: &mut cc::Build) {}
+
 fn compile_zstd() {
     let mut config = cc::Build::new();
 
@@ -113,6 +121,7 @@ fn compile_zstd() {
 
     set_pthread(&mut config);
     set_legacy(&mut config);
+    enable_threading(&mut config);
 
     // Compile!
     config.compile("libzstd.a");

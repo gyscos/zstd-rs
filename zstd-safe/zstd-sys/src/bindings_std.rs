@@ -156,8 +156,8 @@ pub const CHARCLASS_NAME_MAX: u32 = 2048;
 pub const RE_DUP_MAX: u32 = 32767;
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 4;
-pub const ZSTD_VERSION_RELEASE: u32 = 4;
-pub const ZSTD_VERSION_NUMBER: u32 = 10404;
+pub const ZSTD_VERSION_RELEASE: u32 = 5;
+pub const ZSTD_VERSION_NUMBER: u32 = 10405;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
@@ -500,6 +500,7 @@ extern "C" {
 pub enum ZSTD_dParameter {
     ZSTD_d_windowLogMax = 100,
     ZSTD_d_experimentalParam1 = 1000,
+    ZSTD_d_experimentalParam2 = 1001,
 }
 extern "C" {
     #[doc = " ZSTD_dParam_getBounds() :"]
@@ -597,6 +598,7 @@ fn bindgen_test_layout_ZSTD_inBuffer_s() {
         )
     );
 }
+#[doc = "  Streaming"]
 pub type ZSTD_inBuffer = ZSTD_inBuffer_s;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1091,11 +1093,123 @@ extern "C" {
         nbSamples: ::std::os::raw::c_uint,
     ) -> usize;
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZDICT_params_t {
+    pub compressionLevel: ::std::os::raw::c_int,
+    pub notificationLevel: ::std::os::raw::c_uint,
+    pub dictID: ::std::os::raw::c_uint,
+}
+#[test]
+fn bindgen_test_layout_ZDICT_params_t() {
+    assert_eq!(
+        ::core::mem::size_of::<ZDICT_params_t>(),
+        12usize,
+        concat!("Size of: ", stringify!(ZDICT_params_t))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<ZDICT_params_t>(),
+        4usize,
+        concat!("Alignment of ", stringify!(ZDICT_params_t))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_params_t>())).compressionLevel
+                as *const _ as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_params_t),
+            "::",
+            stringify!(compressionLevel)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_params_t>())).notificationLevel
+                as *const _ as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_params_t),
+            "::",
+            stringify!(notificationLevel)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_params_t>())).dictID as *const _
+                as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_params_t),
+            "::",
+            stringify!(dictID)
+        )
+    );
+}
+extern "C" {
+    #[doc = " ZDICT_finalizeDictionary():"]
+    #[doc = " Given a custom content as a basis for dictionary, and a set of samples,"]
+    #[doc = " finalize dictionary by adding headers and statistics according to the zstd"]
+    #[doc = " dictionary format."]
+    #[doc = ""]
+    #[doc = " Samples must be stored concatenated in a flat buffer `samplesBuffer`,"]
+    #[doc = " supplied with an array of sizes `samplesSizes`, providing the size of each"]
+    #[doc = " sample in order. The samples are used to construct the statistics, so they"]
+    #[doc = " should be representative of what you will compress with this dictionary."]
+    #[doc = ""]
+    #[doc = " The compression level can be set in `parameters`. You should pass the"]
+    #[doc = " compression level you expect to use in production. The statistics for each"]
+    #[doc = " compression level differ, so tuning the dictionary for the compression level"]
+    #[doc = " can help quite a bit."]
+    #[doc = ""]
+    #[doc = " You can set an explicit dictionary ID in `parameters`, or allow us to pick"]
+    #[doc = " a random dictionary ID for you, but we can't guarantee no collisions."]
+    #[doc = ""]
+    #[doc = " The dstDictBuffer and the dictContent may overlap, and the content will be"]
+    #[doc = " appended to the end of the header. If the header + the content doesn't fit in"]
+    #[doc = " maxDictSize the beginning of the content is truncated to make room, since it"]
+    #[doc = " is presumed that the most profitable content is at the end of the dictionary,"]
+    #[doc = " since that is the cheapest to reference."]
+    #[doc = ""]
+    #[doc = " `dictContentSize` must be >= ZDICT_CONTENTSIZE_MIN bytes."]
+    #[doc = " `maxDictSize` must be >= max(dictContentSize, ZSTD_DICTSIZE_MIN)."]
+    #[doc = ""]
+    #[doc = " @return: size of dictionary stored into `dstDictBuffer` (<= `maxDictSize`),"]
+    #[doc = "          or an error code, which can be tested by ZDICT_isError()."]
+    #[doc = " Note: ZDICT_finalizeDictionary() will push notifications into stderr if"]
+    #[doc = "       instructed to, using notificationLevel>0."]
+    #[doc = " NOTE: This function currently may fail in several edge cases including:"]
+    #[doc = "         * Not enough samples"]
+    #[doc = "         * Samples are uncompressible"]
+    #[doc = "         * Samples are all exactly the same"]
+    pub fn ZDICT_finalizeDictionary(
+        dstDictBuffer: *mut ::core::ffi::c_void,
+        maxDictSize: usize,
+        dictContent: *const ::core::ffi::c_void,
+        dictContentSize: usize,
+        samplesBuffer: *const ::core::ffi::c_void,
+        samplesSizes: *const usize,
+        nbSamples: ::std::os::raw::c_uint,
+        parameters: ZDICT_params_t,
+    ) -> usize;
+}
 extern "C" {
     pub fn ZDICT_getDictID(
         dictBuffer: *const ::core::ffi::c_void,
         dictSize: usize,
     ) -> ::std::os::raw::c_uint;
+}
+extern "C" {
+    pub fn ZDICT_getDictHeaderSize(
+        dictBuffer: *const ::core::ffi::c_void,
+        dictSize: usize,
+    ) -> usize;
 }
 extern "C" {
     pub fn ZDICT_isError(errorCode: usize) -> ::std::os::raw::c_uint;

@@ -23,11 +23,11 @@ doctest=false  # Documentation is for C code, good luck testing that.
 
 [build-dependencies]
 glob = "0.3"
-itertools = "0.8.1"
+itertools = "0.9"
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.53.1"
+version = "0.54"
 
 [build-dependencies.pkg-config]
 optional = true

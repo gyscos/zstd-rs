@@ -20,3 +20,6 @@ bindgen = ["zstd-sys/bindgen"]
 zstdmt = ["zstd-sys/zstdmt"]
 std = ["zstd-sys/std"] # Use std instead of libc types - useful on wasm.
 experimental = ["zstd-sys/experimental"]
+
+[package.metadata.docs.rs]
+features = ["experimental"]

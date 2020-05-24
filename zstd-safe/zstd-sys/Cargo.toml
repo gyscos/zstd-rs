@@ -47,3 +47,6 @@ legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
 zstdmt = [] # Enable multi-thread support (with pthread)
 experimental = [] # Expose experimental ZSTD API
 std = [] # Use std types instead of libc in bindgen
+
+[package.metadata.docs.rs]
+features = ["experimental"]

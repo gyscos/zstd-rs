@@ -7,7 +7,7 @@ categories = ["compression", "api-bindings"]
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "0.5.2+zstd.1.4.5"
+version = "0.5.3+zstd.1.4.5"
 exclude = ["assets/**"]
 readme = "Readme.md"
 edition = "2018"
@@ -16,7 +16,7 @@ edition = "2018"
 travis-ci = { repository = "gyscos/zstd-rs" }
 
 [dependencies]
-zstd-safe = { path = "./zstd-safe", version = "=2.0.4", default-features = false, features = ["experimental"] }
+zstd-safe = { path = "./zstd-safe", version = "=2.0.5", default-features = false, features = ["experimental"] }
 tokio-io = { version = "0.1", optional = true }
 futures = { version = "0.1", optional = true }
 
@@ -33,3 +33,4 @@ legacy = ["zstd-safe/legacy"]
 bindgen = ["zstd-safe/bindgen"]
 tokio = ["tokio-io", "futures"]
 wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc
+zstdmt = ["zstd-safe/zstdmt"]

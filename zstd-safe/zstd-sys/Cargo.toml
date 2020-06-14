@@ -16,7 +16,7 @@ links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "1.4.16+zstd.1.4.5"
+version = "1.4.17+zstd.1.4.5"
 
 [lib]
 doctest=false  # Documentation is for C code, good luck testing that.

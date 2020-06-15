@@ -42,11 +42,12 @@ libc = "0.2.45"
 
 [features]
 default = ["legacy"]
-non-cargo = [] # Silence cargo-specific build flags
-legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
-zstdmt = [] # Enable multi-thread support (with pthread)
+
 experimental = [] # Expose experimental ZSTD API
+legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
+non-cargo = [] # Silence cargo-specific build flags
 std = [] # Use std types instead of libc in bindgen
+zstdmt = [] # Enable multi-thread support (with pthread)
 
 [package.metadata.docs.rs]
 features = ["experimental"]

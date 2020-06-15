@@ -29,8 +29,10 @@ walkdir = "2.2"
 
 [features]
 default = ["legacy"]
-legacy = ["zstd-safe/legacy"]
-bindgen = ["zstd-safe/bindgen"]
 tokio = ["tokio-io", "futures"]
+
+bindgen = ["zstd-safe/bindgen"]
+legacy = ["zstd-safe/legacy"]
+pkg-config = ["zstd-safe/pkg-config"]
 wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc
 zstdmt = ["zstd-safe/zstdmt"]

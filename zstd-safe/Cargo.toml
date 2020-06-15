@@ -15,11 +15,13 @@ libc = "0.2.21"
 
 [features]
 default = ["legacy"]
-legacy = ["zstd-sys/legacy"]
+
 bindgen = ["zstd-sys/bindgen"]
-zstdmt = ["zstd-sys/zstdmt"]
-std = ["zstd-sys/std"] # Use std instead of libc types - useful on wasm.
 experimental = ["zstd-sys/experimental"]
+legacy = ["zstd-sys/legacy"]
+pkg-config = ["zstd-sys/pkg-config"]
+std = ["zstd-sys/std"] # Use std instead of libc types - useful on wasm.
+zstdmt = ["zstd-sys/zstdmt"]
 
 [package.metadata.docs.rs]
 features = ["experimental"]

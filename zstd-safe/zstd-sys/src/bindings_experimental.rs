@@ -194,6 +194,8 @@ pub const ZSTD_TARGETCBLOCKSIZE_MIN: u32 = 64;
 pub const ZSTD_TARGETCBLOCKSIZE_MAX: u32 = 131072;
 pub const ZSTD_SRCSIZEHINT_MIN: u32 = 0;
 pub const ZSTD_HASHLOG3_MAX: u32 = 17;
+pub const ZDICT_CONTENTSIZE_MIN: u32 = 128;
+pub const ZDICT_DICTSIZE_MIN: u32 = 256;
 pub const ZSTDMT_NBWORKERS_MAX: u32 = 200;
 pub type wchar_t = libc::c_int;
 extern "C" {
@@ -2883,6 +2885,475 @@ extern "C" {
 }
 extern "C" {
     pub fn ZDICT_getErrorName(errorCode: usize) -> *const libc::c_char;
+}
+#[doc = " ZDICT_cover_params_t:"]
+#[doc = "  k and d are the only required parameters."]
+#[doc = "  For others, value 0 means default."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZDICT_cover_params_t {
+    pub k: libc::c_uint,
+    pub d: libc::c_uint,
+    pub steps: libc::c_uint,
+    pub nbThreads: libc::c_uint,
+    pub splitPoint: f64,
+    pub shrinkDict: libc::c_uint,
+    pub shrinkDictMaxRegression: libc::c_uint,
+    pub zParams: ZDICT_params_t,
+}
+#[test]
+fn bindgen_test_layout_ZDICT_cover_params_t() {
+    assert_eq!(
+        ::core::mem::size_of::<ZDICT_cover_params_t>(),
+        48usize,
+        concat!("Size of: ", stringify!(ZDICT_cover_params_t))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<ZDICT_cover_params_t>(),
+        8usize,
+        concat!("Alignment of ", stringify!(ZDICT_cover_params_t))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>())).k as *const _
+                as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(k)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>())).d as *const _
+                as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(d)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>())).steps as *const _
+                as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(steps)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>())).nbThreads
+                as *const _ as usize
+        },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(nbThreads)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>())).splitPoint
+                as *const _ as usize
+        },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(splitPoint)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>())).shrinkDict
+                as *const _ as usize
+        },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(shrinkDict)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>()))
+                .shrinkDictMaxRegression as *const _ as usize
+        },
+        28usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(shrinkDictMaxRegression)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_cover_params_t>())).zParams
+                as *const _ as usize
+        },
+        32usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_cover_params_t),
+            "::",
+            stringify!(zParams)
+        )
+    );
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZDICT_fastCover_params_t {
+    pub k: libc::c_uint,
+    pub d: libc::c_uint,
+    pub f: libc::c_uint,
+    pub steps: libc::c_uint,
+    pub nbThreads: libc::c_uint,
+    pub splitPoint: f64,
+    pub accel: libc::c_uint,
+    pub shrinkDict: libc::c_uint,
+    pub shrinkDictMaxRegression: libc::c_uint,
+    pub zParams: ZDICT_params_t,
+}
+#[test]
+fn bindgen_test_layout_ZDICT_fastCover_params_t() {
+    assert_eq!(
+        ::core::mem::size_of::<ZDICT_fastCover_params_t>(),
+        56usize,
+        concat!("Size of: ", stringify!(ZDICT_fastCover_params_t))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<ZDICT_fastCover_params_t>(),
+        8usize,
+        concat!("Alignment of ", stringify!(ZDICT_fastCover_params_t))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).k as *const _
+                as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(k)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).d as *const _
+                as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(d)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).f as *const _
+                as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(f)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).steps
+                as *const _ as usize
+        },
+        12usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(steps)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).nbThreads
+                as *const _ as usize
+        },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(nbThreads)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).splitPoint
+                as *const _ as usize
+        },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(splitPoint)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).accel
+                as *const _ as usize
+        },
+        32usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(accel)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).shrinkDict
+                as *const _ as usize
+        },
+        36usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(shrinkDict)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>()))
+                .shrinkDictMaxRegression as *const _ as usize
+        },
+        40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(shrinkDictMaxRegression)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_fastCover_params_t>())).zParams
+                as *const _ as usize
+        },
+        44usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_fastCover_params_t),
+            "::",
+            stringify!(zParams)
+        )
+    );
+}
+extern "C" {
+    #[doc = " ZDICT_trainFromBuffer_cover():"]
+    #[doc = "  Train a dictionary from an array of samples using the COVER algorithm."]
+    #[doc = "  Samples must be stored concatenated in a single flat buffer `samplesBuffer`,"]
+    #[doc = "  supplied with an array of sizes `samplesSizes`, providing the size of each sample, in order."]
+    #[doc = "  The resulting dictionary will be saved into `dictBuffer`."]
+    #[doc = " @return: size of dictionary stored into `dictBuffer` (<= `dictBufferCapacity`)"]
+    #[doc = "          or an error code, which can be tested with ZDICT_isError()."]
+    #[doc = "          See ZDICT_trainFromBuffer() for details on failure modes."]
+    #[doc = "  Note: ZDICT_trainFromBuffer_cover() requires about 9 bytes of memory for each input byte."]
+    #[doc = "  Tips: In general, a reasonable dictionary has a size of ~ 100 KB."]
+    #[doc = "        It's possible to select smaller or larger size, just by specifying `dictBufferCapacity`."]
+    #[doc = "        In general, it's recommended to provide a few thousands samples, though this can vary a lot."]
+    #[doc = "        It's recommended that total size of all samples be about ~x100 times the target size of dictionary."]
+    pub fn ZDICT_trainFromBuffer_cover(
+        dictBuffer: *mut libc::c_void,
+        dictBufferCapacity: usize,
+        samplesBuffer: *const libc::c_void,
+        samplesSizes: *const usize,
+        nbSamples: libc::c_uint,
+        parameters: ZDICT_cover_params_t,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZDICT_optimizeTrainFromBuffer_cover():"]
+    #[doc = " The same requirements as above hold for all the parameters except `parameters`."]
+    #[doc = " This function tries many parameter combinations and picks the best parameters."]
+    #[doc = " `*parameters` is filled with the best parameters found,"]
+    #[doc = " dictionary constructed with those parameters is stored in `dictBuffer`."]
+    #[doc = ""]
+    #[doc = " All of the parameters d, k, steps are optional."]
+    #[doc = " If d is non-zero then we don't check multiple values of d, otherwise we check d = {6, 8}."]
+    #[doc = " if steps is zero it defaults to its default value."]
+    #[doc = " If k is non-zero then we don't check multiple values of k, otherwise we check steps values in [50, 2000]."]
+    #[doc = ""]
+    #[doc = " @return: size of dictionary stored into `dictBuffer` (<= `dictBufferCapacity`)"]
+    #[doc = "          or an error code, which can be tested with ZDICT_isError()."]
+    #[doc = "          On success `*parameters` contains the parameters selected."]
+    #[doc = "          See ZDICT_trainFromBuffer() for details on failure modes."]
+    #[doc = " Note: ZDICT_optimizeTrainFromBuffer_cover() requires about 8 bytes of memory for each input byte and additionally another 5 bytes of memory for each byte of memory for each thread."]
+    pub fn ZDICT_optimizeTrainFromBuffer_cover(
+        dictBuffer: *mut libc::c_void,
+        dictBufferCapacity: usize,
+        samplesBuffer: *const libc::c_void,
+        samplesSizes: *const usize,
+        nbSamples: libc::c_uint,
+        parameters: *mut ZDICT_cover_params_t,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZDICT_trainFromBuffer_fastCover():"]
+    #[doc = "  Train a dictionary from an array of samples using a modified version of COVER algorithm."]
+    #[doc = "  Samples must be stored concatenated in a single flat buffer `samplesBuffer`,"]
+    #[doc = "  supplied with an array of sizes `samplesSizes`, providing the size of each sample, in order."]
+    #[doc = "  d and k are required."]
+    #[doc = "  All other parameters are optional, will use default values if not provided"]
+    #[doc = "  The resulting dictionary will be saved into `dictBuffer`."]
+    #[doc = " @return: size of dictionary stored into `dictBuffer` (<= `dictBufferCapacity`)"]
+    #[doc = "          or an error code, which can be tested with ZDICT_isError()."]
+    #[doc = "          See ZDICT_trainFromBuffer() for details on failure modes."]
+    #[doc = "  Note: ZDICT_trainFromBuffer_fastCover() requires 6 * 2^f bytes of memory."]
+    #[doc = "  Tips: In general, a reasonable dictionary has a size of ~ 100 KB."]
+    #[doc = "        It's possible to select smaller or larger size, just by specifying `dictBufferCapacity`."]
+    #[doc = "        In general, it's recommended to provide a few thousands samples, though this can vary a lot."]
+    #[doc = "        It's recommended that total size of all samples be about ~x100 times the target size of dictionary."]
+    pub fn ZDICT_trainFromBuffer_fastCover(
+        dictBuffer: *mut libc::c_void,
+        dictBufferCapacity: usize,
+        samplesBuffer: *const libc::c_void,
+        samplesSizes: *const usize,
+        nbSamples: libc::c_uint,
+        parameters: ZDICT_fastCover_params_t,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZDICT_optimizeTrainFromBuffer_fastCover():"]
+    #[doc = " The same requirements as above hold for all the parameters except `parameters`."]
+    #[doc = " This function tries many parameter combinations (specifically, k and d combinations)"]
+    #[doc = " and picks the best parameters. `*parameters` is filled with the best parameters found,"]
+    #[doc = " dictionary constructed with those parameters is stored in `dictBuffer`."]
+    #[doc = " All of the parameters d, k, steps, f, and accel are optional."]
+    #[doc = " If d is non-zero then we don't check multiple values of d, otherwise we check d = {6, 8}."]
+    #[doc = " if steps is zero it defaults to its default value."]
+    #[doc = " If k is non-zero then we don't check multiple values of k, otherwise we check steps values in [50, 2000]."]
+    #[doc = " If f is zero, default value of 20 is used."]
+    #[doc = " If accel is zero, default value of 1 is used."]
+    #[doc = ""]
+    #[doc = " @return: size of dictionary stored into `dictBuffer` (<= `dictBufferCapacity`)"]
+    #[doc = "          or an error code, which can be tested with ZDICT_isError()."]
+    #[doc = "          On success `*parameters` contains the parameters selected."]
+    #[doc = "          See ZDICT_trainFromBuffer() for details on failure modes."]
+    #[doc = " Note: ZDICT_optimizeTrainFromBuffer_fastCover() requires about 6 * 2^f bytes of memory for each thread."]
+    pub fn ZDICT_optimizeTrainFromBuffer_fastCover(
+        dictBuffer: *mut libc::c_void,
+        dictBufferCapacity: usize,
+        samplesBuffer: *const libc::c_void,
+        samplesSizes: *const usize,
+        nbSamples: libc::c_uint,
+        parameters: *mut ZDICT_fastCover_params_t,
+    ) -> usize;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZDICT_legacy_params_t {
+    pub selectivityLevel: libc::c_uint,
+    pub zParams: ZDICT_params_t,
+}
+#[test]
+fn bindgen_test_layout_ZDICT_legacy_params_t() {
+    assert_eq!(
+        ::core::mem::size_of::<ZDICT_legacy_params_t>(),
+        16usize,
+        concat!("Size of: ", stringify!(ZDICT_legacy_params_t))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<ZDICT_legacy_params_t>(),
+        4usize,
+        concat!("Alignment of ", stringify!(ZDICT_legacy_params_t))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_legacy_params_t>())).selectivityLevel
+                as *const _ as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_legacy_params_t),
+            "::",
+            stringify!(selectivityLevel)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<ZDICT_legacy_params_t>())).zParams
+                as *const _ as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(ZDICT_legacy_params_t),
+            "::",
+            stringify!(zParams)
+        )
+    );
+}
+extern "C" {
+    #[doc = " ZDICT_trainFromBuffer_legacy():"]
+    #[doc = "  Train a dictionary from an array of samples."]
+    #[doc = "  Samples must be stored concatenated in a single flat buffer `samplesBuffer`,"]
+    #[doc = "  supplied with an array of sizes `samplesSizes`, providing the size of each sample, in order."]
+    #[doc = "  The resulting dictionary will be saved into `dictBuffer`."]
+    #[doc = " `parameters` is optional and can be provided with values set to 0 to mean \"default\"."]
+    #[doc = " @return: size of dictionary stored into `dictBuffer` (<= `dictBufferCapacity`)"]
+    #[doc = "          or an error code, which can be tested with ZDICT_isError()."]
+    #[doc = "          See ZDICT_trainFromBuffer() for details on failure modes."]
+    #[doc = "  Tips: In general, a reasonable dictionary has a size of ~ 100 KB."]
+    #[doc = "        It's possible to select smaller or larger size, just by specifying `dictBufferCapacity`."]
+    #[doc = "        In general, it's recommended to provide a few thousands samples, though this can vary a lot."]
+    #[doc = "        It's recommended that total size of all samples be about ~x100 times the target size of dictionary."]
+    #[doc = "  Note: ZDICT_trainFromBuffer_legacy() will send notifications into stderr if instructed to, using notificationLevel>0."]
+    pub fn ZDICT_trainFromBuffer_legacy(
+        dictBuffer: *mut libc::c_void,
+        dictBufferCapacity: usize,
+        samplesBuffer: *const libc::c_void,
+        samplesSizes: *const usize,
+        nbSamples: libc::c_uint,
+        parameters: ZDICT_legacy_params_t,
+    ) -> usize;
+}
+extern "C" {
+    pub fn ZDICT_addEntropyTablesFromBuffer(
+        dictBuffer: *mut libc::c_void,
+        dictContentSize: usize,
+        dictBufferCapacity: usize,
+        samplesBuffer: *const libc::c_void,
+        samplesSizes: *const usize,
+        nbSamples: libc::c_uint,
+    ) -> usize;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

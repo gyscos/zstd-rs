@@ -1,7 +1,7 @@
 #!/bin/sh
 bindgen="bindgen --blacklist-type=max_align_t --size_t-is-usize --rustified-enum=.* --use-core"
 no_std="--ctypes-prefix libc"
-experimental="-DZSTD_STATIC_LINKING_ONLY"
+experimental="-DZSTD_STATIC_LINKING_ONLY -DZDICT_STATIC_LINKING_ONLY"
 
 for NO_STD_ARG in "$no_std" ""; do
     for EXPERIMENTAL_ARG in "$experimental" ""; do

@@ -21,7 +21,7 @@
 extern crate libc;
 extern crate zstd_sys;
 
-#[cfg(any(target_arch = "wasm32", target_os = "hermit"))]
+#[cfg(feature = "std")]
 extern crate std;
 
 #[cfg(test)]
@@ -33,10 +33,10 @@ pub use zstd_sys::ZSTD_strategy as Strategy;
 /// Reset directive.
 pub use zstd_sys::ZSTD_ResetDirective as ResetDirective;
 
-#[cfg(any(target_arch = "wasm32", target_os = "hermit"))]
+#[cfg(feature = "std")]
 use std::os::raw::{c_char, c_int, c_ulonglong, c_void};
 
-#[cfg(not(any(target_arch = "wasm32", target_os = "hermit")))]
+#[cfg(not(feature = "std"))]
 use libc::{c_char, c_int, c_ulonglong, c_void};
 
 use core::marker::PhantomData;
@@ -211,7 +211,7 @@ unsafe impl<'a> Send for CCtx<'a> {}
 // CCtx can't be shared across threads, so it does not implement Sync.
 
 unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
-    #[cfg(not(any(target_arch = "wasm32", target_os = "hermit")))]
+    #[cfg(not(feature = "std"))]
     {
         // To be safe, we need to compute right now its length
         let len = libc::strlen(text);
@@ -222,7 +222,7 @@ unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
         str::from_utf8(slice).expect("bad error message from zstd")
     }
 
-    #[cfg(any(target_arch = "wasm32", target_os = "hermit"))]
+    #[cfg(feature = "std")]
     {
         std::ffi::CStr::from_ptr(text)
             .to_str()

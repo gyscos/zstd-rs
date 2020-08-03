@@ -147,6 +147,13 @@ fn compile_zstd() {
 }
 
 fn main() {
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    if target_arch == "wasm32" || target_os == "hermit" {
+        println!("cargo:rustc-cfg=feature=\"std\"");
+    }
+
     // println!("cargo:rustc-link-lib=zstd");
     let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
         pkg_config()

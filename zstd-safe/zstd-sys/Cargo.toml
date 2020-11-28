@@ -27,7 +27,7 @@ itertools = "0.9"
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.54"
+version = "0.56"
 
 [build-dependencies.pkg-config]
 optional = true

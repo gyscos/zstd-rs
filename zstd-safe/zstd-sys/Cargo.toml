@@ -16,7 +16,10 @@ links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "1.4.17+zstd.1.4.5"
+version = "1.4.18+zstd.1.4.7"
+
+[package.metadata.docs.rs]
+features = ["experimental"]
 
 [lib]
 doctest=false  # Documentation is for C code, good luck testing that.
@@ -48,6 +51,3 @@ legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
 non-cargo = [] # Silence cargo-specific build flags
 std = [] # Use std types instead of libc in bindgen
 zstdmt = [] # Enable multi-thread support (with pthread)
-
-[package.metadata.docs.rs]
-features = ["experimental"]

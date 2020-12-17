@@ -7,7 +7,7 @@ categories = ["compression", "api-bindings"]
 license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "0.5.3+zstd.1.4.5"
+version = "0.5.4+zstd.1.4.7"
 exclude = ["assets/**"]
 readme = "Readme.md"
 edition = "2018"
@@ -16,7 +16,7 @@ edition = "2018"
 travis-ci = { repository = "gyscos/zstd-rs" }
 
 [dependencies]
-zstd-safe = { path = "./zstd-safe", version = "=2.0.5", default-features = false, features = ["experimental"] }
+zstd-safe = { path = "./zstd-safe", version = "=2.0.6", default-features = false, features = ["experimental"] }
 tokio-io = { version = "0.1", optional = true }
 futures = { version = "0.1", optional = true }
 

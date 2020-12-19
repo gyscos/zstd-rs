@@ -212,26 +212,7 @@ impl<W: Write> Encoder<W> {
         zstd_safe::cstream_in_size()
     }
 
-    /// Controls whether zstd should include a content checksum at the end of each frame.
-    pub fn include_checksum(
-        &mut self,
-        include_checksum: bool,
-    ) -> io::Result<()> {
-        self.writer.operation_mut().set_parameter(
-            zstd_safe::CParameter::ChecksumFlag(include_checksum),
-        )
-    }
-
-    /// Enables multithreaded compression
-    ///
-    /// * If `n_workers == 0` (default), then multithreaded will be disabled.
-    /// * If `n_workers >= 1`, then compression will be done in separate threads.
-    ///   So even `n_workers = 1` may increase performance by separating IO and compression.
-    pub fn multithread(&mut self, n_workers: u32) -> io::Result<()> {
-        self.writer
-            .operation_mut()
-            .set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
-    }
+    crate::readwritecommon!(writer);
 }
 
 impl<W: Write> Write for Encoder<W> {
@@ -281,6 +262,17 @@ impl<W: Write> Decoder<W> {
         let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
         let writer = zio::Writer::new(writer, decoder);
         Ok(Decoder { writer })
+    }
+
+    /// Enables or disabled expecting the 4-byte magic header
+    pub fn include_magicbytes(&mut self, include_magicbytes: bool) -> io::Result<()> {
+        self.writer
+            .operation_mut()
+            .set_parameter(if include_magicbytes {
+                zstd_safe::DParameter::Format(zstd_safe::FrameFormat::One)
+            } else {
+                zstd_safe::DParameter::Format(zstd_safe::FrameFormat::Magicless)
+            })
     }
 
     /// Acquires a reference to the underlying writer.

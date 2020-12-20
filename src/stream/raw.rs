@@ -132,7 +132,8 @@ impl Decoder<'static> {
 
     /// Creates a new decoder initialized with the given dictionary.
     pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
-        let mut context = zstd_safe::create_dstream();
+        let mut context = zstd_safe::DCtx::create();
+        context.init();
         context
             .load_dictionary(dictionary)
             .map_err(map_error_code)?;
@@ -148,7 +149,7 @@ impl<'a> Decoder<'a> {
     where
         'b: 'a,
     {
-        let mut context = zstd_safe::create_dstream();
+        let mut context = zstd_safe::DCtx::create();
         context
             .ref_ddict(dictionary.as_ddict())
             .map_err(map_error_code)?;
@@ -157,7 +158,8 @@ impl<'a> Decoder<'a> {
 
     /// Sets a decompression parameter for this decoder.
     pub fn set_parameter(&mut self, parameter: DParameter) -> io::Result<()> {
-        zstd_safe::dctx_set_parameter(&mut self.context, parameter)
+        self.context
+            .set_parameter(parameter)
             .map_err(map_error_code)?;
         Ok(())
     }
@@ -169,12 +171,13 @@ impl Operation for Decoder<'_> {
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_>,
     ) -> io::Result<usize> {
-        zstd_safe::decompress_stream(&mut self.context, output, input)
+        self.context
+            .decompress_stream(output, input)
             .map_err(map_error_code)
     }
 
     fn reinit(&mut self) -> io::Result<()> {
-        zstd_safe::reset_dstream(&mut self.context).map_err(map_error_code)?;
+        self.context.reset().map_err(map_error_code)?;
         Ok(())
     }
     fn finish(
@@ -206,15 +209,14 @@ impl Encoder<'static> {
 
     /// Creates a new encoder initialized with the given dictionary.
     pub fn with_dictionary(level: i32, dictionary: &[u8]) -> io::Result<Self> {
-        let mut context = zstd_safe::create_cstream();
+        let mut context = zstd_safe::CCtx::create();
 
-        zstd_safe::cctx_set_parameter(
-            &mut context,
-            zstd_safe::CParameter::CompressionLevel(level),
-        )
-        .map_err(map_error_code)?;
+        context
+            .set_parameter(CParameter::CompressionLevel(level))
+            .map_err(map_error_code)?;
 
-        zstd_safe::cctx_load_dictionary(&mut context, dictionary)
+        context
+            .load_dictionary(dictionary)
             .map_err(map_error_code)?;
 
         Ok(Encoder { context })
@@ -229,7 +231,7 @@ impl<'a> Encoder<'a> {
     where
         'b: 'a,
     {
-        let mut context = zstd_safe::create_cstream();
+        let mut context = zstd_safe::CCtx::create();
         context
             .ref_cdict(dictionary.as_cdict())
             .map_err(map_error_code)?;
@@ -238,7 +240,8 @@ impl<'a> Encoder<'a> {
 
     /// Sets a compression parameter for this encoder.
     pub fn set_parameter(&mut self, parameter: CParameter) -> io::Result<()> {
-        zstd_safe::cctx_set_parameter(&mut self.context, parameter)
+        self.context
+            .set_parameter(parameter)
             .map_err(map_error_code)?;
         Ok(())
     }
@@ -250,13 +253,13 @@ impl<'a> Operation for Encoder<'a> {
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_>,
     ) -> io::Result<usize> {
-        zstd_safe::compress_stream(&mut self.context, output, input)
+        self.context
+            .compress_stream(output, input)
             .map_err(map_error_code)
     }
 
     fn flush(&mut self, output: &mut OutBuffer<'_>) -> io::Result<usize> {
-        zstd_safe::flush_stream(&mut self.context, output)
-            .map_err(map_error_code)
+        self.context.flush_stream(output).map_err(map_error_code)
     }
 
     fn finish(
@@ -264,8 +267,7 @@ impl<'a> Operation for Encoder<'a> {
         output: &mut OutBuffer<'_>,
         _finished_frame: bool,
     ) -> io::Result<usize> {
-        zstd_safe::end_stream(&mut self.context, output)
-            .map_err(map_error_code)
+        self.context.end_stream(output).map_err(map_error_code)
     }
 
     fn reinit(&mut self) -> io::Result<()> {

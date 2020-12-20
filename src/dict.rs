@@ -59,6 +59,17 @@ pub struct DecoderDictionary<'a> {
     ddict: DDict<'a>,
 }
 
+impl DecoderDictionary<'static> {
+    /// Create a prepared dictionary for decompression.
+    ///
+    /// This will copy the dictionary internally.
+    pub fn copy(dictionary: &[u8]) -> Self {
+        Self {
+            ddict: zstd_safe::DDict::create(dictionary),
+        }
+    }
+}
+
 impl<'a> DecoderDictionary<'a> {
     /// Create prepared dictionary for decompression
     pub fn new(dict: &'a [u8]) -> Self {

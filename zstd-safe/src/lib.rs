@@ -526,6 +526,13 @@ impl<'a> CCtx<'a> {
         };
         parse_code(code)
     }
+    pub fn in_size() -> usize {
+        unsafe { zstd_sys::ZSTD_CStreamInSize() }
+    }
+
+    pub fn out_size() -> usize {
+        unsafe { zstd_sys::ZSTD_CStreamOutSize() }
+    }
 }
 
 pub fn create_cctx<'a>() -> CCtx<'a> {
@@ -1185,12 +1192,12 @@ pub fn end_stream(zcs: &mut CStream, output: &mut OutBuffer) -> SafeResult {
 
 /// Wraps `ZSTD_CStreamInSize()`
 pub fn cstream_in_size() -> usize {
-    unsafe { zstd_sys::ZSTD_CStreamInSize() }
+    CCtx::in_size()
 }
 
 /// Wraps `ZSTD_CStreamOutSize()`
 pub fn cstream_out_size() -> usize {
-    unsafe { zstd_sys::ZSTD_CStreamOutSize() }
+    CCtx::out_size()
 }
 
 /// A Decompression stream.

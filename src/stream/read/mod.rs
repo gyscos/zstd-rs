@@ -31,7 +31,7 @@ pub struct Encoder<'a, R: BufRead> {
 impl<R: Read> Decoder<'static, BufReader<R>> {
     /// Creates a new decoder.
     pub fn new(reader: R) -> io::Result<Self> {
-        let buffer_size = zstd_safe::dstream_in_size();
+        let buffer_size = zstd_safe::DCtx::in_size();
 
         Self::with_buffer(BufReader::with_capacity(buffer_size, reader))
     }
@@ -79,7 +79,7 @@ impl<'a, R: BufRead> Decoder<'a, R> {
 
     /// Recommendation for the size of the output buffer.
     pub fn recommended_output_size() -> usize {
-        zstd_safe::dstream_out_size()
+        zstd_safe::DCtx::out_size()
     }
 
     /// Enables or disabled expecting the 4-byte magic header
@@ -136,7 +136,7 @@ impl<R: AsyncRead + BufRead> AsyncRead for Decoder<'_, R> {
 impl<R: Read> Encoder<'static, BufReader<R>> {
     /// Creates a new encoder.
     pub fn new(reader: R, level: i32) -> io::Result<Self> {
-        let buffer_size = zstd_safe::dstream_in_size();
+        let buffer_size = zstd_safe::CCtx::in_size();
 
         Self::with_buffer(BufReader::with_capacity(buffer_size, reader), level)
     }
@@ -182,7 +182,7 @@ impl<'a, R: BufRead> Encoder<'a, R> {
 
     /// Recommendation for the size of the output buffer.
     pub fn recommended_output_size() -> usize {
-        zstd_safe::dstream_out_size()
+        zstd_safe::CCtx::out_size()
     }
 
     /// Acquire a reference to the underlying reader.

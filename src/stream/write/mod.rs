@@ -214,7 +214,7 @@ impl<'a, W: Write> Encoder<'a, W> {
 
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
-        zstd_safe::cstream_in_size()
+        zstd_safe::CCtx::in_size()
     }
 
     crate::readwritecommon!(writer);
@@ -309,7 +309,7 @@ impl<'a, W: Write> Decoder<'a, W> {
 
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
-        zstd_safe::dstream_in_size()
+        zstd_safe::DCtx::in_size()
     }
 }
 

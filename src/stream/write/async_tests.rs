@@ -39,7 +39,7 @@ fn test_async_write_partial() {
 }
 
 struct Finish<W: AsyncWrite> {
-    encoder: Option<super::Encoder<W>>,
+    encoder: Option<super::Encoder<'static, W>>,
 }
 
 impl<W: AsyncWrite> Future for Finish<W> {

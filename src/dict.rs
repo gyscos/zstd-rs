@@ -27,6 +27,17 @@ pub struct EncoderDictionary<'a> {
     cdict: CDict<'a>,
 }
 
+impl EncoderDictionary<'static> {
+    /// Creates a prepared dictionary for compression.
+    ///
+    /// This will copy the dictionary internally.
+    pub fn copy(dictionary: &[u8], level: i32) -> Self {
+        Self {
+            cdict: zstd_safe::create_cdict(dictionary, level),
+        }
+    }
+}
+
 impl<'a> EncoderDictionary<'a> {
     /// Create prepared dictionary for compression
     ///
@@ -38,7 +49,7 @@ impl<'a> EncoderDictionary<'a> {
     }
 
     /// Returns reference to `CDict` inner object
-    pub fn as_cdict(&self) -> &CDict<'_> {
+    pub fn as_cdict(&self) -> &CDict<'a> {
         &self.cdict
     }
 }
@@ -57,7 +68,7 @@ impl<'a> DecoderDictionary<'a> {
     }
 
     /// Returns reference to `DDict` inner object
-    pub fn as_ddict(&self) -> &DDict<'_> {
+    pub fn as_ddict(&self) -> &DDict<'a> {
         &self.ddict
     }
 }

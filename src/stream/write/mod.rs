@@ -28,28 +28,28 @@ mod tests;
 /// Note: The zstd library has its own internal input buffer (~128kb).
 ///
 /// [`finish()`]: #method.finish
-pub struct Encoder<W: Write> {
+pub struct Encoder<'a, W: Write> {
     // output writer (compressed data)
-    writer: zio::Writer<W, raw::Encoder>,
+    writer: zio::Writer<W, raw::Encoder<'a>>,
 }
 
 /// A decoder that decompress and forward data to another writer.
-pub struct Decoder<W: Write> {
+pub struct Decoder<'a, W: Write> {
     // output writer (decompressed data)
-    writer: zio::Writer<W, raw::Decoder>,
+    writer: zio::Writer<W, raw::Decoder<'a>>,
 }
 
 /// A wrapper around an `Encoder<W>` that finishes the stream on drop.
-pub struct AutoFinishEncoder<W: Write> {
+pub struct AutoFinishEncoder<'a, W: Write> {
     // We wrap this in an option to take it during drop.
-    encoder: Option<Encoder<W>>,
+    encoder: Option<Encoder<'a, W>>,
 
     // TODO: make this a FnOnce once it works in a Box
     on_finish: Option<Box<dyn FnMut(io::Result<W>)>>,
 }
 
-impl<W: Write> AutoFinishEncoder<W> {
-    fn new<F>(encoder: Encoder<W>, on_finish: F) -> Self
+impl<'a, W: Write> AutoFinishEncoder<'a, W> {
+    fn new<F>(encoder: Encoder<'a, W>, on_finish: F) -> Self
     where
         F: 'static + FnMut(io::Result<W>),
     {
@@ -73,7 +73,7 @@ impl<W: Write> AutoFinishEncoder<W> {
     }
 }
 
-impl<W: Write> Drop for AutoFinishEncoder<W> {
+impl<W: Write> Drop for AutoFinishEncoder<'_, W> {
     fn drop(&mut self) {
         let result = self.encoder.take().unwrap().finish();
         if let Some(mut on_finish) = self.on_finish.take() {
@@ -82,7 +82,7 @@ impl<W: Write> Drop for AutoFinishEncoder<W> {
     }
 }
 
-impl<W: Write> Write for AutoFinishEncoder<W> {
+impl<W: Write> Write for AutoFinishEncoder<'_, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.encoder.as_mut().unwrap().write(buf)
     }
@@ -92,7 +92,7 @@ impl<W: Write> Write for AutoFinishEncoder<W> {
     }
 }
 
-impl<W: Write> Encoder<W> {
+impl<W: Write> Encoder<'static, W> {
     /// Creates a new encoder.
     ///
     /// `level`: compression level (1-21).
@@ -117,15 +117,20 @@ impl<W: Write> Encoder<W> {
         let writer = zio::Writer::new(writer, encoder);
         Ok(Encoder { writer })
     }
+}
 
+impl<'a, W: Write> Encoder<'a, W> {
     /// Creates a new encoder, using an existing prepared `EncoderDictionary`.
     ///
     /// (Provides better compression ratio for small files,
     /// but requires the dictionary to be present during decompression.)
-    pub fn with_prepared_dictionary(
+    pub fn with_prepared_dictionary<'b>(
         writer: W,
-        dictionary: &EncoderDictionary<'_>,
-    ) -> io::Result<Self> {
+        dictionary: &EncoderDictionary<'b>,
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         let writer = zio::Writer::new(writer, encoder);
         Ok(Encoder { writer })
@@ -136,7 +141,7 @@ impl<W: Write> Encoder<W> {
     /// # Panic
     ///
     /// Panics on drop if an error happens when finishing the stream.
-    pub fn auto_finish(self) -> AutoFinishEncoder<W> {
+    pub fn auto_finish(self) -> AutoFinishEncoder<'a, W> {
         self.on_finish(|result| {
             result.unwrap();
         })
@@ -148,7 +153,7 @@ impl<W: Write> Encoder<W> {
     pub fn on_finish<F: 'static + FnMut(io::Result<W>)>(
         self,
         f: F,
-    ) -> AutoFinishEncoder<W> {
+    ) -> AutoFinishEncoder<'a, W> {
         AutoFinishEncoder::new(self, f)
     }
 
@@ -215,7 +220,7 @@ impl<W: Write> Encoder<W> {
     crate::readwritecommon!(writer);
 }
 
-impl<W: Write> Write for Encoder<W> {
+impl<'a, W: Write> Write for Encoder<'a, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.writer.write(buf)
     }
@@ -226,7 +231,7 @@ impl<W: Write> Write for Encoder<W> {
 }
 
 #[cfg(feature = "tokio")]
-impl<W: AsyncWrite> AsyncWrite for Encoder<W> {
+impl<'a, W: AsyncWrite> AsyncWrite for Encoder<'a, W> {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         use tokio_io::try_nb;
 
@@ -235,7 +240,7 @@ impl<W: AsyncWrite> AsyncWrite for Encoder<W> {
     }
 }
 
-impl<W: Write> Decoder<W> {
+impl<W: Write> Decoder<'static, W> {
     /// Creates a new decoder.
     pub fn new(writer: W) -> io::Result<Self> {
         Self::with_dictionary(writer, &[])
@@ -250,15 +255,19 @@ impl<W: Write> Decoder<W> {
         let writer = zio::Writer::new(writer, decoder);
         Ok(Decoder { writer })
     }
-
+}
+impl<'a, W: Write> Decoder<'a, W> {
     /// Creates a new decoder, using an existing prepared `DecoderDictionary`.
     ///
     /// (Provides better compression ratio for small files,
     /// but requires the dictionary to be present during decompression.)
-    pub fn with_prepared_dictionary(
+    pub fn with_prepared_dictionary<'b>(
         writer: W,
-        dictionary: &DecoderDictionary<'_>,
-    ) -> io::Result<Self> {
+        dictionary: &DecoderDictionary<'b>,
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
         let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
         let writer = zio::Writer::new(writer, decoder);
         Ok(Decoder { writer })
@@ -299,7 +308,7 @@ impl<W: Write> Decoder<W> {
     }
 }
 
-impl<W: Write> Write for Decoder<W> {
+impl<W: Write> Write for Decoder<'_, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.writer.write(buf)
     }
@@ -310,7 +319,7 @@ impl<W: Write> Write for Decoder<W> {
 }
 
 #[cfg(feature = "tokio")]
-impl<W: AsyncWrite> AsyncWrite for Decoder<W> {
+impl<W: AsyncWrite> AsyncWrite for Decoder<'_, W> {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         self.writer.writer_mut().shutdown()
     }

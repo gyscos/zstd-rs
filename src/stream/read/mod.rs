@@ -19,16 +19,16 @@ mod tests;
 ///
 /// This allows to read a stream of compressed data
 /// (good for files or heavy network stream).
-pub struct Decoder<R: BufRead> {
-    reader: zio::Reader<R, raw::Decoder>,
+pub struct Decoder<'a, R: BufRead> {
+    reader: zio::Reader<R, raw::Decoder<'a>>,
 }
 
 /// An encoder that compress input data from another `Read`.
-pub struct Encoder<R: BufRead> {
-    reader: zio::Reader<R, raw::Encoder>,
+pub struct Encoder<'a, R: BufRead> {
+    reader: zio::Reader<R, raw::Encoder<'a>>,
 }
 
-impl<R: Read> Decoder<BufReader<R>> {
+impl<R: Read> Decoder<'static, BufReader<R>> {
     /// Creates a new decoder.
     pub fn new(reader: R) -> io::Result<Self> {
         let buffer_size = zstd_safe::dstream_in_size();
@@ -37,20 +37,11 @@ impl<R: Read> Decoder<BufReader<R>> {
     }
 }
 
-impl<R: BufRead> Decoder<R> {
+impl<R: BufRead> Decoder<'static, R> {
     /// Creates a new decoder around a `BufRead`.
     pub fn with_buffer(reader: R) -> io::Result<Self> {
         Self::with_dictionary(reader, &[])
     }
-
-    /// Sets this `Decoder` to stop after the first frame.
-    ///
-    /// By default, it keeps concatenating frames until EOF is reached.
-    pub fn single_frame(mut self) -> Self {
-        self.reader.set_single_frame();
-        self
-    }
-
     /// Creates a new decoder, using an existing dictionary.
     ///
     /// The dictionary must be the same as the one used during compression.
@@ -60,14 +51,26 @@ impl<R: BufRead> Decoder<R> {
 
         Ok(Decoder { reader })
     }
+}
+impl<'a, R: BufRead> Decoder<'a, R> {
+    /// Sets this `Decoder` to stop after the first frame.
+    ///
+    /// By default, it keeps concatenating frames until EOF is reached.
+    pub fn single_frame(mut self) -> Self {
+        self.reader.set_single_frame();
+        self
+    }
 
     /// Creates a new decoder, using an existing `DecoderDictionary`.
     ///
     /// The dictionary must be the same as the one used during compression.
-    pub fn with_prepared_dictionary(
+    pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &DecoderDictionary<'_>,
-    ) -> io::Result<Self> {
+        dictionary: &DecoderDictionary<'b>,
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
         let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
         let reader = zio::Reader::new(reader, decoder);
 
@@ -113,20 +116,20 @@ impl<R: BufRead> Decoder<R> {
     }
 }
 
-impl<R: BufRead> Read for Decoder<R> {
+impl<R: BufRead> Read for Decoder<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.reader.read(buf)
     }
 }
 
 #[cfg(feature = "tokio")]
-impl<R: AsyncRead + BufRead> AsyncRead for Decoder<R> {
+impl<R: AsyncRead + BufRead> AsyncRead for Decoder<'_, R> {
     unsafe fn prepare_uninitialized_buffer(&self, _buf: &mut [u8]) -> bool {
         false
     }
 }
 
-impl<R: Read> Encoder<BufReader<R>> {
+impl<R: Read> Encoder<'static, BufReader<R>> {
     /// Creates a new encoder.
     pub fn new(reader: R, level: i32) -> io::Result<Self> {
         let buffer_size = zstd_safe::dstream_in_size();
@@ -135,7 +138,7 @@ impl<R: Read> Encoder<BufReader<R>> {
     }
 }
 
-impl<R: BufRead> Encoder<R> {
+impl<R: BufRead> Encoder<'static, R> {
     /// Creates a new encoder around a `BufRead`.
     pub fn with_buffer(reader: R, level: i32) -> io::Result<Self> {
         Self::with_dictionary(reader, level, &[])
@@ -154,14 +157,19 @@ impl<R: BufRead> Encoder<R> {
 
         Ok(Encoder { reader })
     }
+}
 
+impl<'a, R: BufRead> Encoder<'a, R> {
     /// Creates a new encoder, using an existing `EncoderDictionary`.
     ///
     /// The dictionary must be the same as the one used during compression.
-    pub fn with_prepared_dictionary(
+    pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &EncoderDictionary<'_>,
-    ) -> io::Result<Self> {
+        dictionary: &EncoderDictionary<'b>,
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         let reader = zio::Reader::new(reader, encoder);
 
@@ -197,14 +205,14 @@ impl<R: BufRead> Encoder<R> {
     crate::readwritecommon!(reader);
 }
 
-impl<R: BufRead> Read for Encoder<R> {
+impl<R: BufRead> Read for Encoder<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.reader.read(buf)
     }
 }
 
 #[cfg(feature = "tokio")]
-impl<R: AsyncRead + BufRead> AsyncRead for Encoder<R> {
+impl<R: AsyncRead + BufRead> AsyncRead for Encoder<'_, R> {
     unsafe fn prepare_uninitialized_buffer(&self, _buf: &mut [u8]) -> bool {
         false
     }

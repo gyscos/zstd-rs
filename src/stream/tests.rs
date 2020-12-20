@@ -82,7 +82,7 @@ fn test_write_after_try_finish() {
     z.write_all(b"hello world").unwrap();
 }
 
-fn setup_try_finish() -> Encoder<PartialWrite<Vec<u8>>> {
+fn setup_try_finish() -> Encoder<'static, PartialWrite<Vec<u8>>> {
     use std::io::Write;
 
     let buf =

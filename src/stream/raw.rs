@@ -120,11 +120,11 @@ pub struct Status {
 }
 
 /// An in-memory decoder for streams of data.
-pub struct Decoder {
-    context: zstd_safe::DCtx<'static>,
+pub struct Decoder<'a> {
+    context: zstd_safe::DCtx<'a>,
 }
 
-impl Decoder {
+impl Decoder<'static> {
     /// Creates a new decoder.
     pub fn new() -> io::Result<Self> {
         Self::with_dictionary(&[])
@@ -133,21 +133,25 @@ impl Decoder {
     /// Creates a new decoder initialized with the given dictionary.
     pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
         let mut context = zstd_safe::create_dstream();
-        zstd_safe::init_dstream_using_dict(&mut context, dictionary)
+        context
+            .load_dictionary(dictionary)
             .map_err(map_error_code)?;
         Ok(Decoder { context })
     }
+}
 
+impl<'a> Decoder<'a> {
     /// Creates a new decoder, using an existing `DecoderDictionary`.
-    pub fn with_prepared_dictionary(
-        dictionary: &DecoderDictionary<'_>,
-    ) -> io::Result<Self> {
+    pub fn with_prepared_dictionary<'b>(
+        dictionary: &DecoderDictionary<'b>,
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
         let mut context = zstd_safe::create_dstream();
-        zstd_safe::init_dstream_using_ddict(
-            &mut context,
-            dictionary.as_ddict(),
-        )
-        .map_err(map_error_code)?;
+        context
+            .ref_ddict(dictionary.as_ddict())
+            .map_err(map_error_code)?;
         Ok(Decoder { context })
     }
 
@@ -159,7 +163,7 @@ impl Decoder {
     }
 }
 
-impl Operation for Decoder {
+impl Operation for Decoder<'_> {
     fn run(
         &mut self,
         input: &mut InBuffer<'_>,
@@ -190,11 +194,11 @@ impl Operation for Decoder {
 }
 
 /// An in-memory encoder for streams of data.
-pub struct Encoder {
-    context: zstd_safe::CCtx<'static>,
+pub struct Encoder<'a> {
+    context: zstd_safe::CCtx<'a>,
 }
 
-impl Encoder {
+impl Encoder<'static> {
     /// Creates a new encoder.
     pub fn new(level: i32) -> io::Result<Self> {
         Self::with_dictionary(level, &[])
@@ -203,21 +207,32 @@ impl Encoder {
     /// Creates a new encoder initialized with the given dictionary.
     pub fn with_dictionary(level: i32, dictionary: &[u8]) -> io::Result<Self> {
         let mut context = zstd_safe::create_cstream();
-        zstd_safe::init_cstream_using_dict(&mut context, dictionary, level)
-            .map_err(map_error_code)?;
-        Ok(Encoder { context })
-    }
 
-    /// Creates a new encoder using an existing `EncoderDictionary`.
-    pub fn with_prepared_dictionary(
-        dictionary: &EncoderDictionary<'_>,
-    ) -> io::Result<Self> {
-        let mut context = zstd_safe::create_cstream();
-        zstd_safe::init_cstream_using_cdict(
+        zstd_safe::cctx_set_parameter(
             &mut context,
-            dictionary.as_cdict(),
+            zstd_safe::CParameter::CompressionLevel(level),
         )
         .map_err(map_error_code)?;
+
+        zstd_safe::cctx_load_dictionary(&mut context, dictionary)
+            .map_err(map_error_code)?;
+
+        Ok(Encoder { context })
+    }
+}
+
+impl<'a> Encoder<'a> {
+    /// Creates a new encoder using an existing `EncoderDictionary`.
+    pub fn with_prepared_dictionary<'b>(
+        dictionary: &EncoderDictionary<'b>,
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
+        let mut context = zstd_safe::create_cstream();
+        context
+            .ref_cdict(dictionary.as_cdict())
+            .map_err(map_error_code)?;
         Ok(Encoder { context })
     }
 
@@ -229,7 +244,7 @@ impl Encoder {
     }
 }
 
-impl Operation for Encoder {
+impl<'a> Operation for Encoder<'a> {
     fn run(
         &mut self,
         input: &mut InBuffer<'_>,
@@ -254,11 +269,9 @@ impl Operation for Encoder {
     }
 
     fn reinit(&mut self) -> io::Result<()> {
-        zstd_safe::reset_cstream(
-            &mut self.context,
-            zstd_safe::CONTENTSIZE_UNKNOWN,
-        )
-        .map_err(map_error_code)?;
+        self.context
+            .reset(zstd_safe::ResetDirective::ZSTD_reset_session_only)
+            .map_err(map_error_code)?;
         Ok(())
     }
 }

@@ -79,6 +79,18 @@ impl<R: BufRead> Decoder<R> {
         zstd_safe::dstream_out_size()
     }
 
+    /// Enables or disabled expecting the 4-byte magic header
+    pub fn include_magicbytes(&mut self, include_magicbytes: bool) -> io::Result<()> {
+        self.reader
+            .operation_mut()
+            .set_parameter(if include_magicbytes {
+                zstd_safe::DParameter::Format(zstd_safe::FrameFormat::One)
+            } else {
+                zstd_safe::DParameter::Format(zstd_safe::FrameFormat::Magicless)
+            })
+    }
+
+
     /// Acquire a reference to the underlying reader.
     pub fn get_ref(&self) -> &R {
         self.reader.reader()
@@ -182,26 +194,7 @@ impl<R: BufRead> Encoder<R> {
         self.reader.into_inner()
     }
 
-    /// Controls whether zstd should include a content checksum at the end of each frame.
-    pub fn include_checksum(
-        &mut self,
-        include_checksum: bool,
-    ) -> io::Result<()> {
-        self.reader.operation_mut().set_parameter(
-            zstd_safe::CParameter::ChecksumFlag(include_checksum),
-        )
-    }
-
-    /// Enables multithreaded compression
-    ///
-    /// * If `n_workers == 0` (default), then multithreaded will be disabled.
-    /// * If `n_workers >= 1`, then compression will be done in separate threads.
-    ///   So even `n_workers = 1` may increase performance by separating IO and compression.
-    pub fn multithread(&mut self, n_workers: u32) -> io::Result<()> {
-        self.reader
-            .operation_mut()
-            .set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
-    }
+    crate::readwritecommon!(reader);
 }
 
 impl<R: BufRead> Read for Encoder<R> {

@@ -46,6 +46,7 @@ libc = "0.2.45"
 [features]
 default = ["legacy"]
 
+debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API
 legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
 non-cargo = [] # Silence cargo-specific build flags

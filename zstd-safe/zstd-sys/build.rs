@@ -121,6 +121,21 @@ fn compile_zstd() {
     config.define("ZDICTLIB_VISIBILITY", Some(""));
     config.define("ZSTDERRORLIB_VISIBILITY", Some(""));
 
+
+    // https://github.com/facebook/zstd/blob/d69d08ed6c83563b57d98132e1e3f2487880781e/lib/common/debug.h#L60
+    /* recommended values for DEBUGLEVEL :
+    * 0 : release mode, no debug, all run-time checks disabled
+    * 1 : enables assert() only, no display
+    * 2 : reserved, for currently active debug path
+    * 3 : events once per object lifetime (CCtx, CDict, etc.)
+    * 4 : events once per frame
+    * 5 : events once per block
+    * 6 : events once per sequence (verbose)
+    * 7+: events at every position (*very* verbose)
+    */
+    #[cfg(feature = "debug")]
+    config.define("DEBUGLEVEL", Some("5"));
+
     set_pthread(&mut config);
     set_legacy(&mut config);
     enable_threading(&mut config);

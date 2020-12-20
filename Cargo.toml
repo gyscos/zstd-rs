@@ -32,6 +32,7 @@ default = ["legacy"]
 tokio = ["tokio-io", "futures"]
 
 bindgen = ["zstd-safe/bindgen"]
+debug = ["zstd-safe/debug"]
 legacy = ["zstd-safe/legacy"]
 pkg-config = ["zstd-safe/pkg-config"]
 wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc

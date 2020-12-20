@@ -274,13 +274,18 @@ impl<'a, W: Write> Decoder<'a, W> {
     }
 
     /// Enables or disabled expecting the 4-byte magic header
-    pub fn include_magicbytes(&mut self, include_magicbytes: bool) -> io::Result<()> {
+    pub fn include_magicbytes(
+        &mut self,
+        include_magicbytes: bool,
+    ) -> io::Result<()> {
         self.writer
             .operation_mut()
             .set_parameter(if include_magicbytes {
                 zstd_safe::DParameter::Format(zstd_safe::FrameFormat::One)
             } else {
-                zstd_safe::DParameter::Format(zstd_safe::FrameFormat::Magicless)
+                zstd_safe::DParameter::Format(
+                    zstd_safe::FrameFormat::Magicless,
+                )
             })
     }
 

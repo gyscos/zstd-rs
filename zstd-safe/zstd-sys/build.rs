@@ -6,12 +6,9 @@ extern crate pkg_config;
 
 extern crate cc;
 extern crate glob;
-extern crate itertools;
 
 use std::path::PathBuf;
 use std::{env, fs};
-
-use itertools::Itertools;
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
@@ -186,7 +183,8 @@ fn main() {
         (vec![], vec![manifest_dir.join("zstd/lib")])
     };
 
-    println!("cargo:include={}", headerpaths.iter().map(|p| p.display().to_string()).join(";"));
+    let includes: Vec<_> = headerpaths.iter().map(|p| p.display().to_string()).collect();
+    println!("cargo:include={}", includes.join(";"));
 
     generate_bindings(defs, headerpaths);
 }

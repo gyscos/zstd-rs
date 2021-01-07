@@ -26,7 +26,6 @@ doctest=false  # Documentation is for C code, good luck testing that.
 
 [build-dependencies]
 glob = "0.3"
-itertools = "0.9"
 
 [build-dependencies.bindgen]
 optional = true

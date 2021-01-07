@@ -24,9 +24,6 @@ features = ["experimental"]
 [lib]
 doctest=false  # Documentation is for C code, good luck testing that.
 
-[build-dependencies]
-glob = "0.3"
-
 [build-dependencies.bindgen]
 optional = true
 version = "0.56"

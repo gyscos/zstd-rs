@@ -5,8 +5,8 @@ extern crate bindgen;
 extern crate pkg_config;
 
 extern crate cc;
-extern crate glob;
 
+use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::{env, fs};
 
@@ -86,18 +86,19 @@ fn enable_threading(_config: &mut cc::Build) {}
 fn compile_zstd() {
     let mut config = cc::Build::new();
 
-    let globs = &[
-        "zstd/lib/common/*.c",
-        "zstd/lib/compress/*.c",
-        "zstd/lib/decompress/*.c",
-        "zstd/lib/legacy/*.c",
-        "zstd/lib/dictBuilder/*.c",
-    ];
-
-    for pattern in globs {
-        for path in glob::glob(pattern).unwrap() {
-            let path = path.unwrap();
-            config.file(path);
+    // Search the following directories for C files to add to the compilation.
+    for dir in &[
+        "zstd/lib/common",
+        "zstd/lib/compress",
+        "zstd/lib/decompress",
+        "zstd/lib/legacy",
+        "zstd/lib/dictBuilder",
+    ] {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension() == Some(OsStr::new("c")) {
+                config.file(path);
+            }
         }
     }
 

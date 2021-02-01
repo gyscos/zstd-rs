@@ -7,7 +7,7 @@ extern crate pkg_config;
 extern crate cc;
 
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 #[cfg(feature = "bindgen")]
@@ -119,18 +119,17 @@ fn compile_zstd() {
     config.define("ZDICTLIB_VISIBILITY", Some(""));
     config.define("ZSTDERRORLIB_VISIBILITY", Some(""));
 
-
     // https://github.com/facebook/zstd/blob/d69d08ed6c83563b57d98132e1e3f2487880781e/lib/common/debug.h#L60
     /* recommended values for DEBUGLEVEL :
-    * 0 : release mode, no debug, all run-time checks disabled
-    * 1 : enables assert() only, no display
-    * 2 : reserved, for currently active debug path
-    * 3 : events once per object lifetime (CCtx, CDict, etc.)
-    * 4 : events once per frame
-    * 5 : events once per block
-    * 6 : events once per sequence (verbose)
-    * 7+: events at every position (*very* verbose)
-    */
+     * 0 : release mode, no debug, all run-time checks disabled
+     * 1 : enables assert() only, no display
+     * 2 : reserved, for currently active debug path
+     * 3 : events once per object lifetime (CCtx, CDict, etc.)
+     * 4 : events once per frame
+     * 5 : events once per block
+     * 6 : events once per sequence (verbose)
+     * 7+: events at every position (*very* verbose)
+     */
     #[cfg(feature = "debug")]
     config.define("DEBUGLEVEL", Some("5"));
 
@@ -160,7 +159,8 @@ fn compile_zstd() {
 }
 
 fn main() {
-    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let target_arch =
+        std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
     if target_arch == "wasm32" || target_os == "hermit" {
@@ -171,8 +171,8 @@ fn main() {
     let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
         pkg_config()
     } else {
-        if !PathBuf::from("zstd/lib").exists() {
-            panic!("Folder 'zstd/lib' does not exists. Maybe you forget clone 'zstd' submodule?");
+        if !Path::new("zstd/lib").exists() {
+            panic!("Folder 'zstd/lib' does not exists. Maybe you forgot to clone the 'zstd' submodule?");
         }
 
         let manifest_dir = PathBuf::from(
@@ -184,7 +184,10 @@ fn main() {
         (vec![], vec![manifest_dir.join("zstd/lib")])
     };
 
-    let includes: Vec<_> = headerpaths.iter().map(|p| p.display().to_string()).collect();
+    let includes: Vec<_> = headerpaths
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
     println!("cargo:include={}", includes.join(";"));
 
     generate_bindings(defs, headerpaths);

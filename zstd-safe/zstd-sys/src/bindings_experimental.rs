@@ -63,7 +63,7 @@ pub const __STDC_IEC_559_COMPLEX__: u32 = 1;
 pub const __STDC_ISO_10646__: u32 = 201706;
 pub const __GNU_LIBRARY__: u32 = 6;
 pub const __GLIBC__: u32 = 2;
-pub const __GLIBC_MINOR__: u32 = 32;
+pub const __GLIBC_MINOR__: u32 = 33;
 pub const _SYS_CDEFS_H: u32 = 1;
 pub const __glibc_c99_flexarr_available: u32 = 1;
 pub const __WORDSIZE: u32 = 64;
@@ -156,8 +156,8 @@ pub const CHARCLASS_NAME_MAX: u32 = 2048;
 pub const RE_DUP_MAX: u32 = 32767;
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 4;
-pub const ZSTD_VERSION_RELEASE: u32 = 8;
-pub const ZSTD_VERSION_NUMBER: u32 = 10408;
+pub const ZSTD_VERSION_RELEASE: u32 = 9;
+pub const ZSTD_VERSION_NUMBER: u32 = 10409;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
@@ -545,6 +545,7 @@ pub enum ZSTD_dParameter {
     ZSTD_d_experimentalParam1 = 1000,
     ZSTD_d_experimentalParam2 = 1001,
     ZSTD_d_experimentalParam3 = 1002,
+    ZSTD_d_experimentalParam4 = 1003,
 }
 extern "C" {
     #[doc = " ZSTD_dParam_getBounds() :"]
@@ -992,7 +993,7 @@ extern "C" {
     #[doc = "  Reference a prepared dictionary, to be used for all next compressed frames."]
     #[doc = "  Note that compression parameters are enforced from within CDict,"]
     #[doc = "  and supersede any compression parameter previously set within CCtx."]
-    #[doc = "  The parameters ignored are labled as \"superseded-by-cdict\" in the ZSTD_cParameter enum docs."]
+    #[doc = "  The parameters ignored are labelled as \"superseded-by-cdict\" in the ZSTD_cParameter enum docs."]
     #[doc = "  The ignored parameters will be used again if the CCtx is returned to no-dictionary mode."]
     #[doc = "  The dictionary will remain valid for future compressed frames using same CCtx."]
     #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
@@ -1055,6 +1056,13 @@ extern "C" {
     #[doc = " ZSTD_DCtx_refDDict() :"]
     #[doc = "  Reference a prepared dictionary, to be used to decompress next frames."]
     #[doc = "  The dictionary remains active for decompression of future frames using same DCtx."]
+    #[doc = ""]
+    #[doc = "  If called with ZSTD_d_refMultipleDDicts enabled, repeated calls of this function"]
+    #[doc = "  will store the DDict references in a table, and the DDict used for decompression"]
+    #[doc = "  will be determined at decompression time, as per the dict ID in the frame."]
+    #[doc = "  The memory for the table is allocated on the first call to refDDict, and can be"]
+    #[doc = "  freed with ZSTD_freeDCtx()."]
+    #[doc = ""]
     #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
     #[doc = "  Note 1 : Currently, only one dictionary can be managed."]
     #[doc = "           Referencing a new dictionary effectively \"discards\" any previous one."]
@@ -1444,6 +1452,12 @@ pub enum ZSTD_forceIgnoreChecksum_e {
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum ZSTD_refMultipleDDicts_e {
+    ZSTD_rmd_refSingleDDict = 0,
+    ZSTD_rmd_refMultipleDDicts = 1,
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ZSTD_dictAttachPref_e {
     ZSTD_dictDefaultAttach = 0,
     ZSTD_dictForceAttach = 1,
@@ -1496,7 +1510,7 @@ extern "C" {
     #[doc = "  `srcSize` must be the _exact_ size of this series"]
     #[doc = "       (i.e. there should be a frame boundary at `src + srcSize`)"]
     #[doc = "  @return : - upper-bound for the decompressed size of all data in all successive frames"]
-    #[doc = "            - if an error occured: ZSTD_CONTENTSIZE_ERROR"]
+    #[doc = "            - if an error occurred: ZSTD_CONTENTSIZE_ERROR"]
     #[doc = ""]
     #[doc = "  note 1  : an error can occur if `src` contains an invalid or incorrectly formatted frame."]
     #[doc = "  note 2  : the upper-bound is exact when the decompressed size field is available in every ZSTD encoded frame of `src`."]
@@ -1599,6 +1613,27 @@ extern "C" {
         inSeqsSize: usize,
         src: *const libc::c_void,
         srcSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_writeSkippableFrame() :"]
+    #[doc = " Generates a zstd skippable frame containing data given by src, and writes it to dst buffer."]
+    #[doc = ""]
+    #[doc = " Skippable frames begin with a a 4-byte magic number. There are 16 possible choices of magic number,"]
+    #[doc = " ranging from ZSTD_MAGIC_SKIPPABLE_START to ZSTD_MAGIC_SKIPPABLE_START+15."]
+    #[doc = " As such, the parameter magicVariant controls the exact skippable frame magic number variant used, so"]
+    #[doc = " the magic number used will be ZSTD_MAGIC_SKIPPABLE_START + magicVariant."]
+    #[doc = ""]
+    #[doc = " Returns an error if destination buffer is not large enough, if the source size is not representable"]
+    #[doc = " with a 4-byte unsigned int, or if the parameter magicVariant is greater than 15 (and therefore invalid)."]
+    #[doc = ""]
+    #[doc = " @return : number of bytes written or a ZSTD error."]
+    pub fn ZSTD_writeSkippableFrame(
+        dst: *mut libc::c_void,
+        dstCapacity: usize,
+        src: *const libc::c_void,
+        srcSize: usize,
+        magicVariant: libc::c_uint,
     ) -> usize;
 }
 extern "C" {
@@ -2037,7 +2072,7 @@ extern "C" {
     #[doc = "  and store it into int* value."]
     #[doc = " @return : 0, or an error code (which can be tested with ZSTD_isError())."]
     pub fn ZSTD_CCtx_getParameter(
-        cctx: *mut ZSTD_CCtx,
+        cctx: *const ZSTD_CCtx,
         param: ZSTD_cParameter,
         value: *mut libc::c_int,
     ) -> usize;
@@ -2107,7 +2142,7 @@ extern "C" {
     #[doc = " Get the requested value of one compression parameter, selected by enum ZSTD_cParameter."]
     #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
     pub fn ZSTD_CCtxParams_getParameter(
-        params: *mut ZSTD_CCtx_params,
+        params: *const ZSTD_CCtx_params,
         param: ZSTD_cParameter,
         value: *mut libc::c_int,
     ) -> usize;

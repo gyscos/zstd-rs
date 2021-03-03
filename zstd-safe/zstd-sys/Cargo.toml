@@ -16,7 +16,7 @@ links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "1.4.19+zstd.1.4.8"
+version = "1.4.20+zstd.1.4.9"
 
 [package.metadata.docs.rs]
 features = ["experimental"]

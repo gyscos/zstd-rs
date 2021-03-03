@@ -2,7 +2,7 @@
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 name = "zstd-safe"
 build = "build.rs"
-version = "3.0.0+zstd.1.4.8"
+version = "3.0.1+zstd.1.4.9"
 description = "Safe low-level bindings for the zstd compression library."
 keywords = ["zstd", "zstandard", "compression"]
 categories = ["api-bindings", "compression"]
@@ -14,7 +14,7 @@ readme = "Readme.md"
 features = ["experimental"]
 
 [dependencies]
-zstd-sys = { path = "./zstd-sys", version = "=1.4.19", default-features = false }
+zstd-sys = { path = "./zstd-sys", version = "=1.4.20", default-features = false }
 libc = "0.2.21"
 
 [features]

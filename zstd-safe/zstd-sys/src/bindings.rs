@@ -63,7 +63,7 @@ pub const __STDC_IEC_559_COMPLEX__: u32 = 1;
 pub const __STDC_ISO_10646__: u32 = 201706;
 pub const __GNU_LIBRARY__: u32 = 6;
 pub const __GLIBC__: u32 = 2;
-pub const __GLIBC_MINOR__: u32 = 32;
+pub const __GLIBC_MINOR__: u32 = 33;
 pub const _SYS_CDEFS_H: u32 = 1;
 pub const __glibc_c99_flexarr_available: u32 = 1;
 pub const __WORDSIZE: u32 = 64;
@@ -156,8 +156,8 @@ pub const CHARCLASS_NAME_MAX: u32 = 2048;
 pub const RE_DUP_MAX: u32 = 32767;
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 4;
-pub const ZSTD_VERSION_RELEASE: u32 = 8;
-pub const ZSTD_VERSION_NUMBER: u32 = 10408;
+pub const ZSTD_VERSION_RELEASE: u32 = 9;
+pub const ZSTD_VERSION_NUMBER: u32 = 10409;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
@@ -511,6 +511,7 @@ pub enum ZSTD_dParameter {
     ZSTD_d_experimentalParam1 = 1000,
     ZSTD_d_experimentalParam2 = 1001,
     ZSTD_d_experimentalParam3 = 1002,
+    ZSTD_d_experimentalParam4 = 1003,
 }
 extern "C" {
     #[doc = " ZSTD_dParam_getBounds() :"]
@@ -958,7 +959,7 @@ extern "C" {
     #[doc = "  Reference a prepared dictionary, to be used for all next compressed frames."]
     #[doc = "  Note that compression parameters are enforced from within CDict,"]
     #[doc = "  and supersede any compression parameter previously set within CCtx."]
-    #[doc = "  The parameters ignored are labled as \"superseded-by-cdict\" in the ZSTD_cParameter enum docs."]
+    #[doc = "  The parameters ignored are labelled as \"superseded-by-cdict\" in the ZSTD_cParameter enum docs."]
     #[doc = "  The ignored parameters will be used again if the CCtx is returned to no-dictionary mode."]
     #[doc = "  The dictionary will remain valid for future compressed frames using same CCtx."]
     #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
@@ -1021,6 +1022,13 @@ extern "C" {
     #[doc = " ZSTD_DCtx_refDDict() :"]
     #[doc = "  Reference a prepared dictionary, to be used to decompress next frames."]
     #[doc = "  The dictionary remains active for decompression of future frames using same DCtx."]
+    #[doc = ""]
+    #[doc = "  If called with ZSTD_d_refMultipleDDicts enabled, repeated calls of this function"]
+    #[doc = "  will store the DDict references in a table, and the DDict used for decompression"]
+    #[doc = "  will be determined at decompression time, as per the dict ID in the frame."]
+    #[doc = "  The memory for the table is allocated on the first call to refDDict, and can be"]
+    #[doc = "  freed with ZSTD_freeDCtx()."]
+    #[doc = ""]
     #[doc = " @result : 0, or an error code (which can be tested with ZSTD_isError())."]
     #[doc = "  Note 1 : Currently, only one dictionary can be managed."]
     #[doc = "           Referencing a new dictionary effectively \"discards\" any previous one."]

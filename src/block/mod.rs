@@ -58,21 +58,9 @@ mod tests {
 
     #[test]
     fn test_direct() {
-        // hipsum.co
-        let text = "Pork belly art party wolf XOXO, neutra scenester ugh \
-                    thundercats tattooed squid skateboard beard readymade \
-                    kogi. VHS cardigan schlitz, meditation chartreuse kogi \
-                    tilde church-key. Actually direct trade hammock, \
-                    aesthetic VHS semiotics organic narwhal lo-fi heirloom \
-                    flexitarian master cleanse polaroid man bun. Flannel \
-                    helvetica mustache, bicycle rights small batch slow-carb \
-                    neutra tilde williamsburg meh poutine humblebrag. Four \
-                    dollar toast butcher actually franzen, gastropub \
-                    mustache tofu cardigan. 90's fingerstache forage \
-                    brooklyn meditation single-origin coffee tofu actually, \
-                    ramps pabst farm-to-table art party kombucha artisan \
-                    fanny pack. Flannel salvia ennui viral leggings selfies.";
-
+        // Can we include_str!("assets/example.txt")?
+        // It's excluded from the packaging step, so maybe not.
+        let text = include_str!("../../assets/example.txt");
         crate::test_cycle_unwrap(
             text.as_bytes(),
             |data| compress(data, 1),

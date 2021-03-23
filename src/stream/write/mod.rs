@@ -273,7 +273,10 @@ impl<'a, W: Write> Decoder<'a, W> {
         Ok(Decoder { writer })
     }
 
+    #[cfg(feature = "experimental")]
     /// Enables or disabled expecting the 4-byte magic header
+    ///
+    /// Only available with the `experimental` feature.
     pub fn include_magicbytes(
         &mut self,
         include_magicbytes: bool,

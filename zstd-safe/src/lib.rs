@@ -701,9 +701,13 @@ impl<'a> DCtx<'a> {
     }
 
     /// Wraps the `ZSTD_resetDStream()` function.
-    #[cfg(feature = "experimental")]
     pub fn reset(&mut self) -> SafeResult {
-        let code = unsafe { zstd_sys::ZSTD_resetDStream(self.0) };
+        let code = unsafe {
+            zstd_sys::ZSTD_DCtx_reset(
+                self.0,
+                ResetDirective::ZSTD_reset_session_only,
+            )
+        };
         parse_code(code)
     }
 

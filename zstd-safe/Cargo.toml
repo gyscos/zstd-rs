@@ -27,3 +27,4 @@ legacy = ["zstd-sys/legacy"]
 pkg-config = ["zstd-sys/pkg-config"]
 std = ["zstd-sys/std"] # Use std instead of libc types - useful on wasm.
 zstdmt = ["zstd-sys/zstdmt"]
+thin = ['zstd-sys/thin']

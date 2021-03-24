@@ -65,6 +65,7 @@ fn set_legacy(_config: &mut cc::Build) {}
 #[cfg(feature = "legacy")]
 fn set_legacy(config: &mut cc::Build) {
     config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
+    config.include("zstd/lib/legacy");
 }
 
 #[cfg(feature = "zstdmt")]
@@ -91,8 +92,8 @@ fn compile_zstd() {
         "zstd/lib/common",
         "zstd/lib/compress",
         "zstd/lib/decompress",
-        "zstd/lib/legacy",
         "zstd/lib/dictBuilder",
+        #[cfg(feature = "legacy")] "zstd/lib/legacy",
     ] {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
@@ -106,10 +107,18 @@ fn compile_zstd() {
     config.opt_level(3);
     config.include("zstd/lib/");
     config.include("zstd/lib/common");
-    config.include("zstd/lib/legacy");
     config.warnings(false);
 
     config.define("ZSTD_LIB_DEPRECATED", Some("0"));
+
+    #[cfg(feature = "thin")] {
+        config.define("HUF_FORCE_DECOMPRESS_X1", Some("1"));
+        config.define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"));
+        config.define("ZSTD_NO_INLINE ", Some("1"));
+        config.define("ZSTD_STRIP_ERROR_STRINGS ", Some("1"));
+        config.flag("-flto=thin");
+        config.flag("-Oz");
+    }
 
     // Hide symbols from resulting library,
     // so we can be used with another zstd-linking lib.

@@ -37,3 +37,4 @@ legacy = ["zstd-safe/legacy"]
 pkg-config = ["zstd-safe/pkg-config"]
 wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc
 zstdmt = ["zstd-safe/zstdmt"]
+thin = ["zstd-safe/thin"]

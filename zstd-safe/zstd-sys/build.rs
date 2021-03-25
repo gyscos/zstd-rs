@@ -115,7 +115,6 @@ fn compile_zstd() {
         config.define("HUF_FORCE_DECOMPRESS_X1", Some("1"));
         config.define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"));
         config.define("ZSTD_NO_INLINE ", Some("1"));
-        config.define("ZSTD_STRIP_ERROR_STRINGS ", Some("1"));
         config.flag("-flto=thin");
         config.flag("-Oz");
     }

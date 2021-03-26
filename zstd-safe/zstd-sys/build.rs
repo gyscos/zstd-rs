@@ -97,6 +97,15 @@ fn compile_zstd() {
     ] {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
+            // Skip xxhash*.c files: since we are using the "PRIVATE API"
+            // mode, it will be inlined in the headers.
+            if path
+                .file_name()
+                .and_then(|p| p.to_str())
+                .map_or(false, |p| p.contains("xxhash"))
+            {
+                continue;
+            }
             if path.extension() == Some(OsStr::new("c")) {
                 config.file(path);
             }
@@ -123,6 +132,7 @@ fn compile_zstd() {
     // so we can be used with another zstd-linking lib.
     // See https://github.com/gyscos/zstd-rs/issues/58
     config.flag("-fvisibility=hidden");
+    config.define("XXH_PRIVATE_API", Some(""));
     config.define("ZSTDLIB_VISIBILITY", Some(""));
     config.define("ZDICTLIB_VISIBILITY", Some(""));
     config.define("ZSTDERRORLIB_VISIBILITY", Some(""));

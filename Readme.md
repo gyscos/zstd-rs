@@ -1,6 +1,8 @@
 # zstd
 
-[![Build Status](https://travis-ci.org/gyscos/zstd-rs.svg?branch=master)](https://travis-ci.org/gyscos/zstd-rs)
+[![Build on Linux](https://github.com/gyscos/zstd-rs/actions/workflows/linux.yml/badge.svg)](https://github.com/gyscos/zstd-rs/actions/workflows/linux.yml)
+[![Build on Windows](https://github.com/gyscos/zstd-rs/actions/workflows/windows.yml/badge.svg)](https://github.com/gyscos/zstd-rs/actions/workflows/windows.yml)
+[![Build on macOS](https://github.com/gyscos/zstd-rs/actions/workflows/macos.yml/badge.svg)](https://github.com/gyscos/zstd-rs/actions/workflows/macos.yml)
 [![crates.io](http://meritbadge.herokuapp.com/zstd)](https://crates.io/crates/zstd)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 

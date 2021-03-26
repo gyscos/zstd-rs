@@ -74,9 +74,12 @@ macro_rules! readwritecommon {
             )
         }
 
+        #[cfg(feature = "experimental")]
         /// Enables or disable the magic bytes at the beginning of each frame.
         ///
         /// If disabled, include_magicbytes must also be called on the decoder.
+        ///
+        /// Only available with the `experimental` feature.
         pub fn include_magicbytes(
             &mut self,
             include_magicbytes: bool,

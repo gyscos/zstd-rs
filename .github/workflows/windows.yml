@@ -20,7 +20,7 @@ jobs:
           - x86_64-pc-windows-gnu
           - x86_64-pc-windows-msvc
         channel: [ stable ]
-        
+
     runs-on: windows-latest
 
     steps:

@@ -39,9 +39,12 @@ impl EncoderDictionary<'static> {
 }
 
 impl<'a> EncoderDictionary<'a> {
+    #[cfg(feature = "experimental")]
     /// Create prepared dictionary for compression
     ///
     /// A level of `0` uses zstd's default (currently `3`).
+    ///
+    /// Only available with the `experimental` feature. Use `EncoderDictionary::copy` otherwise.
     pub fn new(dictionary: &'a [u8], level: i32) -> Self {
         Self {
             cdict: zstd_safe::create_cdict_by_reference(dictionary, level),
@@ -71,7 +74,10 @@ impl DecoderDictionary<'static> {
 }
 
 impl<'a> DecoderDictionary<'a> {
+    #[cfg(feature = "experimental")]
     /// Create prepared dictionary for decompression
+    ///
+    /// Only available with the `experimental` feature. Use `DecoderDictionary::copy` otherwise.
     pub fn new(dict: &'a [u8]) -> Self {
         Self {
             ddict: zstd_safe::create_ddict_by_reference(dict),

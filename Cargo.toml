@@ -8,15 +8,18 @@ license = "MIT"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "0.6.1+zstd.1.4.9"
-exclude = ["assets/**"]
+exclude = ["assets/*.zst"]
 readme = "Readme.md"
 edition = "2018"
+
+[package.metadata.docs.rs]
+features = ["experimental"]
 
 [badges]
 travis-ci = { repository = "gyscos/zstd-rs" }
 
 [dependencies]
-zstd-safe = { path = "./zstd-safe", version = "=3.0.1", default-features = false, features = ["experimental"] }
+zstd-safe = { path = "./zstd-safe", version = "=3.0.1", default-features = false}
 tokio-io = { version = "0.1", optional = true }
 futures = { version = "0.1", optional = true }
 
@@ -37,4 +40,5 @@ legacy = ["zstd-safe/legacy"]
 pkg-config = ["zstd-safe/pkg-config"]
 wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc
 zstdmt = ["zstd-safe/zstdmt"]
+experimental = ["zstd-safe/experimental"]
 thin = ["zstd-safe/thin"]

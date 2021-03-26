@@ -82,7 +82,10 @@ impl<'a, R: BufRead> Decoder<'a, R> {
         zstd_safe::DCtx::out_size()
     }
 
+    #[cfg(feature = "experimental")]
     /// Enables or disabled expecting the 4-byte magic header
+    ///
+    /// Only available when using the `experimental` feature.
     pub fn include_magicbytes(
         &mut self,
         include_magicbytes: bool,

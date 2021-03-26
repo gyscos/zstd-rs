@@ -180,6 +180,7 @@ impl Operation for Decoder<'_> {
         self.context.reset().map_err(map_error_code)?;
         Ok(())
     }
+
     fn finish(
         &mut self,
         _output: &mut OutBuffer<'_>,

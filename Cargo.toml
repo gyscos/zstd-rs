@@ -41,3 +41,4 @@ pkg-config = ["zstd-safe/pkg-config"]
 wasm = ["zstd-safe/std"] # To compile on wasm we need to avoid using libc
 zstdmt = ["zstd-safe/zstdmt"]
 experimental = ["zstd-safe/experimental"]
+thin = ["zstd-safe/thin"]

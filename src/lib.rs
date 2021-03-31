@@ -28,10 +28,17 @@ pub mod block;
 pub mod dict;
 pub mod stream;
 
+use std::fmt::Debug;
 use std::io;
+use std::ops::RangeBounds;
 
 /// Default compression level.
 pub use zstd_safe::CLEVEL_DEFAULT as DEFAULT_COMPRESSION_LEVEL;
+
+/// The accepted range of compression levels.
+pub fn compression_level_range() -> impl RangeBounds<zstd_safe::CompressionLevel> + Debug {
+    zstd_safe::min_c_level()..=zstd_safe::max_c_level()
+}
 
 #[doc(no_inline)]
 pub use crate::stream::{decode_all, encode_all, Decoder, Encoder};
@@ -62,4 +69,9 @@ where
     G: Fn(&[u8]) -> io::Result<Vec<u8>>,
 {
     test_cycle(data, |data| f(data).unwrap(), |data| g(data).unwrap())
+}
+
+#[test]
+fn default_compression_level_in_range() {
+    assert!(compression_level_range().contains(&DEFAULT_COMPRESSION_LEVEL));
 }

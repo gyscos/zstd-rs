@@ -28,15 +28,14 @@ pub mod block;
 pub mod dict;
 pub mod stream;
 
-use std::fmt::Debug;
 use std::io;
-use std::ops::RangeBounds;
 
 /// Default compression level.
 pub use zstd_safe::CLEVEL_DEFAULT as DEFAULT_COMPRESSION_LEVEL;
 
 /// The accepted range of compression levels.
-pub fn compression_level_range() -> impl RangeBounds<zstd_safe::CompressionLevel> + Debug {
+pub fn compression_level_range(
+) -> std::ops::RangeInclusive<zstd_safe::CompressionLevel> {
     zstd_safe::min_c_level()..=zstd_safe::max_c_level()
 }
 

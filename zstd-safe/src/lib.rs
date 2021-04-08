@@ -1108,6 +1108,10 @@ pub trait Container {
     /// Indicates that the first `n` bytes of the container have been initialized.
     unsafe fn initialized_until(&mut self, n: usize);
 
+    /// Call the given closure using the pointer and capacity from `self`.
+    ///
+    /// Assumes the given function returns a parseable code, which if valid, represents how many
+    /// bytes were written to `self`.
     unsafe fn write_from<F>(&mut self, f: F) -> SafeResult
     where
         F: FnOnce(*mut c_void, usize) -> usize,
@@ -1196,6 +1200,10 @@ impl<'a> Container for OutBuffer<'a, [u8]> {
 /// Bytes will be written starting at `dst[pos]`.
 ///
 /// `pos` will be updated after writing.
+///
+/// # Invariant
+///
+/// `pos <= dst.capacity()`
 pub struct OutBuffer<'a, C: Container + ?Sized> {
     pub dst: &'a mut C,
     pos: usize,

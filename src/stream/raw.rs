@@ -95,12 +95,16 @@ impl Operation for NoOp {
     ) -> io::Result<usize> {
         // Skip the prelude
         let src = &input.src[input.pos..];
+        // Safe because `output.pos() <= output.dst.capacity()`.
         let dst = unsafe { output.dst.as_mut_ptr().add(output.pos()) };
 
         // Ignore anything past the end
         let len = usize::min(src.len(), output.dst.capacity());
         let src = &src[..len];
 
+        // Safe because:
+        // * `len` is less than either of the two lengths
+        // * `src` and `dst` do not overlap because we have `&mut` to each.
         unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), dst, len) };
         input.set_pos(input.pos() + len);
         output.set_pos(output.pos() + len);

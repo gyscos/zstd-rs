@@ -69,9 +69,8 @@ where
             // Let's fill this buffer again!
 
             let finished_frame = self.finished_frame;
-            let hint = unsafe {
-                self.with_full_buffer(|dst, op| op.finish(dst, finished_frame))
-            };
+            let hint =
+                self.with_buffer(|dst, op| op.finish(dst, finished_frame));
             self.offset = 0;
             // println!("Hint: {:?}\nOut:{:?}", hint, &self.buffer);
 
@@ -95,24 +94,14 @@ where
 
     /// Run the given closure on `self.buffer`.
     ///
-    /// Before running it, the buffer will look as big as its capacity,
-    /// but the memory there may be uninitialized.
-    ///
-    /// It is only safe to write in this buffer, not to read from there.
-    unsafe fn with_full_buffer<F, T>(&mut self, f: F) -> T
+    /// The buffer will be cleared, and made available wrapped in an `OutBuffer`.
+    fn with_buffer<F, T>(&mut self, f: F) -> T
     where
-        F: FnOnce(&mut OutBuffer<'_>, &mut D) -> T,
+        F: FnOnce(&mut OutBuffer<'_, Vec<u8>>, &mut D) -> T,
     {
-        let capacity = self.buffer.capacity();
-        self.buffer.set_len(capacity);
-
-        let (bytes_written, result) = {
-            let mut output = OutBuffer::around(&mut self.buffer);
-            let result = f(&mut output, &mut self.operation);
-            (output.pos, result)
-        };
-        self.buffer.set_len(bytes_written);
-        result
+        self.buffer.clear();
+        let mut output = OutBuffer::around(&mut self.buffer);
+        f(&mut output, &mut self.operation)
     }
 
     /// Attempt to write `self.buffer` to the wrapped writer.
@@ -195,9 +184,7 @@ where
             }
 
             let mut src = InBuffer::around(buf);
-            let hint = unsafe {
-                self.with_full_buffer(|dst, op| op.run(&mut src, dst))
-            };
+            let hint = self.with_buffer(|dst, op| op.run(&mut src, dst));
             let bytes_read = src.pos;
 
             // println!("Hint: {:?}\nRead {}", hint, bytes_read);
@@ -227,8 +214,7 @@ where
                 return Ok(());
             }
 
-            let hint =
-                unsafe { self.with_full_buffer(|dst, op| op.flush(dst)) };
+            let hint = self.with_buffer(|dst, op| op.flush(dst));
 
             self.offset = 0;
             let hint = hint?;

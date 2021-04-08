@@ -33,20 +33,15 @@ impl Compressor {
     /// (for instance if the destination buffer was too small).
     ///
     /// A level of `0` uses zstd's default (currently `3`).
-    pub fn compress_to_buffer(
+    pub fn compress_to_buffer<C: zstd_safe::Container + ?Sized>(
         &mut self,
         source: &[u8],
-        destination: &mut [u8],
+        destination: &mut C,
         level: i32,
     ) -> io::Result<usize> {
-        zstd_safe::compress_using_dict(
-            &mut self.context,
-            destination,
-            source,
-            &self.dict[..],
-            level,
-        )
-        .map_err(map_error_code)
+        self.context
+            .compress_using_dict(destination, source, &self.dict[..], level)
+            .map_err(map_error_code)
     }
 
     /// Compresses a block of data and returns the compressed result.

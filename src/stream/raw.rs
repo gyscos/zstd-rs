@@ -6,7 +6,7 @@
 //! They are mostly thin wrappers around `zstd_safe::{DCtx, CCtx}`.
 use std::io;
 
-pub use zstd_safe::{CParameter, Container, DParameter, InBuffer, OutBuffer};
+pub use zstd_safe::{CParameter, DParameter, InBuffer, OutBuffer, WriteBuf};
 
 use crate::dict::{DecoderDictionary, EncoderDictionary};
 use crate::map_error_code;
@@ -21,7 +21,7 @@ pub trait Operation {
     ///
     /// If the result is `Ok(0)`, it may indicate that a frame was just
     /// finished.
-    fn run<C: Container + ?Sized>(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_, C>,
@@ -52,7 +52,7 @@ pub trait Operation {
     ///
     /// Returns the number of bytes still in the buffer.
     /// To flush entirely, keep calling until it returns `Ok(0)`.
-    fn flush<C: Container + ?Sized>(
+    fn flush<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize> {
@@ -73,7 +73,7 @@ pub trait Operation {
     ///
     /// Keep calling this method until it returns `Ok(0)`,
     /// and then don't ever call this method.
-    fn finish<C: Container + ?Sized>(
+    fn finish<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
         finished_frame: bool,
@@ -88,7 +88,7 @@ pub trait Operation {
 pub struct NoOp;
 
 impl Operation for NoOp {
-    fn run<C: Container + ?Sized>(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_, C>,
@@ -174,7 +174,7 @@ impl<'a> Decoder<'a> {
 }
 
 impl Operation for Decoder<'_> {
-    fn run<C: Container + ?Sized>(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_, C>,
@@ -189,7 +189,7 @@ impl Operation for Decoder<'_> {
         Ok(())
     }
 
-    fn finish<C: Container + ?Sized>(
+    fn finish<C: WriteBuf + ?Sized>(
         &mut self,
         _output: &mut OutBuffer<'_, C>,
         finished_frame: bool,
@@ -257,7 +257,7 @@ impl<'a> Encoder<'a> {
 }
 
 impl<'a> Operation for Encoder<'a> {
-    fn run<C: Container + ?Sized>(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_, C>,
@@ -267,14 +267,14 @@ impl<'a> Operation for Encoder<'a> {
             .map_err(map_error_code)
     }
 
-    fn flush<C: Container + ?Sized>(
+    fn flush<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize> {
         self.context.flush_stream(output).map_err(map_error_code)
     }
 
-    fn finish<C: Container + ?Sized>(
+    fn finish<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
         _finished_frame: bool,

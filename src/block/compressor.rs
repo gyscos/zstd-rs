@@ -33,7 +33,7 @@ impl Compressor {
     /// (for instance if the destination buffer was too small).
     ///
     /// A level of `0` uses zstd's default (currently `3`).
-    pub fn compress_to_buffer<C: zstd_safe::Container + ?Sized>(
+    pub fn compress_to_buffer<C: zstd_safe::WriteBuf + ?Sized>(
         &mut self,
         source: &[u8],
         destination: &mut C,

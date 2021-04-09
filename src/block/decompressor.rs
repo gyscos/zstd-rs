@@ -30,7 +30,7 @@ impl Decompressor {
     ///
     /// Returns the number of bytes written, or an error if something happened
     /// (for instance if the destination buffer was too small).
-    pub fn decompress_to_buffer<C: zstd_safe::Container + ?Sized>(
+    pub fn decompress_to_buffer<C: zstd_safe::WriteBuf + ?Sized>(
         &mut self,
         source: &[u8],
         destination: &mut C,

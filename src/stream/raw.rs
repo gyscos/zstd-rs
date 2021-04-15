@@ -107,7 +107,7 @@ impl Operation for NoOp {
         // * `src` and `dst` do not overlap because we have `&mut` to each.
         unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), dst, len) };
         input.set_pos(input.pos() + len);
-        output.set_pos(output.pos() + len);
+        unsafe { output.set_pos(output.pos() + len) };
 
         Ok(0)
     }

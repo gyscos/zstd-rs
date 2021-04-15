@@ -56,8 +56,6 @@ impl Compressor {
         let buffer_len = zstd_safe::compress_bound(data.len());
         let mut buffer = Vec::with_capacity(buffer_len);
 
-        // Use all capacity.
-        // Memory may not be initialized, but we won't read it.
         self.compress_to_buffer(data, &mut buffer, level)?;
 
         // Should we shrink the vec? Meh, let the user do it if he wants.

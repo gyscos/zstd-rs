@@ -1,5 +1,7 @@
 use crate::map_error_code;
 
+#[cfg(feature = "experimental")]
+use std::convert::TryInto;
 use std::io;
 use zstd_safe;
 
@@ -54,7 +56,7 @@ impl Decompressor {
         capacity: usize,
     ) -> io::Result<Vec<u8>> {
         let capacity =
-            self.upper_bound(data).unwrap_or(capacity).min(capacity);
+            Self::upper_bound(data).unwrap_or(capacity).min(capacity);
         let mut buffer = Vec::with_capacity(capacity);
         unsafe {
             buffer.set_len(capacity);
@@ -66,15 +68,16 @@ impl Decompressor {
 
     /// Get an upper bound on the decompressed size of data, if available
     ///
-    /// This can be used to pre-allocate enough capacity for [`decompress_to_buffer`]
-    /// and is used by [`decompress`] to ensure that it does not over-allocate if
+    /// This can be used to pre-allocate enough capacity for `decompress_to_buffer`
+    /// and is used by `decompress` to ensure that it does not over-allocate if
     /// you supply a large `capacity`.
     ///
-    /// Will return `None` if the upper bound cannot be determined
-    pub fn upper_bound(&self, _data: &[u8]) -> Option<usize> {
+    /// Will return `None` if the upper bound cannot be determined or is larger than `usize::MAX`
+    pub fn upper_bound(_data: &[u8]) -> Option<usize> {
         #[cfg(feature = "experimental")]
         {
-            zstd_safe::decompress_bound(_data)
+            let bound = zstd_safe::decompress_bound(_data).ok()?;
+            bound.try_into().ok()
         }
         #[cfg(not(feature = "experimental"))]
         {

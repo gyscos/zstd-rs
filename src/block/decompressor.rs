@@ -53,6 +53,8 @@ impl Decompressor {
         data: &[u8],
         capacity: usize,
     ) -> io::Result<Vec<u8>> {
+        let capacity =
+            self.upper_bound(data).unwrap_or(capacity).min(capacity);
         let mut buffer = Vec::with_capacity(capacity);
         unsafe {
             buffer.set_len(capacity);
@@ -60,6 +62,24 @@ impl Decompressor {
             buffer.set_len(len);
         }
         Ok(buffer)
+    }
+
+    /// Get an upper bound on the decompressed size of data, if available
+    ///
+    /// This can be used to pre-allocate enough capacity for [`decompress_to_buffer`]
+    /// and is used by [`decompress`] to ensure that it does not over-allocate if
+    /// you supply a large `capacity`.
+    ///
+    /// Will return `None` if the upper bound cannot be determined
+    pub fn upper_bound(&self, _data: &[u8]) -> Option<usize> {
+        #[cfg(feature = "experimental")]
+        {
+            zstd_safe::decompress_bound(_data)
+        }
+        #[cfg(not(feature = "experimental"))]
+        {
+            None
+        }
     }
 }
 

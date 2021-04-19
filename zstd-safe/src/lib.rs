@@ -1622,3 +1622,16 @@ pub fn decompress_block(dctx: &mut DCtx, dst: &mut [u8], src: &[u8]) -> usize {
 pub fn insert_block(dctx: &mut DCtx, block: &[u8]) -> usize {
     dctx.insert_block(block)
 }
+
+/// Wraps the `ZSTD_decompressBound` function
+#[cfg(feature = "experimental")]
+pub fn decompress_bound(data: &[u8]) -> Option<usize> {
+    let bound =
+        unsafe { zstd_sys::ZSTD_decompressBound(ptr_void(data), data.len()) }
+            as usize;
+    if is_error(bound) {
+        None
+    } else {
+        Some(bound)
+    }
+}

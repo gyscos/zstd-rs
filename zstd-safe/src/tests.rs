@@ -123,3 +123,16 @@ fn test_checksum() {
     // The error message will complain about the checksum.
     assert!(err.contains("checksum"));
 }
+
+#[cfg(feature="experimental")]
+#[test]
+fn test_upper_bound() {
+    let mut buffer = std::vec![0u8; 256];
+
+    assert!(zstd_safe::decompress_bound(&buffer).is_err());
+
+    let written = zstd_safe::compress(&mut buffer, INPUT, 3).unwrap();
+    let compressed = &buffer[..written];
+
+    assert_eq!(zstd_safe::decompress_bound(&compressed), Ok(INPUT.len() as u64));
+}

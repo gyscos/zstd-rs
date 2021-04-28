@@ -121,7 +121,7 @@ fn ptr_void(src: &[u8]) -> *const c_void {
     src.as_ptr() as *const c_void
 }
 
-fn ptr_mut_void(dst: &mut [u8]) -> *mut c_void {
+fn ptr_mut_void(dst: &mut (impl WriteBuf + ?Sized)) -> *mut c_void {
     dst.as_mut_ptr() as *mut c_void
 }
 
@@ -144,34 +144,39 @@ pub fn max_c_level() -> CompressionLevel {
 }
 
 /// Wraps the `ZSTD_compress` function.
-pub fn compress(
-    dst: &mut [u8],
+pub fn compress<C: WriteBuf + ?Sized>(
+    dst: &mut C,
     src: &[u8],
     compression_level: CompressionLevel,
 ) -> SafeResult {
-    let code = unsafe {
-        zstd_sys::ZSTD_compress(
-            ptr_mut_void(dst),
-            dst.len(),
-            ptr_void(src),
-            src.len(),
-            compression_level,
-        )
-    };
-    parse_code(code)
+    unsafe {
+        dst.write_from(|buffer, capacity| {
+            parse_code(zstd_sys::ZSTD_compress(
+                buffer,
+                capacity,
+                ptr_void(src),
+                src.len(),
+                compression_level,
+            ))
+        })
+    }
 }
 
 /// Wraps the `ZSTD_decompress` function.
-pub fn decompress(dst: &mut [u8], src: &[u8]) -> SafeResult {
-    let code = unsafe {
-        zstd_sys::ZSTD_decompress(
-            ptr_mut_void(dst),
-            dst.len(),
-            ptr_void(src),
-            src.len(),
-        )
-    };
-    parse_code(code)
+pub fn decompress<C: WriteBuf + ?Sized>(
+    dst: &mut C,
+    src: &[u8],
+) -> SafeResult {
+    unsafe {
+        dst.write_from(|buffer, capacity| {
+            parse_code(zstd_sys::ZSTD_decompress(
+                buffer,
+                capacity,
+                ptr_void(src),
+                src.len(),
+            ))
+        })
+    }
 }
 
 /// Wraps the `ZSTD_getDecompressedSize` function.
@@ -204,79 +209,88 @@ impl CCtx<'static> {
 
 impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_compressCCtx()` function
-    pub fn compress(
+    pub fn compress<C: WriteBuf + ?Sized>(
         &mut self,
-        dst: &mut [u8],
+        dst: &mut C,
         src: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_compressCCtx(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-                compression_level,
-            )
-        };
-        parse_code(code)
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_compressCCtx(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                    compression_level,
+                ))
+            })
+        }
     }
 
     /// Wraps the `ZSTD_compress2()` function.
-    pub fn compress2(&mut self, dst: &mut [u8], src: &[u8]) -> SafeResult {
-        parse_code(unsafe {
-            zstd_sys::ZSTD_compress2(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-            )
-        })
+    pub fn compress2<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        src: &[u8],
+    ) -> SafeResult {
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_compress2(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                ))
+            })
+        }
     }
 
     /// Wraps the `ZSTD_compress_usingDict()` function.
-    pub fn compress_using_dict(
+    pub fn compress_using_dict<C: WriteBuf + ?Sized>(
         &mut self,
-        dst: &mut [u8],
+        dst: &mut C,
         src: &[u8],
         dict: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_compress_usingDict(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-                ptr_void(dict),
-                dict.len(),
-                compression_level,
-            )
-        };
-        parse_code(code)
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_compress_usingDict(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                    ptr_void(dict),
+                    dict.len(),
+                    compression_level,
+                ))
+            })
+        }
     }
 
     /// Wraps the `ZSTD_compress_usingCDict()` function.
-    pub fn compress_using_cdict(
+    pub fn compress_using_cdict<C: WriteBuf + ?Sized>(
         &mut self,
-        dst: &mut [u8],
+        dst: &mut C,
         src: &[u8],
         cdict: &CDict,
     ) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_compress_usingCDict(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-                cdict.0,
-            )
-        };
-        parse_code(code)
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_compress_usingCDict(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                    cdict.0,
+                ))
+            })
+        }
     }
 
     pub fn init(&mut self, compression_level: CompressionLevel) -> usize {
@@ -364,9 +378,9 @@ impl<'a> CCtx<'a> {
         })
     }
 
-    pub fn compress_stream(
+    pub fn compress_stream<C: WriteBuf + ?Sized>(
         &mut self,
-        output: &mut OutBuffer,
+        output: &mut OutBuffer<'_, C>,
         input: &mut InBuffer,
     ) -> SafeResult {
         let mut output = output.wrap();
@@ -382,9 +396,9 @@ impl<'a> CCtx<'a> {
     }
 
     /// Wraps the `ZSTD_compressStream2()` function.
-    pub fn compress_stream2(
+    pub fn compress_stream2<C: WriteBuf + ?Sized>(
         &mut self,
-        output: &mut OutBuffer,
+        output: &mut OutBuffer<'_, C>,
         input: &mut InBuffer,
         end_op: zstd_sys::ZSTD_EndDirective,
     ) -> SafeResult {
@@ -401,7 +415,10 @@ impl<'a> CCtx<'a> {
     }
 
     /// Wraps the `ZSTD_flushStream()` function.
-    pub fn flush_stream(&mut self, output: &mut OutBuffer) -> SafeResult {
+    pub fn flush_stream<C: WriteBuf + ?Sized>(
+        &mut self,
+        output: &mut OutBuffer<'_, C>,
+    ) -> SafeResult {
         let mut output = output.wrap();
         let code = unsafe {
             zstd_sys::ZSTD_flushStream(self.0, ptr_mut(&mut output))
@@ -410,7 +427,10 @@ impl<'a> CCtx<'a> {
     }
 
     /// Wraps the `ZSTD_endStream()` function.
-    pub fn end_stream(&mut self, output: &mut OutBuffer) -> SafeResult {
+    pub fn end_stream<C: WriteBuf + ?Sized>(
+        &mut self,
+        output: &mut OutBuffer<'_, C>,
+    ) -> SafeResult {
         let mut output = output.wrap();
         let code =
             unsafe { zstd_sys::ZSTD_endStream(self.0, ptr_mut(&mut output)) };
@@ -510,21 +530,22 @@ impl<'a> CCtx<'a> {
 
     /// Wraps the `ZSTD_compressBlock()` function.
     #[cfg(feature = "experimental")]
-    pub fn compress_block(
+    pub fn compress_block<C: WriteBuf + ?Sized>(
         &mut self,
-        dst: &mut [u8],
+        dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_compressBlock(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-            )
-        };
-        parse_code(code)
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_compressBlock(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                ))
+            })
+        }
     }
     pub fn in_size() -> usize {
         unsafe { zstd_sys::ZSTD_CStreamInSize() }
@@ -615,56 +636,65 @@ impl DCtx<'static> {
 
 impl<'a> DCtx<'a> {
     /// Wraps the `ZSTD_decompressDCtx()` function.
-    pub fn decompress(&mut self, dst: &mut [u8], src: &[u8]) -> SafeResult {
-        parse_code(unsafe {
-            zstd_sys::ZSTD_decompressDCtx(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-            )
-        })
+    pub fn decompress<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        src: &[u8],
+    ) -> SafeResult {
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_decompressDCtx(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                ))
+            })
+        }
     }
 
-    pub fn decompress_using_dict(
+    /// Wraps `ZSTD_decompress_usingDict`
+    pub fn decompress_using_dict<C: WriteBuf + ?Sized>(
         &mut self,
-        dst: &mut [u8],
+        dst: &mut C,
         src: &[u8],
         dict: &[u8],
     ) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_decompress_usingDict(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-                ptr_void(dict),
-                dict.len(),
-            )
-        };
-        parse_code(code)
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_decompress_usingDict(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                    ptr_void(dict),
+                    dict.len(),
+                ))
+            })
+        }
     }
 
     /// Wraps the `ZSTD_decompress_usingDDict()` function.
-    pub fn decompress_using_ddict(
+    pub fn decompress_using_ddict<C: WriteBuf + ?Sized>(
         &mut self,
-        dst: &mut [u8],
+        dst: &mut C,
         src: &[u8],
         ddict: &DDict,
     ) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_decompress_usingDDict(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-                ddict.0,
-            )
-        };
-        parse_code(code)
+        unsafe {
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_decompress_usingDDict(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                    ddict.0,
+                ))
+            })
+        }
     }
 
     /// Wraps the `ZSTD_initCStream()` function.
@@ -770,9 +800,9 @@ impl<'a> DCtx<'a> {
     }
 
     /// Wraps the `ZSTD_decompressStream()` function.
-    pub fn decompress_stream(
+    pub fn decompress_stream<C: WriteBuf + ?Sized>(
         &mut self,
-        output: &mut OutBuffer,
+        output: &mut OutBuffer<'_, C>,
         input: &mut InBuffer,
     ) -> SafeResult {
         let mut output = output.wrap();
@@ -808,15 +838,21 @@ impl<'a> DCtx<'a> {
 
     /// Wraps the `ZSTD_decompressBlock()` function.
     #[cfg(feature = "experimental")]
-    pub fn decompress_block(&mut self, dst: &mut [u8], src: &[u8]) -> usize {
+    pub fn decompress_block<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        src: &[u8],
+    ) -> SafeResult {
         unsafe {
-            zstd_sys::ZSTD_decompressBlock(
-                self.0,
-                ptr_mut_void(dst),
-                dst.len(),
-                ptr_void(src),
-                src.len(),
-            )
+            dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_decompressBlock(
+                    self.0,
+                    buffer,
+                    capacity,
+                    ptr_void(src),
+                    src.len(),
+                ))
+            })
         }
     }
 
@@ -1048,15 +1084,135 @@ pub struct InBuffer<'a> {
     pub pos: usize,
 }
 
+/// Describe a resizeable bytes container like `Vec<u8>`.
+///
+/// Can start from uninitialized memory, and will be partially filled.
+///
+/// Should be implemented by a contiguous chunk of memory.
+///
+/// The main implementors are:
+/// * `Vec<u8>` and similar structures. These can start empty with a non-zero capacity, and they
+///   will be resized to cover the data written.
+/// * `[u8]` and `[u8; N]`. These must start already-initialized, and will not be resized. It will
+///   be up to the caller to only use the part that was written.
+pub unsafe trait WriteBuf {
+    /// Returns the valid data part of this container. Should only cover initialized data.
+    fn as_slice(&self) -> &[u8];
+
+    /// Returns the full capacity of this container. May include uninitialized data.
+    fn capacity(&self) -> usize;
+
+    /// Returns a pointer to the start of the data.
+    fn as_mut_ptr(&mut self) -> *mut u8;
+
+    /// Indicates that the first `n` bytes of the container have been written.
+    unsafe fn filled_until(&mut self, n: usize);
+
+    /// Call the given closure using the pointer and capacity from `self`.
+    ///
+    /// Assumes the given function returns a parseable code, which if valid, represents how many
+    /// bytes were written to `self`.
+    ///
+    /// The given closure must treat its first argument as pointing to potentially uninitialized
+    /// memory, and should not read from it.
+    ///
+    /// In addition, it must have written at least `n` bytes contiguously from this pointer, where
+    /// `n` is the returned value.
+    unsafe fn write_from<F>(&mut self, f: F) -> SafeResult
+    where
+        F: FnOnce(*mut c_void, usize) -> SafeResult,
+    {
+        let res = f(ptr_mut_void(self), self.capacity());
+        if let Ok(n) = res {
+            self.filled_until(n);
+        }
+        res
+    }
+}
+
+#[cfg(feature = "std")]
+unsafe impl WriteBuf for std::vec::Vec<u8> {
+    fn as_slice(&self) -> &[u8] {
+        &self[..]
+    }
+    fn capacity(&self) -> usize {
+        self.capacity()
+    }
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr()
+    }
+    unsafe fn filled_until(&mut self, n: usize) {
+        self.set_len(n);
+    }
+}
+
+unsafe impl<const N: usize> WriteBuf for [u8; N] {
+    fn as_slice(&self) -> &[u8] {
+        self
+    }
+    fn capacity(&self) -> usize {
+        self.len()
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        (&mut self[..]).as_mut_ptr()
+    }
+
+    unsafe fn filled_until(&mut self, _n: usize) {
+        // Assume the slice is already initialized
+    }
+}
+
+unsafe impl WriteBuf for [u8] {
+    fn as_slice(&self) -> &[u8] {
+        self
+    }
+    fn capacity(&self) -> usize {
+        self.len()
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr()
+    }
+
+    unsafe fn filled_until(&mut self, _n: usize) {
+        // Assume the slice is already initialized
+    }
+}
+
+/*
+// This is possible, but... why?
+unsafe impl<'a> WriteBuf for OutBuffer<'a, [u8]> {
+    fn as_slice(&self) -> &[u8] {
+        self.dst
+    }
+    fn capacity(&self) -> usize {
+        self.dst.len()
+    }
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.dst.as_mut_ptr()
+    }
+    unsafe fn filled_until(&mut self, n: usize) {
+        self.pos = n;
+    }
+}
+*/
+
 #[derive(Debug)]
 /// Wrapper around an output buffer.
+///
+/// `C` is usually either `[u8]` or `Vec<u8>`.
 ///
 /// Bytes will be written starting at `dst[pos]`.
 ///
 /// `pos` will be updated after writing.
-pub struct OutBuffer<'a> {
-    pub dst: &'a mut [u8],
-    pub pos: usize,
+///
+/// # Invariant
+///
+/// `pos <= dst.capacity()`
+pub struct OutBuffer<'a, C: WriteBuf + ?Sized> {
+    pub dst: &'a mut C,
+    pos: usize,
 }
 
 /// Convenience method to get a mut pointer from a mut ref.
@@ -1067,12 +1223,12 @@ fn ptr_mut<B>(ptr_void: &mut B) -> *mut B {
 /// Interface between a C-level ZSTD_outBuffer and a rust-level `OutBuffer`.
 ///
 /// Will update the parent buffer from the C buffer on drop.
-struct OutBufferWrapper<'a, 'b: 'a> {
+struct OutBufferWrapper<'a, 'b: 'a, C: WriteBuf + ?Sized> {
     buf: zstd_sys::ZSTD_outBuffer,
-    parent: &'a mut OutBuffer<'b>,
+    parent: &'a mut OutBuffer<'b, C>,
 }
 
-impl<'a, 'b: 'a> Deref for OutBufferWrapper<'a, 'b> {
+impl<'a, 'b: 'a, C: WriteBuf + ?Sized> Deref for OutBufferWrapper<'a, 'b, C> {
     type Target = zstd_sys::ZSTD_outBuffer;
 
     fn deref(&self) -> &Self::Target {
@@ -1080,25 +1236,64 @@ impl<'a, 'b: 'a> Deref for OutBufferWrapper<'a, 'b> {
     }
 }
 
-impl<'a, 'b: 'a> DerefMut for OutBufferWrapper<'a, 'b> {
+impl<'a, 'b: 'a, C: WriteBuf + ?Sized> DerefMut
+    for OutBufferWrapper<'a, 'b, C>
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.buf
     }
 }
 
-impl<'a> OutBuffer<'a> {
+impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
     /// Returns a new `OutBuffer` around the given slice.
     ///
     /// Starts with `pos = 0`.
-    pub fn around(dst: &'a mut [u8]) -> Self {
+    pub fn around(dst: &'a mut C) -> Self {
         OutBuffer { dst, pos: 0 }
     }
 
-    fn wrap<'b>(&'b mut self) -> OutBufferWrapper<'b, 'a> {
+    /// Returns a new `OutBuffer` around the given slice, starting at the given position.
+    ///
+    /// # Panics
+    ///
+    /// If `pos >= dst.capacity()`.
+    pub fn around_pos(dst: &'a mut C, pos: usize) -> Self {
+        if pos >= dst.capacity() {
+            panic!("Given position outside of the buffer bounds.");
+        }
+
+        OutBuffer { dst, pos }
+    }
+
+    /// Returns the current cursor position.
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    /// Sets the new cursor position.
+    ///
+    /// # Panics
+    ///
+    /// If `pos > self.dst.capacity()`.
+    ///
+    /// # Safety
+    ///
+    /// Data up to `pos` must have actually been written to.
+    pub unsafe fn set_pos(&mut self, pos: usize) {
+        if pos > self.dst.capacity() {
+            panic!("Given position outside of the buffer bounds.");
+        }
+
+        self.dst.filled_until(pos);
+
+        self.pos = pos;
+    }
+
+    fn wrap<'b>(&'b mut self) -> OutBufferWrapper<'b, 'a, C> {
         OutBufferWrapper {
             buf: zstd_sys::ZSTD_outBuffer {
                 dst: ptr_mut_void(self.dst),
-                size: self.dst.len(),
+                size: self.dst.capacity(),
                 pos: self.pos,
             },
             parent: self,
@@ -1111,13 +1306,14 @@ impl<'a> OutBuffer<'a> {
         'b: 'a,
     {
         let pos = self.pos;
-        &self.dst[..pos]
+        &self.dst.as_slice()[..pos]
     }
 }
 
-impl<'a, 'b> Drop for OutBufferWrapper<'a, 'b> {
+impl<'a, 'b, C: WriteBuf + ?Sized> Drop for OutBufferWrapper<'a, 'b, C> {
     fn drop(&mut self) {
-        self.parent.pos = self.buf.pos;
+        // Safe because we guarantee that data until `self.buf.pos` has been written.
+        unsafe { self.parent.set_pos(self.buf.pos) };
     }
 }
 
@@ -1148,6 +1344,23 @@ impl<'a> InBuffer<'a> {
         InBuffer { src, pos: 0 }
     }
 
+    /// Returns the current cursor position.
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    /// Sets the new cursor position.
+    ///
+    /// # Panics
+    ///
+    /// If `pos > self.src.len()`.
+    pub fn set_pos(&mut self, pos: usize) {
+        if pos > self.src.len() {
+            panic!("Given position outside of the buffer bounds.");
+        }
+        self.pos = pos;
+    }
+
     fn wrap<'b>(&'b mut self) -> InBufferWrapper<'b, 'a> {
         InBufferWrapper {
             buf: zstd_sys::ZSTD_inBuffer {
@@ -1162,22 +1375,22 @@ impl<'a> InBuffer<'a> {
 
 impl<'a, 'b> Drop for InBufferWrapper<'a, 'b> {
     fn drop(&mut self) {
-        self.parent.pos = self.buf.pos;
+        self.parent.set_pos(self.buf.pos);
     }
 }
 
 /// Wraps the `ZSTD_compressStream()` function.
-pub fn compress_stream(
+pub fn compress_stream<C: WriteBuf + ?Sized>(
     zcs: &mut CStream,
-    output: &mut OutBuffer,
+    output: &mut OutBuffer<'_, C>,
     input: &mut InBuffer,
 ) -> SafeResult {
     zcs.compress_stream(output, input)
 }
 
-pub fn compress_stream2(
+pub fn compress_stream2<C: WriteBuf + ?Sized>(
     cctx: &mut CCtx,
-    output: &mut OutBuffer,
+    output: &mut OutBuffer<'_, C>,
     input: &mut InBuffer,
     end_op: zstd_sys::ZSTD_EndDirective,
 ) -> SafeResult {
@@ -1185,12 +1398,18 @@ pub fn compress_stream2(
 }
 
 /// Wraps the `ZSTD_flushStream()` function.
-pub fn flush_stream(zcs: &mut CStream, output: &mut OutBuffer) -> SafeResult {
+pub fn flush_stream<C: WriteBuf + ?Sized>(
+    zcs: &mut CStream,
+    output: &mut OutBuffer<'_, C>,
+) -> SafeResult {
     zcs.flush_stream(output)
 }
 
 /// Wraps the `ZSTD_endStream()` function.
-pub fn end_stream(zcs: &mut CStream, output: &mut OutBuffer) -> SafeResult {
+pub fn end_stream<C: WriteBuf + ?Sized>(
+    zcs: &mut CStream,
+    output: &mut OutBuffer<'_, C>,
+) -> SafeResult {
     zcs.end_stream(output)
 }
 
@@ -1221,9 +1440,9 @@ pub fn init_dstream(zds: &mut DStream) -> usize {
 }
 
 /// Wraps the `ZSTD_decompressStream()` function.
-pub fn decompress_stream(
+pub fn decompress_stream<C: WriteBuf + ?Sized>(
     zds: &mut DStream,
-    output: &mut OutBuffer,
+    output: &mut OutBuffer<'_, C>,
     input: &mut InBuffer,
 ) -> SafeResult {
     zds.decompress_stream(output, input)
@@ -1565,22 +1784,25 @@ pub fn cctx_set_pledged_src_size(
     cctx.set_pledged_src_size(pledged_src_size)
 }
 
-/// Wraps thge `ZDICT_trainFromBuffer()` function.
-pub fn train_from_buffer(
-    dict_buffer: &mut [u8],
+/// Wraps the `ZDICT_trainFromBuffer()` function.
+pub fn train_from_buffer<C: WriteBuf + ?Sized>(
+    dict_buffer: &mut C,
     samples_buffer: &[u8],
     samples_sizes: &[usize],
 ) -> SafeResult {
     assert_eq!(samples_buffer.len(), samples_sizes.iter().sum());
-    parse_code(unsafe {
-        zstd_sys::ZDICT_trainFromBuffer(
-            ptr_mut_void(dict_buffer),
-            dict_buffer.len(),
-            ptr_void(samples_buffer),
-            samples_sizes.as_ptr(),
-            samples_sizes.len() as u32,
-        )
-    })
+
+    unsafe {
+        dict_buffer.write_from(|buffer, capacity| {
+            parse_code(zstd_sys::ZDICT_trainFromBuffer(
+                buffer,
+                capacity,
+                ptr_void(samples_buffer),
+                samples_sizes.as_ptr(),
+                samples_sizes.len() as u32,
+            ))
+        })
+    }
 }
 
 /// Wraps the `ZSTD_getDictID_fromDict()` function.
@@ -1613,7 +1835,11 @@ pub fn compress_block(
 
 /// Wraps the `ZSTD_decompressBlock()` function.
 #[cfg(feature = "experimental")]
-pub fn decompress_block(dctx: &mut DCtx, dst: &mut [u8], src: &[u8]) -> usize {
+pub fn decompress_block(
+    dctx: &mut DCtx,
+    dst: &mut [u8],
+    src: &[u8],
+) -> SafeResult {
     dctx.decompress_block(dst, src)
 }
 

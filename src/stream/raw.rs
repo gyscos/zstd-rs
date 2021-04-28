@@ -6,7 +6,7 @@
 //! They are mostly thin wrappers around `zstd_safe::{DCtx, CCtx}`.
 use std::io;
 
-pub use zstd_safe::{CParameter, DParameter, InBuffer, OutBuffer};
+pub use zstd_safe::{CParameter, DParameter, InBuffer, OutBuffer, WriteBuf};
 
 use crate::dict::{DecoderDictionary, EncoderDictionary};
 use crate::map_error_code;
@@ -21,10 +21,10 @@ pub trait Operation {
     ///
     /// If the result is `Ok(0)`, it may indicate that a frame was just
     /// finished.
-    fn run(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
-        output: &mut OutBuffer<'_>,
+        output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize>;
 
     /// Performs a single step of this operation.
@@ -43,8 +43,8 @@ pub trait Operation {
 
         Ok(Status {
             remaining,
-            bytes_read: input.pos,
-            bytes_written: output.pos,
+            bytes_read: input.pos(),
+            bytes_written: output.pos(),
         })
     }
 
@@ -52,7 +52,10 @@ pub trait Operation {
     ///
     /// Returns the number of bytes still in the buffer.
     /// To flush entirely, keep calling until it returns `Ok(0)`.
-    fn flush(&mut self, output: &mut OutBuffer<'_>) -> io::Result<usize> {
+    fn flush<C: WriteBuf + ?Sized>(
+        &mut self,
+        output: &mut OutBuffer<'_, C>,
+    ) -> io::Result<usize> {
         let _ = output;
         Ok(0)
     }
@@ -70,9 +73,9 @@ pub trait Operation {
     ///
     /// Keep calling this method until it returns `Ok(0)`,
     /// and then don't ever call this method.
-    fn finish(
+    fn finish<C: WriteBuf + ?Sized>(
         &mut self,
-        output: &mut OutBuffer<'_>,
+        output: &mut OutBuffer<'_, C>,
         finished_frame: bool,
     ) -> io::Result<usize> {
         let _ = output;
@@ -85,21 +88,26 @@ pub trait Operation {
 pub struct NoOp;
 
 impl Operation for NoOp {
-    fn run(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
-        output: &mut OutBuffer<'_>,
+        output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize> {
+        // Skip the prelude
         let src = &input.src[input.pos..];
-        let dst = &mut output.dst[output.pos..];
+        // Safe because `output.pos() <= output.dst.capacity()`.
+        let dst = unsafe { output.dst.as_mut_ptr().add(output.pos()) };
 
-        let len = usize::min(src.len(), dst.len());
+        // Ignore anything past the end
+        let len = usize::min(src.len(), output.dst.capacity());
         let src = &src[..len];
-        let dst = &mut dst[..len];
 
-        dst.copy_from_slice(src);
-        input.pos += len;
-        output.pos += len;
+        // Safe because:
+        // * `len` is less than either of the two lengths
+        // * `src` and `dst` do not overlap because we have `&mut` to each.
+        unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), dst, len) };
+        input.set_pos(input.pos() + len);
+        unsafe { output.set_pos(output.pos() + len) };
 
         Ok(0)
     }
@@ -166,10 +174,10 @@ impl<'a> Decoder<'a> {
 }
 
 impl Operation for Decoder<'_> {
-    fn run(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
-        output: &mut OutBuffer<'_>,
+        output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize> {
         self.context
             .decompress_stream(output, input)
@@ -181,9 +189,9 @@ impl Operation for Decoder<'_> {
         Ok(())
     }
 
-    fn finish(
+    fn finish<C: WriteBuf + ?Sized>(
         &mut self,
-        _output: &mut OutBuffer<'_>,
+        _output: &mut OutBuffer<'_, C>,
         finished_frame: bool,
     ) -> io::Result<usize> {
         if finished_frame {
@@ -249,23 +257,26 @@ impl<'a> Encoder<'a> {
 }
 
 impl<'a> Operation for Encoder<'a> {
-    fn run(
+    fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
-        output: &mut OutBuffer<'_>,
+        output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize> {
         self.context
             .compress_stream(output, input)
             .map_err(map_error_code)
     }
 
-    fn flush(&mut self, output: &mut OutBuffer<'_>) -> io::Result<usize> {
+    fn flush<C: WriteBuf + ?Sized>(
+        &mut self,
+        output: &mut OutBuffer<'_, C>,
+    ) -> io::Result<usize> {
         self.context.flush_stream(output).map_err(map_error_code)
     }
 
-    fn finish(
+    fn finish<C: WriteBuf + ?Sized>(
         &mut self,
-        output: &mut OutBuffer<'_>,
+        output: &mut OutBuffer<'_, C>,
         _finished_frame: bool,
     ) -> io::Result<usize> {
         self.context.end_stream(output).map_err(map_error_code)

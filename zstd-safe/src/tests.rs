@@ -6,6 +6,7 @@ use self::std::vec::Vec;
 const INPUT: &[u8] = b"Rust is a multi-paradigm system programming language focused on safety, especially safe concurrency. Rust is syntactically similar to C++, but is designed to provide better memory safety while maintaining high performance.";
 const LONG_CONTENT: &str = include_str!("lib.rs");
 
+#[cfg(feature = "std")]
 #[test]
 fn test_simple_cycle() {
     let mut buffer = std::vec![0u8; 256];

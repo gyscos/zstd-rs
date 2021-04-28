@@ -33,20 +33,15 @@ impl Compressor {
     /// (for instance if the destination buffer was too small).
     ///
     /// A level of `0` uses zstd's default (currently `3`).
-    pub fn compress_to_buffer(
+    pub fn compress_to_buffer<C: zstd_safe::WriteBuf + ?Sized>(
         &mut self,
         source: &[u8],
-        destination: &mut [u8],
+        destination: &mut C,
         level: i32,
     ) -> io::Result<usize> {
-        zstd_safe::compress_using_dict(
-            &mut self.context,
-            destination,
-            source,
-            &self.dict[..],
-            level,
-        )
-        .map_err(map_error_code)
+        self.context
+            .compress_using_dict(destination, source, &self.dict[..], level)
+            .map_err(map_error_code)
     }
 
     /// Compresses a block of data and returns the compressed result.
@@ -60,13 +55,8 @@ impl Compressor {
         // We allocate a big buffer, slightly larger than the input data.
         let buffer_len = zstd_safe::compress_bound(data.len());
         let mut buffer = Vec::with_capacity(buffer_len);
-        unsafe {
-            // Use all capacity.
-            // Memory may not be initialized, but we won't read it.
-            buffer.set_len(buffer_len);
-            let len = self.compress_to_buffer(data, &mut buffer[..], level)?;
-            buffer.set_len(len);
-        }
+
+        self.compress_to_buffer(data, &mut buffer, level)?;
 
         // Should we shrink the vec? Meh, let the user do it if he wants.
         Ok(buffer)

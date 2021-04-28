@@ -137,7 +137,7 @@ where
                         // This indicates that the footer is complete.
                         // This is the only way to terminate the stream cleanly.
                         self.finished = true;
-                        if dst.pos == 0 {
+                        if dst.pos() == 0 {
                             return Ok(0);
                         }
                     }
@@ -145,7 +145,7 @@ where
 
                 // println!("{:?}", dst);
 
-                (src.pos, dst.pos)
+                (src.pos(), dst.pos())
             };
             self.reader.consume(bytes_read);
 

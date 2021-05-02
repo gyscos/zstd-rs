@@ -74,6 +74,18 @@ macro_rules! readwritecommon {
             )
         }
 
+        /// Enables or disables long-distance matching
+        pub fn long_distance_matching(
+            &mut self,
+            long_distance_matching: bool,
+        ) -> io::Result<()> {
+            self.$readwrite.operation_mut().set_parameter(
+                zstd_safe::CParameter::EnableLongDistanceMatching(
+                    long_distance_matching,
+                ),
+            )
+        }
+
         #[cfg(feature = "experimental")]
         /// Enables or disable the magic bytes at the beginning of each frame.
         ///

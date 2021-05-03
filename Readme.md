@@ -24,7 +24,7 @@ $ cargo add zstd
 # Cargo.toml
 
 [dependencies]
-zstd = "0.5"
+zstd = "0.8"
 ```
 
 ## 2 - Usage

@@ -1,11 +1,3 @@
-#[cfg(feature = "bindgen")]
-extern crate bindgen;
-
-#[cfg(feature = "pkg-config")]
-extern crate pkg_config;
-
-extern crate cc;
-
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -93,7 +85,8 @@ fn compile_zstd() {
         "zstd/lib/compress",
         "zstd/lib/decompress",
         "zstd/lib/dictBuilder",
-        #[cfg(feature = "legacy")] "zstd/lib/legacy",
+        #[cfg(feature = "legacy")]
+        "zstd/lib/legacy",
     ] {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
@@ -120,7 +113,8 @@ fn compile_zstd() {
 
     config.define("ZSTD_LIB_DEPRECATED", Some("0"));
 
-    #[cfg(feature = "thin")] {
+    #[cfg(feature = "thin")]
+    {
         config.define("HUF_FORCE_DECOMPRESS_X1", Some("1"));
         config.define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"));
         config.define("ZSTD_NO_INLINE ", Some("1"));

@@ -36,8 +36,6 @@ For instance, `stream::copy_encode` and `stream::copy_decode` are easy-to-use
 wrappers around `std::io::copy`. Check the [stream] example:
 
 ```rust
-extern crate zstd;
-
 use std::io;
 
 // This function use the convenient `copy_encode` method

@@ -11,8 +11,6 @@
 //! # Example
 //!
 //! ```no_run
-//! extern crate zstd;
-//!
 //! use std::io;
 //!
 //! fn main() {

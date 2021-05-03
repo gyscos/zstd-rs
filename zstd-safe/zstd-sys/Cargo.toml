@@ -17,6 +17,7 @@ name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "1.5.0+zstd.1.4.9"
+edition = "2018"
 
 exclude = [
     "zstd",

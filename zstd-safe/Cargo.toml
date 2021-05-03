@@ -9,6 +9,7 @@ categories = ["api-bindings", "compression"]
 repository = "https://github.com/gyscos/zstd-rs"
 license = "MIT/Apache-2.0"
 readme = "Readme.md"
+edition = "2018"
 
 [package.metadata.docs.rs]
 features = ["experimental"]

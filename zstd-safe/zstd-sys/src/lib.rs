@@ -6,8 +6,6 @@
 //!
 //! [zstd]: https://facebook.github.io/zstd/
 
-extern crate libc;
-
 #[cfg(feature = "std")]
 extern crate std;
 

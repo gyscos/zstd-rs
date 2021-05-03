@@ -18,9 +18,6 @@
 //! Features denoted as experimental in the C library are hidden behind an
 //! `experimental` feature.
 
-extern crate libc;
-extern crate zstd_sys;
-
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -277,7 +274,7 @@ impl<'a> CCtx<'a> {
         &mut self,
         dst: &mut C,
         src: &[u8],
-        cdict: &CDict,
+        cdict: &CDict<'_>,
     ) -> SafeResult {
         unsafe {
             dst.write_from(|buffer, capacity| {
@@ -381,7 +378,7 @@ impl<'a> CCtx<'a> {
     pub fn compress_stream<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
-        input: &mut InBuffer,
+        input: &mut InBuffer<'_>,
     ) -> SafeResult {
         let mut output = output.wrap();
         let mut input = input.wrap();
@@ -399,7 +396,7 @@ impl<'a> CCtx<'a> {
     pub fn compress_stream2<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
-        input: &mut InBuffer,
+        input: &mut InBuffer<'_>,
         end_op: zstd_sys::ZSTD_EndDirective,
     ) -> SafeResult {
         let mut output = output.wrap();
@@ -600,7 +597,7 @@ pub fn get_error_name(code: usize) -> &'static str {
 
 /// Wraps the `ZSTD_compressCCtx()` function
 pub fn compress_cctx(
-    ctx: &mut CCtx,
+    ctx: &mut CCtx<'_>,
     dst: &mut [u8],
     src: &[u8],
     compression_level: CompressionLevel,
@@ -609,7 +606,11 @@ pub fn compress_cctx(
 }
 
 /// Wraps the `ZSTD_compress2()` function.
-pub fn compress2(ctx: &mut CCtx, dst: &mut [u8], src: &[u8]) -> SafeResult {
+pub fn compress2(
+    ctx: &mut CCtx<'_>,
+    dst: &mut [u8],
+    src: &[u8],
+) -> SafeResult {
     ctx.compress2(dst, src)
 }
 
@@ -681,7 +682,7 @@ impl<'a> DCtx<'a> {
         &mut self,
         dst: &mut C,
         src: &[u8],
-        ddict: &DDict,
+        ddict: &DDict<'_>,
     ) -> SafeResult {
         unsafe {
             dst.write_from(|buffer, capacity| {
@@ -803,7 +804,7 @@ impl<'a> DCtx<'a> {
     pub fn decompress_stream<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
-        input: &mut InBuffer,
+        input: &mut InBuffer<'_>,
     ) -> SafeResult {
         let mut output = output.wrap();
         let mut input = input.wrap();
@@ -883,7 +884,7 @@ unsafe impl Send for DCtx<'_> {}
 
 /// Wraps the `ZSTD_decompressDCtx()` function.
 pub fn decompress_dctx(
-    ctx: &mut DCtx,
+    ctx: &mut DCtx<'_>,
     dst: &mut [u8],
     src: &[u8],
 ) -> SafeResult {
@@ -892,7 +893,7 @@ pub fn decompress_dctx(
 
 /// Wraps the `ZSTD_compress_usingDict()` function.
 pub fn compress_using_dict(
-    ctx: &mut CCtx,
+    ctx: &mut CCtx<'_>,
     dst: &mut [u8],
     src: &[u8],
     dict: &[u8],
@@ -903,7 +904,7 @@ pub fn compress_using_dict(
 
 /// Wraps the `ZSTD_decompress_usingDict()` function.
 pub fn decompress_using_dict(
-    dctx: &mut DCtx,
+    dctx: &mut DCtx<'_>,
     dst: &mut [u8],
     src: &[u8],
     dict: &[u8],
@@ -975,10 +976,10 @@ unsafe impl<'a> Sync for CDict<'a> {}
 
 /// Wraps the `ZSTD_compress_usingCDict()` function.
 pub fn compress_using_cdict(
-    cctx: &mut CCtx,
+    cctx: &mut CCtx<'_>,
     dst: &mut [u8],
     src: &[u8],
-    cdict: &CDict,
+    cdict: &CDict<'_>,
 ) -> SafeResult {
     cctx.compress_using_cdict(dst, src, cdict)
 }
@@ -1045,10 +1046,10 @@ unsafe impl<'a> Sync for DDict<'a> {}
 
 /// Wraps the `ZSTD_decompress_usingDDict()` function.
 pub fn decompress_using_ddict(
-    dctx: &mut DCtx,
+    dctx: &mut DCtx<'_>,
     dst: &mut [u8],
     src: &[u8],
-    ddict: &DDict,
+    ddict: &DDict<'_>,
 ) -> SafeResult {
     dctx.decompress_using_ddict(dst, src, ddict)
 }
@@ -1067,7 +1068,7 @@ pub fn create_cstream<'a>() -> CStream<'a> {
 
 /// Prepares an existing `CStream` for compression at the given level.
 pub fn init_cstream(
-    zcs: &mut CStream,
+    zcs: &mut CStream<'_>,
     compression_level: CompressionLevel,
 ) -> usize {
     zcs.init(compression_level)
@@ -1223,7 +1224,7 @@ fn ptr_mut<B>(ptr_void: &mut B) -> *mut B {
 /// Interface between a C-level ZSTD_outBuffer and a rust-level `OutBuffer`.
 ///
 /// Will update the parent buffer from the C buffer on drop.
-struct OutBufferWrapper<'a, 'b: 'a, C: WriteBuf + ?Sized> {
+struct OutBufferWrapper<'a, 'b, C: WriteBuf + ?Sized> {
     buf: zstd_sys::ZSTD_outBuffer,
     parent: &'a mut OutBuffer<'b, C>,
 }
@@ -1317,7 +1318,7 @@ impl<'a, 'b, C: WriteBuf + ?Sized> Drop for OutBufferWrapper<'a, 'b, C> {
     }
 }
 
-struct InBufferWrapper<'a, 'b: 'a> {
+struct InBufferWrapper<'a, 'b> {
     buf: zstd_sys::ZSTD_inBuffer,
     parent: &'a mut InBuffer<'b>,
 }
@@ -1381,17 +1382,17 @@ impl<'a, 'b> Drop for InBufferWrapper<'a, 'b> {
 
 /// Wraps the `ZSTD_compressStream()` function.
 pub fn compress_stream<C: WriteBuf + ?Sized>(
-    zcs: &mut CStream,
+    zcs: &mut CStream<'_>,
     output: &mut OutBuffer<'_, C>,
-    input: &mut InBuffer,
+    input: &mut InBuffer<'_>,
 ) -> SafeResult {
     zcs.compress_stream(output, input)
 }
 
 pub fn compress_stream2<C: WriteBuf + ?Sized>(
-    cctx: &mut CCtx,
+    cctx: &mut CCtx<'_>,
     output: &mut OutBuffer<'_, C>,
-    input: &mut InBuffer,
+    input: &mut InBuffer<'_>,
     end_op: zstd_sys::ZSTD_EndDirective,
 ) -> SafeResult {
     cctx.compress_stream2(output, input, end_op)
@@ -1399,7 +1400,7 @@ pub fn compress_stream2<C: WriteBuf + ?Sized>(
 
 /// Wraps the `ZSTD_flushStream()` function.
 pub fn flush_stream<C: WriteBuf + ?Sized>(
-    zcs: &mut CStream,
+    zcs: &mut CStream<'_>,
     output: &mut OutBuffer<'_, C>,
 ) -> SafeResult {
     zcs.flush_stream(output)
@@ -1407,7 +1408,7 @@ pub fn flush_stream<C: WriteBuf + ?Sized>(
 
 /// Wraps the `ZSTD_endStream()` function.
 pub fn end_stream<C: WriteBuf + ?Sized>(
-    zcs: &mut CStream,
+    zcs: &mut CStream<'_>,
     output: &mut OutBuffer<'_, C>,
 ) -> SafeResult {
     zcs.end_stream(output)
@@ -1435,15 +1436,15 @@ pub fn create_dstream() -> DStream<'static> {
 /// Wraps the `ZSTD_initCStream()` function.
 ///
 /// Initializes an existing `DStream` for decompression.
-pub fn init_dstream(zds: &mut DStream) -> usize {
+pub fn init_dstream(zds: &mut DStream<'_>) -> usize {
     zds.init()
 }
 
 /// Wraps the `ZSTD_decompressStream()` function.
 pub fn decompress_stream<C: WriteBuf + ?Sized>(
-    zds: &mut DStream,
+    zds: &mut DStream<'_>,
     output: &mut OutBuffer<'_, C>,
-    input: &mut InBuffer,
+    input: &mut InBuffer<'_>,
 ) -> SafeResult {
     zds.decompress_stream(output, input)
 }
@@ -1488,32 +1489,32 @@ pub fn find_decompressed_size(src: &[u8]) -> u64 {
 }
 
 /// Wraps the `ZSTD_sizeofCCtx()` function.
-pub fn sizeof_cctx(cctx: &CCtx) -> usize {
+pub fn sizeof_cctx(cctx: &CCtx<'_>) -> usize {
     cctx.sizeof()
 }
 
 /// Wraps the `ZSTD_sizeof_DCtx()` function.
-pub fn sizeof_dctx(dctx: &DCtx) -> usize {
+pub fn sizeof_dctx(dctx: &DCtx<'_>) -> usize {
     dctx.sizeof()
 }
 
 /// Wraps the `ZSTD_sizeof_CStream()` function.
-pub fn sizeof_cstream(zcs: &CStream) -> usize {
+pub fn sizeof_cstream(zcs: &CStream<'_>) -> usize {
     zcs.sizeof()
 }
 
 /// Wraps the `ZSTD_sizeof_DStream()` function.
-pub fn sizeof_dstream(zds: &DStream) -> usize {
+pub fn sizeof_dstream(zds: &DStream<'_>) -> usize {
     zds.sizeof()
 }
 
 /// Wraps the `ZSTD_sizeof_CDict()` function.
-pub fn sizeof_cdict(cdict: &CDict) -> usize {
+pub fn sizeof_cdict(cdict: &CDict<'_>) -> usize {
     cdict.sizeof()
 }
 
 /// Wraps the `ZSTD_sizeof_DDict()` function.
-pub fn sizeof_ddict(ddict: &DDict) -> usize {
+pub fn sizeof_ddict(ddict: &DDict<'_>) -> usize {
     ddict.sizeof()
 }
 
@@ -1550,7 +1551,7 @@ pub fn get_dict_id_from_dict(dict: &[u8]) -> u32 {
 }
 
 /// Wraps the `ZSTD_getDictID_fromDDict()` function.
-pub fn get_dict_id_from_ddict(ddict: &DDict) -> u32 {
+pub fn get_dict_id_from_ddict(ddict: &DDict<'_>) -> u32 {
     ddict.get_dict_id()
 }
 
@@ -1600,7 +1601,7 @@ where
 }
 
 /// Wraps the `ZSTD_CCtx_loadDictionary()` function.
-pub fn cctx_load_dictionary(cctx: &mut CCtx, dict: &[u8]) -> SafeResult {
+pub fn cctx_load_dictionary(cctx: &mut CCtx<'_>, dict: &[u8]) -> SafeResult {
     cctx.load_dictionary(dict)
 }
 
@@ -1658,12 +1659,12 @@ where
 }
 
 /// Wraps the `ZSTD_CCtx_reset()` function.
-pub fn cctx_reset(cctx: &mut CCtx, reset: ResetDirective) -> SafeResult {
+pub fn cctx_reset(cctx: &mut CCtx<'_>, reset: ResetDirective) -> SafeResult {
     cctx.reset(reset)
 }
 
 /// Wraps the `ZSTD_DCtx_reset()` function.
-pub fn dctx_reset(dctx: &mut DCtx, reset: ResetDirective) -> SafeResult {
+pub fn dctx_reset(dctx: &mut DCtx<'_>, reset: ResetDirective) -> SafeResult {
     parse_code(unsafe { zstd_sys::ZSTD_DCtx_reset(dctx.0, reset) })
 }
 
@@ -1767,18 +1768,24 @@ pub enum DParameter {
 }
 
 /// Wraps the `ZSTD_DCtx_setParameter()` function.
-pub fn dctx_set_parameter(dctx: &mut DCtx, param: DParameter) -> SafeResult {
+pub fn dctx_set_parameter(
+    dctx: &mut DCtx<'_>,
+    param: DParameter,
+) -> SafeResult {
     dctx.set_parameter(param)
 }
 
 /// Wraps the `ZSTD_CCtx_setParameter()` function.
-pub fn cctx_set_parameter(cctx: &mut CCtx, param: CParameter) -> SafeResult {
+pub fn cctx_set_parameter(
+    cctx: &mut CCtx<'_>,
+    param: CParameter,
+) -> SafeResult {
     cctx.set_parameter(param)
 }
 
 /// Wraps the `ZSTD_CCtx_setPledgedSrcSize()` function.
 pub fn cctx_set_pledged_src_size(
-    cctx: &mut CCtx,
+    cctx: &mut CCtx<'_>,
     pledged_src_size: u64,
 ) -> SafeResult {
     cctx.set_pledged_src_size(pledged_src_size)

@@ -23,6 +23,7 @@ pub use self::write::{AutoFinishEncoder, Encoder};
 
 #[doc(hidden)]
 #[macro_export]
+/// Common functions for the encoder, both in read and write mode.
 macro_rules! readwritecommon {
     ($readwrite:ident) => {
         /// Controls whether zstd should include a content checksum at the end

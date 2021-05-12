@@ -157,16 +157,9 @@ fn compile_zstd() {
     let include = dst.join("include");
     fs::create_dir_all(&include).unwrap();
     fs::copy(src.join("zstd.h"), include.join("zstd.h")).unwrap();
-    fs::copy(
-        src.join("common").join("zstd_errors.h"),
-        include.join("zstd_errors.h"),
-    )
-    .unwrap();
-    fs::copy(
-        src.join("dictBuilder").join("zdict.h"),
-        include.join("zdict.h"),
-    )
-    .unwrap();
+    fs::copy(src.join("zstd_errors.h"), include.join("zstd_errors.h"))
+        .unwrap();
+    fs::copy(src.join("zdict.h"), include.join("zdict.h")).unwrap();
     println!("cargo:root={}", dst.display());
 }
 

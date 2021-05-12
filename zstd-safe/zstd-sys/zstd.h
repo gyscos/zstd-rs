@@ -8,10 +8,7 @@
 #else // #ifdef PKG_CONFIG
 
 #include "zstd/lib/zstd.h"
-#include "zstd/lib/dictBuilder/zdict.h"
-#ifdef ZSTD_STATIC_LINKING_ONLY
-#include "zstd/lib/compress/zstdmt_compress.h"
-#endif // #ifdef ZSTD_STATIC_LINKING_ONLY
+#include "zstd/lib/zdict.h"
 
 #endif // #ifdef PKG_CONFIG
 

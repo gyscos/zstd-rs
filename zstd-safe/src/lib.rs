@@ -57,6 +57,7 @@ pub const MAGIC_DICTIONARY: u32 = zstd_sys::ZSTD_MAGIC_DICTIONARY;
 pub const MAGIC_SKIPPABLE_START: u32 = zstd_sys::ZSTD_MAGIC_SKIPPABLE_START;
 pub const BLOCKSIZELOG_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZELOG_MAX;
 pub const BLOCKSIZE_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZE_MAX;
+
 #[cfg(feature = "experimental")]
 pub const WINDOWLOG_MAX_32: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_32;
 #[cfg(feature = "experimental")]
@@ -456,24 +457,70 @@ impl<'a> CCtx<'a> {
 
     pub fn set_parameter(&mut self, param: CParameter) -> SafeResult {
         // TODO: Until bindgen properly generates a binding for this, we'll need to do it here.
+
         #[cfg(feature = "experimental")]
-        use zstd_sys::ZSTD_cParameter::ZSTD_c_experimentalParam2 as ZSTD_c_format;
-        #[cfg(feature = "experimental")]
-        use zstd_sys::ZSTD_format_e;
+        use zstd_sys::ZSTD_cParameter::{
+            ZSTD_c_experimentalParam1 as ZSTD_c_rsyncable,
+            ZSTD_c_experimentalParam10 as ZSTD_c_stableOutBuffer,
+            ZSTD_c_experimentalParam11 as ZSTD_c_blockDelimiters,
+            ZSTD_c_experimentalParam12 as ZSTD_c_validateSequences,
+            ZSTD_c_experimentalParam13 as ZSTD_c_splitBlocks,
+            ZSTD_c_experimentalParam14 as ZSTD_c_useRowMatchFinder,
+            ZSTD_c_experimentalParam15 as ZSTD_c_deterministicRefPrefix,
+            ZSTD_c_experimentalParam2 as ZSTD_c_format,
+            ZSTD_c_experimentalParam3 as ZSTD_c_forceMaxWindow,
+            ZSTD_c_experimentalParam4 as ZSTD_c_forceAttachDict,
+            ZSTD_c_experimentalParam5 as ZSTD_c_literalCompressionMode,
+            ZSTD_c_experimentalParam6 as ZSTD_c_targetCBlockSize,
+            ZSTD_c_experimentalParam7 as ZSTD_c_srcSizeHint,
+            ZSTD_c_experimentalParam8 as ZSTD_c_enableDedicatedDictSearch,
+            ZSTD_c_experimentalParam9 as ZSTD_c_stableInBuffer,
+        };
 
         use zstd_sys::ZSTD_cParameter::*;
         use CParameter::*;
 
         let (param, value) = match param {
             #[cfg(feature = "experimental")]
-            Format(FrameFormat::One) => {
-                (ZSTD_c_format, ZSTD_format_e::ZSTD_f_zstd1 as c_int)
+            RSyncable(rsyncable) => (ZSTD_c_rsyncable, rsyncable as c_int),
+            #[cfg(feature = "experimental")]
+            Format(format) => (ZSTD_c_format, format as c_int),
+            #[cfg(feature = "experimental")]
+            ForceMaxWindow(force) => (ZSTD_c_forceMaxWindow, force as c_int),
+            #[cfg(feature = "experimental")]
+            ForceAttachDict(force) => (ZSTD_c_forceAttachDict, force as c_int),
+            #[cfg(feature = "experimental")]
+            TargetCBlockSize(value) => {
+                (ZSTD_c_targetCBlockSize, value as c_int)
             }
             #[cfg(feature = "experimental")]
-            Format(FrameFormat::Magicless) => (
-                ZSTD_c_format,
-                ZSTD_format_e::ZSTD_f_zstd1_magicless as c_int,
-            ),
+            SrcSizeHint(value) => (ZSTD_c_srcSizeHint, value as c_int),
+            #[cfg(feature = "experimental")]
+            EnableDedicatedDictSearch(enable) => {
+                (ZSTD_c_enableDedicatedDictSearch, enable as c_int)
+            }
+            #[cfg(feature = "experimental")]
+            StableInBuffer(stable) => (ZSTD_c_stableInBuffer, stable as c_int),
+            #[cfg(feature = "experimental")]
+            StableOutBuffer(stable) => {
+                (ZSTD_c_stableOutBuffer, stable as c_int)
+            }
+            #[cfg(feature = "experimental")]
+            BlockDelimiters(value) => (ZSTD_c_blockDelimiters, value as c_int),
+            #[cfg(feature = "experimental")]
+            ValidateSequences(validate) => {
+                (ZSTD_c_validateSequences, validate as c_int)
+            }
+            #[cfg(feature = "experimental")]
+            SplitBlocks(split) => (ZSTD_c_splitBlocks, split as c_int),
+            #[cfg(feature = "experimental")]
+            UseRowMatchFinder(mode) => {
+                (ZSTD_c_useRowMatchFinder, mode as c_int)
+            }
+            #[cfg(feature = "experimental")]
+            DeterministicRefPrefix(deterministic) => {
+                (ZSTD_c_deterministicRefPrefix, deterministic as c_int)
+            }
             CompressionLevel(level) => (ZSTD_c_compressionLevel, level),
             WindowLog(value) => (ZSTD_c_windowLog, value as c_int),
             HashLog(value) => (ZSTD_c_hashLog, value as c_int),
@@ -482,6 +529,10 @@ impl<'a> CCtx<'a> {
             MinMatch(value) => (ZSTD_c_minMatch, value as c_int),
             TargetLength(value) => (ZSTD_c_targetLength, value as c_int),
             Strategy(strategy) => (ZSTD_c_strategy, strategy as c_int),
+            #[cfg(feature = "experimental")]
+            LiteralCompressionMode(mode) => {
+                (ZSTD_c_literalCompressionMode, mode as c_int)
+            }
             EnableLongDistanceMatching(flag) => {
                 (ZSTD_c_enableLongDistanceMatching, flag as c_int)
             }
@@ -774,23 +825,31 @@ impl<'a> DCtx<'a> {
 
     pub fn set_parameter(&mut self, param: DParameter) -> SafeResult {
         #[cfg(feature = "experimental")]
-        use zstd_sys::ZSTD_dParameter::ZSTD_d_experimentalParam1 as ZSTD_d_format;
-        #[cfg(feature = "experimental")]
-        use zstd_sys::ZSTD_format_e;
+        use zstd_sys::ZSTD_dParameter::{
+            ZSTD_d_experimentalParam1 as ZSTD_d_format,
+            ZSTD_d_experimentalParam2 as ZSTD_d_stableOutBuffer,
+            ZSTD_d_experimentalParam3 as ZSTD_d_forceIgnoreChecksum,
+            ZSTD_d_experimentalParam4 as ZSTD_d_refMultipleDDicts,
+        };
 
         use zstd_sys::ZSTD_dParameter::*;
         use DParameter::*;
 
         let (param, value) = match param {
             #[cfg(feature = "experimental")]
-            Format(FrameFormat::One) => {
-                (ZSTD_d_format, ZSTD_format_e::ZSTD_f_zstd1 as c_int)
+            Format(format) => (ZSTD_d_format, format as c_int),
+            #[cfg(feature = "experimental")]
+            StableOutBuffer(stable) => {
+                (ZSTD_d_stableOutBuffer, stable as c_int)
             }
             #[cfg(feature = "experimental")]
-            Format(FrameFormat::Magicless) => (
-                ZSTD_d_format,
-                ZSTD_format_e::ZSTD_f_zstd1_magicless as c_int,
-            ),
+            ForceIgnoreChecksum(force) => {
+                (ZSTD_d_forceIgnoreChecksum, force as c_int)
+            }
+            #[cfg(feature = "experimental")]
+            RefMultipleDDicts(value) => {
+                (ZSTD_d_refMultipleDDicts, value as c_int)
+            }
 
             WindowLogMax(value) => (ZSTD_d_windowLogMax, value as c_int),
         };
@@ -950,8 +1009,13 @@ impl<'a> CDict<'a> {
             PhantomData,
         )
     }
+
     pub fn sizeof(&self) -> usize {
         unsafe { zstd_sys::ZSTD_sizeof_CDict(self.0) }
+    }
+
+    pub fn get_dict_id(&self) -> u32 {
+        unsafe { zstd_sys::ZSTD_getDictID_fromCDict(self.0) as u32 }
     }
 }
 
@@ -1704,20 +1768,98 @@ pub fn reset_dstream(zds: &mut DStream) -> SafeResult {
     zds.reset()
 }
 
+#[cfg(feature = "experimental")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
 pub enum FrameFormat {
     /// Regular zstd format.
-    One,
+    One = zstd_sys::ZSTD_format_e::ZSTD_f_zstd1 as u32,
 
     /// Skip the 4 bytes identifying the content as zstd-compressed data.
-    Magicless,
+    Magicless = zstd_sys::ZSTD_format_e::ZSTD_f_zstd1_magicless as u32,
+}
+
+#[cfg(feature = "experimental")]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum LiteralCompressionMode {
+    Auto = zstd_sys::ZSTD_literalCompressionMode_e::ZSTD_lcm_auto as u32,
+    Huffman = zstd_sys::ZSTD_literalCompressionMode_e::ZSTD_lcm_huffman as u32,
+    Uncompressed =
+        zstd_sys::ZSTD_literalCompressionMode_e::ZSTD_lcm_uncompressed as u32,
+}
+
+#[cfg(feature = "experimental")]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum DictAttachPref {
+    DefaultAttach =
+        zstd_sys::ZSTD_dictAttachPref_e::ZSTD_dictDefaultAttach as u32,
+    ForceAttach = zstd_sys::ZSTD_dictAttachPref_e::ZSTD_dictForceAttach as u32,
+    ForceCopy = zstd_sys::ZSTD_dictAttachPref_e::ZSTD_dictForceCopy as u32,
+    ForceLoad = zstd_sys::ZSTD_dictAttachPref_e::ZSTD_dictForceLoad as u32,
+}
+
+#[cfg(feature = "experimental")]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum UseRowMatchFinderMode {
+    Auto = zstd_sys::ZSTD_useRowMatchFinderMode_e::ZSTD_urm_auto as u32,
+    Disable =
+        zstd_sys::ZSTD_useRowMatchFinderMode_e::ZSTD_urm_disableRowMatchFinder
+            as u32,
+    Enable =
+        zstd_sys::ZSTD_useRowMatchFinderMode_e::ZSTD_urm_enableRowMatchFinder
+            as u32,
 }
 
 /// A compression parameter.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CParameter {
     #[cfg(feature = "experimental")]
+    RSyncable(bool),
+
+    #[cfg(feature = "experimental")]
     Format(FrameFormat),
+
+    #[cfg(feature = "experimental")]
+    ForceMaxWindow(bool),
+
+    #[cfg(feature = "experimental")]
+    ForceAttachDict(DictAttachPref),
+
+    #[cfg(feature = "experimental")]
+    LiteralCompressionMode(LiteralCompressionMode),
+
+    #[cfg(feature = "experimental")]
+    TargetCBlockSize(u32),
+
+    #[cfg(feature = "experimental")]
+    SrcSizeHint(u32),
+
+    #[cfg(feature = "experimental")]
+    EnableDedicatedDictSearch(bool),
+
+    #[cfg(feature = "experimental")]
+    StableInBuffer(bool),
+
+    #[cfg(feature = "experimental")]
+    StableOutBuffer(bool),
+
+    #[cfg(feature = "experimental")]
+    BlockDelimiters(bool),
+
+    #[cfg(feature = "experimental")]
+    ValidateSequences(bool),
+
+    #[cfg(feature = "experimental")]
+    SplitBlocks(bool),
+
+    #[cfg(feature = "experimental")]
+    UseRowMatchFinder(UseRowMatchFinderMode),
+
+    #[cfg(feature = "experimental")]
+    DeterministicRefPrefix(bool),
 
     CompressionLevel(CompressionLevel),
 
@@ -1765,6 +1907,15 @@ pub enum DParameter {
     /// See `FrameFormat`.
     #[cfg(feature = "experimental")]
     Format(FrameFormat),
+
+    #[cfg(feature = "experimental")]
+    StableOutBuffer(bool),
+
+    #[cfg(feature = "experimental")]
+    ForceIgnoreChecksum(bool),
+
+    #[cfg(feature = "experimental")]
+    RefMultipleDDicts(bool),
 }
 
 /// Wraps the `ZSTD_DCtx_setParameter()` function.

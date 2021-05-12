@@ -16,7 +16,7 @@ links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "1.5.0+zstd.1.4.9"
+version = "1.6.0+zstd.1.5.0"
 edition = "2018"
 
 exclude = [
@@ -35,7 +35,7 @@ doctest=false  # Documentation is for C code, good luck testing that.
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.57"
+version = "0.58"
 
 [build-dependencies.pkg-config]
 optional = true

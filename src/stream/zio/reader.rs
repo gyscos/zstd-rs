@@ -93,7 +93,7 @@ where
         loop {
             let (bytes_read, bytes_written) = {
                 // Start with a fresh pool of un-processed data.
-                // This is the only line that can return an interuption error.
+                // This is the only line that can return an interruption error.
                 let input = fill_buf(&mut self.reader)?;
 
                 // println!("{:?}", input);

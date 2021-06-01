@@ -26,15 +26,23 @@ pub use self::write::{AutoFinishEncoder, Encoder};
 /// Common functions for the encoder, both in read and write mode.
 macro_rules! readwritecommon {
     ($readwrite:ident) => {
+        /// Sets the given zstd compression parameter.
+        pub fn set_parameter(
+            &mut self,
+            parameter: zstd_safe::CParameter,
+        ) -> io::Result<()> {
+            self.$readwrite.operation_mut().set_parameter(parameter)
+        }
+
         /// Controls whether zstd should include a content checksum at the end
         /// of each frame.
         pub fn include_checksum(
             &mut self,
             include_checksum: bool,
         ) -> io::Result<()> {
-            self.$readwrite.operation_mut().set_parameter(
-                zstd_safe::CParameter::ChecksumFlag(include_checksum),
-            )
+            self.set_parameter(zstd_safe::CParameter::ChecksumFlag(
+                include_checksum,
+            ))
         }
 
         /// Enables multithreaded compression
@@ -47,9 +55,7 @@ macro_rules! readwritecommon {
         /// So even `n_workers = 1` may increase performance by separating
         /// IO and compression.
         pub fn multithread(&mut self, n_workers: u32) -> io::Result<()> {
-            self.$readwrite
-                .operation_mut()
-                .set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
+            self.set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
         }
 
         /// Enables or disables storing of the dict id.
@@ -60,9 +66,9 @@ macro_rules! readwritecommon {
             &mut self,
             include_dictid: bool,
         ) -> io::Result<()> {
-            self.$readwrite.operation_mut().set_parameter(
-                zstd_safe::CParameter::DictIdFlag(include_dictid),
-            )
+            self.set_parameter(zstd_safe::CParameter::DictIdFlag(
+                include_dictid,
+            ))
         }
 
         /// Enables or disabled storing of the contentsize
@@ -70,9 +76,9 @@ macro_rules! readwritecommon {
             &mut self,
             include_contentsize: bool,
         ) -> io::Result<()> {
-            self.$readwrite.operation_mut().set_parameter(
-                zstd_safe::CParameter::ContentSizeFlag(include_contentsize),
-            )
+            self.set_parameter(zstd_safe::CParameter::ContentSizeFlag(
+                include_contentsize,
+            ))
         }
 
         /// Enables or disables long-distance matching
@@ -80,11 +86,18 @@ macro_rules! readwritecommon {
             &mut self,
             long_distance_matching: bool,
         ) -> io::Result<()> {
-            self.$readwrite.operation_mut().set_parameter(
+            self.set_parameter(
                 zstd_safe::CParameter::EnableLongDistanceMatching(
                     long_distance_matching,
                 ),
             )
+        }
+
+        /// Sets the maximum back-reference distance.
+        ///
+        /// The actual maximum distance is going to be `2^log_distance`.
+        pub fn window_log(&mut self, log_distance: u32) -> io::Result<()> {
+            self.set_parameter(zstd_safe::CParameter::WindowLog(log_distance))
         }
 
         #[cfg(feature = "experimental")]
@@ -97,15 +110,13 @@ macro_rules! readwritecommon {
             &mut self,
             include_magicbytes: bool,
         ) -> io::Result<()> {
-            self.$readwrite.operation_mut().set_parameter(
+            self.set_parameter(zstd_safe::CParameter::Format(
                 if include_magicbytes {
-                    zstd_safe::CParameter::Format(zstd_safe::FrameFormat::One)
+                    zstd_safe::FrameFormat::One
                 } else {
-                    zstd_safe::CParameter::Format(
-                        zstd_safe::FrameFormat::Magicless,
-                    )
+                    zstd_safe::FrameFormat::Magicless
                 },
-            )
+            ))
         }
     };
 }

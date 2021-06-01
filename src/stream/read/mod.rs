@@ -82,25 +82,6 @@ impl<'a, R: BufRead> Decoder<'a, R> {
         zstd_safe::DCtx::out_size()
     }
 
-    #[cfg(feature = "experimental")]
-    /// Enables or disabled expecting the 4-byte magic header
-    ///
-    /// Only available when using the `experimental` feature.
-    pub fn include_magicbytes(
-        &mut self,
-        include_magicbytes: bool,
-    ) -> io::Result<()> {
-        self.reader
-            .operation_mut()
-            .set_parameter(if include_magicbytes {
-                zstd_safe::DParameter::Format(zstd_safe::FrameFormat::One)
-            } else {
-                zstd_safe::DParameter::Format(
-                    zstd_safe::FrameFormat::Magicless,
-                )
-            })
-    }
-
     /// Acquire a reference to the underlying reader.
     pub fn get_ref(&self) -> &R {
         self.reader.reader()
@@ -121,6 +102,8 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     pub fn finish(self) -> R {
         self.reader.into_inner()
     }
+
+    crate::decoder_common!(reader);
 }
 
 impl<R: BufRead> Read for Decoder<'_, R> {
@@ -209,7 +192,7 @@ impl<'a, R: BufRead> Encoder<'a, R> {
         self.reader.into_inner()
     }
 
-    crate::readwritecommon!(reader);
+    crate::encoder_common!(reader);
 }
 
 impl<R: BufRead> Read for Encoder<'_, R> {

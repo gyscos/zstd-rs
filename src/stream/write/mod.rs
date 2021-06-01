@@ -217,7 +217,7 @@ impl<'a, W: Write> Encoder<'a, W> {
         zstd_safe::CCtx::in_size()
     }
 
-    crate::readwritecommon!(writer);
+    crate::encoder_common!(writer);
 }
 
 impl<'a, W: Write> Write for Encoder<'a, W> {
@@ -256,6 +256,7 @@ impl<W: Write> Decoder<'static, W> {
         Ok(Decoder { writer })
     }
 }
+
 impl<'a, W: Write> Decoder<'a, W> {
     /// Creates a new decoder, using an existing prepared `DecoderDictionary`.
     ///
@@ -271,25 +272,6 @@ impl<'a, W: Write> Decoder<'a, W> {
         let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
         let writer = zio::Writer::new(writer, decoder);
         Ok(Decoder { writer })
-    }
-
-    #[cfg(feature = "experimental")]
-    /// Enables or disabled expecting the 4-byte magic header
-    ///
-    /// Only available with the `experimental` feature.
-    pub fn include_magicbytes(
-        &mut self,
-        include_magicbytes: bool,
-    ) -> io::Result<()> {
-        self.writer
-            .operation_mut()
-            .set_parameter(if include_magicbytes {
-                zstd_safe::DParameter::Format(zstd_safe::FrameFormat::One)
-            } else {
-                zstd_safe::DParameter::Format(
-                    zstd_safe::FrameFormat::Magicless,
-                )
-            })
     }
 
     /// Acquires a reference to the underlying writer.
@@ -314,6 +296,8 @@ impl<'a, W: Write> Decoder<'a, W> {
     pub fn recommended_input_size() -> usize {
         zstd_safe::DCtx::in_size()
     }
+
+    crate::decoder_common!(writer);
 }
 
 impl<W: Write> Write for Decoder<'_, W> {

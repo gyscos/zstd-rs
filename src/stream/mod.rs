@@ -23,8 +23,49 @@ pub use self::write::{AutoFinishEncoder, Encoder};
 
 #[doc(hidden)]
 #[macro_export]
+/// Common functions for the decoder, both in read and write mode.
+macro_rules! decoder_common {
+    ($readwrite:ident) => {
+        /// Sets a decompression parameter on the decompression stream.
+        pub fn set_parameter(
+            &mut self,
+            parameter: zstd_safe::DParameter,
+        ) -> io::Result<()> {
+            self.$readwrite.operation_mut().set_parameter(parameter)
+        }
+
+        /// Sets the maximum back-reference distance.
+        ///
+        /// The actual maximum distance is going to be `2^log_distance`.
+        pub fn window_log_max(&mut self, log_distance: u32) -> io::Result<()> {
+            self.set_parameter(zstd_safe::DParameter::WindowLogMax(
+                log_distance,
+            ))
+        }
+
+        #[cfg(feature = "experimental")]
+        /// Enables or disabled expecting the 4-byte magic header
+        ///
+        /// Only available with the `experimental` feature.
+        pub fn include_magicbytes(
+            &mut self,
+            include_magicbytes: bool,
+        ) -> io::Result<()> {
+            self.set_parameter(zstd_safe::DParameter::Format(
+                if include_magicbytes {
+                    zstd_safe::FrameFormat::One
+                } else {
+                    zstd_safe::FrameFormat::Magicless
+                },
+            ))
+        }
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
 /// Common functions for the encoder, both in read and write mode.
-macro_rules! readwritecommon {
+macro_rules! encoder_common {
     ($readwrite:ident) => {
         /// Sets the given zstd compression parameter.
         pub fn set_parameter(

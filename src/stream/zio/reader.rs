@@ -90,17 +90,19 @@ where
         }
 
         // Keep trying until _something_ has been written.
+        let mut first = true;
         loop {
             let (bytes_read, bytes_written) = {
                 // Start with a fresh pool of un-processed data.
-                // This is the only line that can return an interuption error.
-                let input = fill_buf(&mut self.reader)?;
+                // This is the only line that can return an interruption error.
+                let input = if first { b"" } else { fill_buf(&mut self.reader)? };
 
                 // println!("{:?}", input);
 
                 // It's possible we don't have any new data to read.
                 // (In this case we may still have zstd's own buffer to clear.)
-                let eof = input.is_empty();
+                let eof = !first && input.is_empty();
+                first = false;
 
                 let mut src = InBuffer::around(input);
                 let mut dst = OutBuffer::around(buf);

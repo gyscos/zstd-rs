@@ -95,9 +95,13 @@ where
             let (bytes_read, bytes_written) = {
                 // Start with a fresh pool of un-processed data.
                 // This is the only line that can return an interruption error.
-                let input = if first { b"" } else { fill_buf(&mut self.reader)? };
+                let input = if first {
+                    b""
+                } else {
+                    fill_buf(&mut self.reader)?
+                };
 
-                // println!("{:?}", input);
+                // eprintln!("{:?}", input);
 
                 // It's possible we don't have any new data to read.
                 // (In this case we may still have zstd's own buffer to clear.)
@@ -111,7 +115,9 @@ where
                 // The return value is a hint for the next input size,
                 // but it's safe to ignore.
                 if !eof {
-                    if self.finished_frame {
+                    // We don't want empty input (from first=true) to cause a frame
+                    // re-initialization.
+                    if self.finished_frame && !input.is_empty() {
                         self.operation.reinit()?;
                         self.finished_frame = false;
                     }
@@ -119,6 +125,9 @@ where
                     // Phase 1: feed input to the operation
                     let hint = self.operation.run(&mut src, &mut dst)?;
 
+                    // Should we add `&& !input.is_empty()` to the condition?
+                    // (Can zstd return hint==0 for an empty input when it's not
+                    // the end of the frame? I don't think so.)
                     if hint == 0 {
                         // We just finished a frame.
                         self.finished_frame = true;
@@ -134,7 +143,7 @@ where
                     let hint = self
                         .operation
                         .finish(&mut dst, self.finished_frame)?;
-                    // println!("Hint: {}\nOutput: {:?}", hint, dst);
+                    // eprintln!("Hint: {}\nOutput: {:?}", hint, dst);
                     if hint == 0 {
                         // This indicates that the footer is complete.
                         // This is the only way to terminate the stream cleanly.
@@ -145,7 +154,7 @@ where
                     }
                 }
 
-                // println!("{:?}", dst);
+                // eprintln!("{:?}", dst);
 
                 (src.pos(), dst.pos())
             };
@@ -192,7 +201,7 @@ mod tests {
                 Reader::new(Cursor::new(input), Encoder::new(1).unwrap());
             reader.read_to_end(&mut output).unwrap();
         }
-        // println!("{:?}", output);
+        // eprintln!("{:?}", output);
         let decoded = crate::decode_all(&output[..]).unwrap();
         assert_eq!(&decoded, input);
     }

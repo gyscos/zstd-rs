@@ -243,3 +243,27 @@ fn test_ll_source() {
         test_full_cycle(data, level);
     }
 }
+
+#[test]
+fn reader_to_writer() {
+    use std::io::{Read, Write};
+
+    let clear = include_bytes!("../../assets/example.txt");
+    // Compress using reader
+    let mut encoder = super::read::Encoder::new(&clear[..], 1).unwrap();
+
+    let mut compressed_buffer = Vec::new();
+    encoder.read_to_end(&mut compressed_buffer).unwrap();
+
+    // eprintln!("Compressed Buffer: {:?}", compressed_buffer);
+
+    // Decompress using writer
+    let mut decompressed_buffer = Vec::new();
+    let mut decoder =
+        super::write::Decoder::new(&mut decompressed_buffer).unwrap();
+    decoder.write_all(&compressed_buffer[..]).unwrap();
+    decoder.flush().unwrap();
+    // eprintln!("{:?}", decompressed_buffer);
+
+    assert_eq!(clear, &decompressed_buffer[..]);
+}

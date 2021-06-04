@@ -101,6 +101,7 @@ where
     {
         self.buffer.clear();
         let mut output = OutBuffer::around(&mut self.buffer);
+        // eprintln!("Output: {:?}", output);
         f(&mut output, &mut self.operation)
     }
 
@@ -187,7 +188,10 @@ where
             let hint = self.with_buffer(|dst, op| op.run(&mut src, dst));
             let bytes_read = src.pos;
 
-            // println!("Hint: {:?}\nRead {}", hint, bytes_read);
+            // eprintln!(
+            //     "Write Hint: {:?}\n src: {:?}\n dst: {:?}",
+            //     hint, src, self.buffer
+            // );
 
             self.offset = 0;
             let hint = hint?;

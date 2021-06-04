@@ -13,10 +13,19 @@ pub struct Reader<R, D> {
     reader: R,
     operation: D,
 
-    finished: bool,
+    state: State,
 
     single_frame: bool,
     finished_frame: bool,
+}
+
+enum State {
+    // Still actively reading from the inner `Read`
+    Reading,
+    // We reached EOF from the inner `Read`, now flushing.
+    PastEof,
+    // We are fully done, nothing can be read.
+    Finished,
 }
 
 impl<R, D> Reader<R, D> {
@@ -27,7 +36,7 @@ impl<R, D> Reader<R, D> {
         Reader {
             reader,
             operation,
-            finished: false,
+            state: State::Reading,
             single_frame: false,
             finished_frame: false,
         }
@@ -76,7 +85,11 @@ where
     */
 
     // Workaround for now
-    reader.fill_buf()
+    let res = reader.fill_buf()?;
+
+    // eprintln!("Filled buffer: {:?}", res);
+
+    Ok(res)
 }
 
 impl<R, D> Read for Reader<R, D>
@@ -85,85 +98,95 @@ where
     D: Operation,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.finished {
-            return Ok(0);
-        }
-
         // Keep trying until _something_ has been written.
         let mut first = true;
         loop {
-            let (bytes_read, bytes_written) = {
-                // Start with a fresh pool of un-processed data.
-                // This is the only line that can return an interruption error.
-                let input = if first {
-                    b""
-                } else {
-                    fill_buf(&mut self.reader)?
-                };
+            match self.state {
+                State::Reading => {
+                    let (bytes_read, bytes_written) = {
+                        // Start with a fresh pool of un-processed data.
+                        // This is the only line that can return an interruption error.
+                        let input = if first {
+                            // eprintln!("First run, no input coming.");
+                            b""
+                        } else {
+                            fill_buf(&mut self.reader)?
+                        };
 
-                // eprintln!("{:?}", input);
+                        // eprintln!("Input = {:?}", input);
 
-                // It's possible we don't have any new data to read.
-                // (In this case we may still have zstd's own buffer to clear.)
-                let eof = !first && input.is_empty();
-                first = false;
-
-                let mut src = InBuffer::around(input);
-                let mut dst = OutBuffer::around(buf);
-
-                // This can only fail with invalid data.
-                // The return value is a hint for the next input size,
-                // but it's safe to ignore.
-                if !eof {
-                    // We don't want empty input (from first=true) to cause a frame
-                    // re-initialization.
-                    if self.finished_frame && !input.is_empty() {
-                        self.operation.reinit()?;
-                        self.finished_frame = false;
-                    }
-
-                    // Phase 1: feed input to the operation
-                    let hint = self.operation.run(&mut src, &mut dst)?;
-
-                    // Should we add `&& !input.is_empty()` to the condition?
-                    // (Can zstd return hint==0 for an empty input when it's not
-                    // the end of the frame? I don't think so.)
-                    if hint == 0 {
-                        // We just finished a frame.
-                        self.finished_frame = true;
-                        if self.single_frame {
-                            self.finished = true;
+                        // It's possible we don't have any new data to read.
+                        // (In this case we may still have zstd's own buffer to clear.)
+                        if !first && input.is_empty() {
+                            self.state = State::PastEof;
+                            continue;
                         }
+                        first = false;
+
+                        let mut src = InBuffer::around(input);
+                        let mut dst = OutBuffer::around(buf);
+
+                        // We don't want empty input (from first=true) to cause a frame
+                        // re-initialization.
+                        if self.finished_frame && !input.is_empty() {
+                            // eprintln!("!! Reigniting !!");
+                            self.operation.reinit()?;
+                            self.finished_frame = false;
+                        }
+
+                        // Phase 1: feed input to the operation
+                        let hint = self.operation.run(&mut src, &mut dst)?;
+                        // eprintln!(
+                        //     "Hint={} Just run our operation:\n In={:?}\n Out={:?}",
+                        //     hint, src, dst
+                        // );
+
+                        if hint == 0 {
+                            // In practice this only happens when decoding, when we just finished
+                            // reading a frame.
+                            self.finished_frame = true;
+                            if self.single_frame {
+                                self.state = State::Finished;
+                            }
+                        }
+
+                        // eprintln!("Output: {:?}", dst);
+
+                        (src.pos(), dst.pos())
+                    };
+
+                    self.reader.consume(bytes_read);
+
+                    if bytes_written > 0 {
+                        return Ok(bytes_written);
                     }
-                } else {
-                    // TODO: Make it Work!
+
+                    // We need more data! Try again!
+                }
+                State::PastEof => {
+                    let mut dst = OutBuffer::around(buf);
+
+                    // We already sent all the input we could get to zstd. Time to flush out the
+                    // buffer and be done with it.
 
                     // Phase 2: flush out the operation's buffer
                     // Keep calling `finish()` until the buffer is empty.
                     let hint = self
                         .operation
                         .finish(&mut dst, self.finished_frame)?;
-                    // eprintln!("Hint: {}\nOutput: {:?}", hint, dst);
+                    // eprintln!("Hint: {} ; Output: {:?}", hint, dst);
                     if hint == 0 {
                         // This indicates that the footer is complete.
                         // This is the only way to terminate the stream cleanly.
-                        self.finished = true;
-                        if dst.pos() == 0 {
-                            return Ok(0);
-                        }
+                        self.state = State::Finished;
                     }
+
+                    return Ok(dst.pos());
                 }
-
-                // eprintln!("{:?}", dst);
-
-                (src.pos(), dst.pos())
-            };
-            self.reader.consume(bytes_read);
-
-            if bytes_written > 0 {
-                return Ok(bytes_written);
+                State::Finished => {
+                    return Ok(0);
+                }
             }
-            // We need more data! Try again!
         }
     }
 }

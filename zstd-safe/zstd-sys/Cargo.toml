@@ -19,13 +19,24 @@ repository = "https://github.com/gyscos/zstd-rs"
 version = "1.6.0+zstd.1.5.0"
 edition = "2018"
 
-exclude = [
-    "zstd",
-    "!zstd/LICENSE",
-    "!zstd/COPYING",
-    "!zstd/lib/**/**.h",
-    "!zstd/lib/**/**.c",
+# Use include instead of exclude, as a (temporary)
+# workaround for https://github.com/rust-lang/cargo/issues/9555
+include = [
+    "/LICENSE",
+    "/*.*",
+    "/src/",
+    "/zstd/LICENSE",
+    "/zstd/COPYING",
+    "/zstd/lib/**/*.c",
+    "/zstd/lib/**/*.h",
 ]
+# exclude = [
+#     "zstd",
+#     "!zstd/LICENSE",
+#     "!zstd/COPYING",
+#     "!zstd/lib/**/**.h",
+#     "!zstd/lib/**/**.c",
+# ]
 
 [package.metadata.docs.rs]
 features = ["experimental"]

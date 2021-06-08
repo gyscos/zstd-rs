@@ -1,19 +1,10 @@
 //! Implement push-based [`Write`] trait for both compressing and decompressing.
 use std::io::{self, Write};
 
-#[cfg(feature = "tokio")]
-use futures::Poll;
-#[cfg(feature = "tokio")]
-use tokio_io::AsyncWrite;
-
 use zstd_safe;
 
 use crate::dict::{DecoderDictionary, EncoderDictionary};
 use crate::stream::{raw, zio};
-
-#[cfg(test)]
-#[cfg(feature = "tokio")]
-mod async_tests;
 
 #[cfg(test)]
 mod tests;
@@ -230,16 +221,6 @@ impl<'a, W: Write> Write for Encoder<'a, W> {
     }
 }
 
-#[cfg(feature = "tokio")]
-impl<'a, W: AsyncWrite> AsyncWrite for Encoder<'a, W> {
-    fn shutdown(&mut self) -> Poll<(), io::Error> {
-        use tokio_io::try_nb;
-
-        try_nb!(self.do_finish());
-        self.writer.writer_mut().shutdown()
-    }
-}
-
 impl<W: Write> Decoder<'static, W> {
     /// Creates a new decoder.
     pub fn new(writer: W) -> io::Result<Self> {
@@ -307,13 +288,6 @@ impl<W: Write> Write for Decoder<'_, W> {
 
     fn flush(&mut self) -> io::Result<()> {
         self.writer.flush()
-    }
-}
-
-#[cfg(feature = "tokio")]
-impl<W: AsyncWrite> AsyncWrite for Decoder<'_, W> {
-    fn shutdown(&mut self) -> Poll<(), io::Error> {
-        self.writer.writer_mut().shutdown()
     }
 }
 

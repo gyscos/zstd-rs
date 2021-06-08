@@ -1,16 +1,9 @@
 //! Implement pull-based [`Read`] trait for both compressing and decompressing.
 use std::io::{self, BufRead, BufReader, Read};
 
-#[cfg(feature = "tokio")]
-use tokio_io::AsyncRead;
-
 use crate::dict::{DecoderDictionary, EncoderDictionary};
 use crate::stream::{raw, zio};
 use zstd_safe;
-
-#[cfg(test)]
-#[cfg(feature = "tokio")]
-mod async_tests;
 
 #[cfg(test)]
 mod tests;
@@ -112,13 +105,6 @@ impl<R: BufRead> Read for Decoder<'_, R> {
     }
 }
 
-#[cfg(feature = "tokio")]
-impl<R: AsyncRead + BufRead> AsyncRead for Decoder<'_, R> {
-    unsafe fn prepare_uninitialized_buffer(&self, _buf: &mut [u8]) -> bool {
-        false
-    }
-}
-
 impl<R: Read> Encoder<'static, BufReader<R>> {
     /// Creates a new encoder.
     pub fn new(reader: R, level: i32) -> io::Result<Self> {
@@ -198,13 +184,6 @@ impl<'a, R: BufRead> Encoder<'a, R> {
 impl<R: BufRead> Read for Encoder<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.reader.read(buf)
-    }
-}
-
-#[cfg(feature = "tokio")]
-impl<R: AsyncRead + BufRead> AsyncRead for Encoder<'_, R> {
-    unsafe fn prepare_uninitialized_buffer(&self, _buf: &mut [u8]) -> bool {
-        false
     }
 }
 

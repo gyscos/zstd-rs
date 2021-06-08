@@ -57,9 +57,9 @@ fn decompress() {
 
 # Asynchronous support
 
-You can use this library to wrap non-blocking writer/readers:
-add the `tokio` feature, and `stream::Encoder` and `stream::Decoder`
-will implement `AsyncWrite` and `AsyncRead`, respectively.
+The [`async-compression`](https://github.com/Nemo157/async-compression/) crate
+provides an async-ready integration of various compression algorithms,
+including `zstd-rs`.
 
 # Compile it yourself
 

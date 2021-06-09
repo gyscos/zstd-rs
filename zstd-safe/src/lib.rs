@@ -24,6 +24,9 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
+// Re-export zstd-sys
+pub use zstd_sys;
+
 /// How to compress data.
 pub use zstd_sys::ZSTD_strategy as Strategy;
 

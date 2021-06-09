@@ -22,6 +22,9 @@
 //! [zstd]: https://github.com/facebook/zstd
 #![deny(missing_docs)]
 
+// Re-export the zstd-safe crate.
+pub use zstd_safe;
+
 pub mod block;
 pub mod dict;
 pub mod stream;

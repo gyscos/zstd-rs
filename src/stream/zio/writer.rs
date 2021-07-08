@@ -113,6 +113,12 @@ where
         // been written in case we're interrupted.
         while self.offset < self.buffer.len() {
             match self.writer.write(&self.buffer[self.offset..]) {
+                Ok(0) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "writer will not accept any more data",
+                    ))
+                }
                 Ok(n) => self.offset += n,
                 Err(ref e) if e.kind() == io::ErrorKind::Interrupted => (),
                 Err(e) => return Err(e),

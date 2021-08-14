@@ -16,9 +16,14 @@ mod tests;
 ///
 /// Don't forget to call [`finish()`] before dropping it!
 ///
+/// Alternatively, you can call [`auto_finish()`] to use an
+/// [`AutoFinishEncoder`] that will finish on drop.
+///
 /// Note: The zstd library has its own internal input buffer (~128kb).
 ///
 /// [`finish()`]: #method.finish
+/// [`auto_finish()`]: #method.auto_finish
+/// [`AutoFinishEncoder`]: AutoFinishEncoder
 pub struct Encoder<'a, W: Write> {
     // output writer (compressed data)
     writer: zio::Writer<W, raw::Encoder<'a>>,
@@ -31,6 +36,11 @@ pub struct Decoder<'a, W: Write> {
 }
 
 /// A wrapper around an `Encoder<W>` that finishes the stream on drop.
+///
+/// This can be created by the [`auto_finish()`] method on the [`Encoder`].
+///
+/// [`auto_finish()`]: Encoder::auto_finish
+/// [`Encoder`]: Encoder
 pub struct AutoFinishEncoder<'a, W: Write> {
     // We wrap this in an option to take it during drop.
     encoder: Option<Encoder<'a, W>>,

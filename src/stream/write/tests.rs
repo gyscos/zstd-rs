@@ -54,6 +54,16 @@ fn test_partial_write_finish() {
     assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
 }
 
+#[test]
+fn send_autoencoder() {
+    let input = vec![b'b'; 128 * 1024];
+    let z = setup_partial_write(&input);
+    let auto = z.on_finish(|_| {});
+
+    fn assert_is_send<T: Send>(_: T) {}
+    assert_is_send(auto);
+}
+
 fn setup_partial_write(input_data: &[u8]) -> Encoder<PartialWrite<Vec<u8>>> {
     let buf =
         PartialWrite::new(Vec::new(), iter::repeat(PartialOp::Limited(1)));

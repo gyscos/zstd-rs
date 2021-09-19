@@ -4,7 +4,7 @@
 //! This crates provides a minimal translation of the [zstd-sys] methods.
 //! For a more comfortable high-level library, see the [zstd] crate.
 //!
-//! [zstd-sys]: http://crates.io/crates/zstd-sys
+//! [zstd-sys]: https://crates.io/crates/zstd-sys
 //! [zstd]: https://crates.io/crates/zstd
 //!
 //! Most of the functions here map 1-for-1 to a function from
@@ -12,7 +12,7 @@
 //! Check the [source documentation][doc] for more information on their
 //! behaviour.
 //!
-//! [doc]: http://facebook.github.io/zstd/zstd_manual.html
+//! [doc]: https://facebook.github.io/zstd/zstd_manual.html
 //! [zstd-c]: https://facebook.github.io/zstd/
 //!
 //! Features denoted as experimental in the C library are hidden behind an

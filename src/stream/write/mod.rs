@@ -41,22 +41,25 @@ pub struct Decoder<'a, W: Write> {
 ///
 /// [`auto_finish()`]: Encoder::auto_finish
 /// [`Encoder`]: Encoder
-pub struct AutoFinishEncoder<'a, W: Write> {
+pub struct AutoFinishEncoder<'a, W: Write, F = Box<dyn FnMut(io::Result<W>)>>
+where
+    F: FnMut(io::Result<W>) + 'static,
+{
     // We wrap this in an option to take it during drop.
     encoder: Option<Encoder<'a, W>>,
 
     // TODO: make this a FnOnce once it works in a Box
-    on_finish: Option<Box<dyn FnMut(io::Result<W>)>>,
+    on_finish: Option<F>,
 }
 
-impl<'a, W: Write> AutoFinishEncoder<'a, W> {
-    fn new<F>(encoder: Encoder<'a, W>, on_finish: F) -> Self
-    where
-        F: 'static + FnMut(io::Result<W>),
-    {
+impl<'a, W: Write, F> AutoFinishEncoder<'a, W, F>
+where
+    F: FnMut(io::Result<W>) + 'static,
+{
+    fn new(encoder: Encoder<'a, W>, on_finish: F) -> Self {
         AutoFinishEncoder {
             encoder: Some(encoder),
-            on_finish: Some(Box::new(on_finish)),
+            on_finish: Some(on_finish),
         }
     }
 
@@ -74,7 +77,10 @@ impl<'a, W: Write> AutoFinishEncoder<'a, W> {
     }
 }
 
-impl<W: Write> Drop for AutoFinishEncoder<'_, W> {
+impl<W: Write, F> Drop for AutoFinishEncoder<'_, W, F>
+where
+    F: FnMut(io::Result<W>) + 'static,
+{
     fn drop(&mut self) {
         let result = self.encoder.take().unwrap().finish();
         if let Some(mut on_finish) = self.on_finish.take() {
@@ -143,9 +149,9 @@ impl<'a, W: Write> Encoder<'a, W> {
     ///
     /// Panics on drop if an error happens when finishing the stream.
     pub fn auto_finish(self) -> AutoFinishEncoder<'a, W> {
-        self.on_finish(|result| {
+        self.on_finish(Box::new(|result: io::Result<W>| {
             result.unwrap();
-        })
+        }))
     }
 
     /// Returns an encoder that will finish the stream on drop.
@@ -154,7 +160,7 @@ impl<'a, W: Write> Encoder<'a, W> {
     pub fn on_finish<F: 'static + FnMut(io::Result<W>)>(
         self,
         f: F,
-    ) -> AutoFinishEncoder<'a, W> {
+    ) -> AutoFinishEncoder<'a, W, F> {
         AutoFinishEncoder::new(self, f)
     }
 

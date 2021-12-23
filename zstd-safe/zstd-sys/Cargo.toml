@@ -69,3 +69,4 @@ non-cargo = [] # Silence cargo-specific build flags
 std = [] # Use std types instead of libc in bindgen
 zstdmt = [] # Enable multi-thread support (with pthread)
 thin = [] # Optimize binary by size
+no_asm = [] # Disable ASM files (only on amd64 for decompression)

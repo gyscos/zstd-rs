@@ -105,6 +105,12 @@ fn compile_zstd() {
         }
     }
 
+    // Either include ASM files, or disable ASM entirely.
+    #[cfg(feature = "no_asm")]
+    config.define("ZSTD_DISABLE_ASM", Some(""));
+    #[cfg(not(feature = "no_asm"))]
+    config.file("zstd/lib/decompress/huf_decompress_amd64.S");
+
     // Some extra parameters
     config.opt_level(3);
     config.include("zstd/lib/");

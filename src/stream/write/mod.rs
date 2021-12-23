@@ -46,12 +46,15 @@ pub struct Decoder<'a, W: Write> {
 ///
 /// [`auto_finish()`]: Encoder::auto_finish
 /// [`Encoder`]: Encoder
-pub struct AutoFinishEncoder<'a, W: Write> {
+pub struct AutoFinishEncoder<
+    'a,
+    W: Write,
+    F: FnMut(io::Result<W>) = Box<dyn Send + FnMut(io::Result<W>)>,
+> {
     // We wrap this in an option to take it during drop.
     encoder: Option<Encoder<'a, W>>,
 
-    // TODO: make this a FnOnce once it works in a Box
-    on_finish: Option<Box<dyn FnMut(io::Result<W>)>>,
+    on_finish: Option<F>,
 }
 
 /// A wrapper around a `Decoder<W>` that flushes the stream on drop.
@@ -119,14 +122,11 @@ impl<W: Write, F: FnMut(io::Result<()>)> Write for AutoFlushDecoder<'_, W, F> {
     }
 }
 
-impl<'a, W: Write> AutoFinishEncoder<'a, W> {
-    fn new<F>(encoder: Encoder<'a, W>, on_finish: F) -> Self
-    where
-        F: 'static + FnMut(io::Result<W>),
-    {
+impl<'a, W: Write, F: FnMut(io::Result<W>)> AutoFinishEncoder<'a, W, F> {
+    fn new(encoder: Encoder<'a, W>, on_finish: F) -> Self {
         AutoFinishEncoder {
             encoder: Some(encoder),
-            on_finish: Some(Box::new(on_finish)),
+            on_finish: Some(on_finish),
         }
     }
 
@@ -146,7 +146,7 @@ impl<'a, W: Write> AutoFinishEncoder<'a, W> {
     }
 }
 
-impl<W: Write> Drop for AutoFinishEncoder<'_, W> {
+impl<W: Write, F: FnMut(io::Result<W>)> Drop for AutoFinishEncoder<'_, W, F> {
     fn drop(&mut self) {
         let result = self.encoder.take().unwrap().finish();
         if let Some(mut on_finish) = self.on_finish.take() {
@@ -155,7 +155,7 @@ impl<W: Write> Drop for AutoFinishEncoder<'_, W> {
     }
 }
 
-impl<W: Write> Write for AutoFinishEncoder<'_, W> {
+impl<W: Write, F: FnMut(io::Result<W>)> Write for AutoFinishEncoder<'_, W, F> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.encoder.as_mut().unwrap().write(buf)
     }
@@ -215,18 +215,18 @@ impl<'a, W: Write> Encoder<'a, W> {
     ///
     /// Panics on drop if an error happens when finishing the stream.
     pub fn auto_finish(self) -> AutoFinishEncoder<'a, W> {
-        self.on_finish(|result| {
+        self.on_finish(Box::new(|result| {
             result.unwrap();
-        })
+        }))
     }
 
     /// Returns an encoder that will finish the stream on drop.
     ///
     /// Calls the given callback with the result from `finish()`.
-    pub fn on_finish<F: 'static + FnMut(io::Result<W>)>(
+    pub fn on_finish<F: FnMut(io::Result<W>)>(
         self,
         f: F,
-    ) -> AutoFinishEncoder<'a, W> {
+    ) -> AutoFinishEncoder<'a, W, F> {
         AutoFinishEncoder::new(self, f)
     }
 
@@ -399,4 +399,6 @@ fn _assert_traits() {
 
     _assert_send(Decoder::new(Vec::new()));
     _assert_send(Encoder::new(Vec::new(), 1));
+    _assert_send(Decoder::new(Vec::new()).unwrap().auto_flush());
+    _assert_send(Encoder::new(Vec::new(), 1).unwrap().auto_finish());
 }

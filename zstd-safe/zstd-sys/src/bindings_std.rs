@@ -368,57 +368,6 @@ pub struct ZSTD_bounds {
     pub lowerBound: ::std::os::raw::c_int,
     pub upperBound: ::std::os::raw::c_int,
 }
-#[test]
-fn bindgen_test_layout_ZSTD_bounds() {
-    assert_eq!(
-        ::core::mem::size_of::<ZSTD_bounds>(),
-        16usize,
-        concat!("Size of: ", stringify!(ZSTD_bounds))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<ZSTD_bounds>(),
-        8usize,
-        concat!("Alignment of ", stringify!(ZSTD_bounds))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_bounds>())).error as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_bounds),
-            "::",
-            stringify!(error)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_bounds>())).lowerBound as *const _
-                as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_bounds),
-            "::",
-            stringify!(lowerBound)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_bounds>())).upperBound as *const _
-                as usize
-        },
-        12usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_bounds),
-            "::",
-            stringify!(upperBound)
-        )
-    );
-}
 extern "C" {
     #[doc = " ZSTD_cParam_getBounds() :"]
     #[doc = "  All parameters must belong to an interval with lower and upper bounds,"]
@@ -563,58 +512,6 @@ pub struct ZSTD_inBuffer_s {
     #[doc = "< position where reading stopped. Will be updated. Necessarily 0 <= pos <= size"]
     pub pos: usize,
 }
-#[test]
-fn bindgen_test_layout_ZSTD_inBuffer_s() {
-    assert_eq!(
-        ::core::mem::size_of::<ZSTD_inBuffer_s>(),
-        24usize,
-        concat!("Size of: ", stringify!(ZSTD_inBuffer_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<ZSTD_inBuffer_s>(),
-        8usize,
-        concat!("Alignment of ", stringify!(ZSTD_inBuffer_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_inBuffer_s>())).src as *const _
-                as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_inBuffer_s),
-            "::",
-            stringify!(src)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_inBuffer_s>())).size as *const _
-                as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_inBuffer_s),
-            "::",
-            stringify!(size)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_inBuffer_s>())).pos as *const _
-                as usize
-        },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_inBuffer_s),
-            "::",
-            stringify!(pos)
-        )
-    );
-}
 #[doc = "  Streaming"]
 pub type ZSTD_inBuffer = ZSTD_inBuffer_s;
 #[repr(C)]
@@ -626,58 +523,6 @@ pub struct ZSTD_outBuffer_s {
     pub size: usize,
     #[doc = "< position where writing stopped. Will be updated. Necessarily 0 <= pos <= size"]
     pub pos: usize,
-}
-#[test]
-fn bindgen_test_layout_ZSTD_outBuffer_s() {
-    assert_eq!(
-        ::core::mem::size_of::<ZSTD_outBuffer_s>(),
-        24usize,
-        concat!("Size of: ", stringify!(ZSTD_outBuffer_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<ZSTD_outBuffer_s>(),
-        8usize,
-        concat!("Alignment of ", stringify!(ZSTD_outBuffer_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_outBuffer_s>())).dst as *const _
-                as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_outBuffer_s),
-            "::",
-            stringify!(dst)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_outBuffer_s>())).size as *const _
-                as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_outBuffer_s),
-            "::",
-            stringify!(size)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZSTD_outBuffer_s>())).pos as *const _
-                as usize
-        },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZSTD_outBuffer_s),
-            "::",
-            stringify!(pos)
-        )
-    );
 }
 pub type ZSTD_outBuffer = ZSTD_outBuffer_s;
 pub type ZSTD_CStream = ZSTD_CCtx;
@@ -1135,58 +980,6 @@ pub struct ZDICT_params_t {
     pub compressionLevel: ::std::os::raw::c_int,
     pub notificationLevel: ::std::os::raw::c_uint,
     pub dictID: ::std::os::raw::c_uint,
-}
-#[test]
-fn bindgen_test_layout_ZDICT_params_t() {
-    assert_eq!(
-        ::core::mem::size_of::<ZDICT_params_t>(),
-        12usize,
-        concat!("Size of: ", stringify!(ZDICT_params_t))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<ZDICT_params_t>(),
-        4usize,
-        concat!("Alignment of ", stringify!(ZDICT_params_t))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZDICT_params_t>())).compressionLevel
-                as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZDICT_params_t),
-            "::",
-            stringify!(compressionLevel)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZDICT_params_t>())).notificationLevel
-                as *const _ as usize
-        },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZDICT_params_t),
-            "::",
-            stringify!(notificationLevel)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<ZDICT_params_t>())).dictID as *const _
-                as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(ZDICT_params_t),
-            "::",
-            stringify!(dictID)
-        )
-    );
 }
 extern "C" {
     #[doc = " ZDICT_finalizeDictionary():"]

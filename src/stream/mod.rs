@@ -115,7 +115,9 @@ macro_rules! encoder_common {
             ))
         }
 
-        /// Enables or disabled storing of the contentsize
+        /// Enables or disabled storing of the contentsize.
+        ///
+        /// Note that this only has an effect if the size is given with `set_pledged_src_size`.
         pub fn include_contentsize(
             &mut self,
             include_contentsize: bool,

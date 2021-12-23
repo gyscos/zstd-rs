@@ -30,6 +30,11 @@ pub struct Encoder<'a, W: Write> {
 }
 
 /// A decoder that decompress and forward data to another writer.
+///
+/// Note that you probably want to `flush()` after writing your stream content.
+/// You can use [`auto_flush()`] to automatically flush the writer on drop.
+///
+/// [`auto_flush()`]: Decoder::auto_flush
 pub struct Decoder<'a, W: Write> {
     // output writer (decompressed data)
     writer: zio::Writer<W, raw::Decoder<'a>>,
@@ -47,6 +52,71 @@ pub struct AutoFinishEncoder<'a, W: Write> {
 
     // TODO: make this a FnOnce once it works in a Box
     on_finish: Option<Box<dyn FnMut(io::Result<W>)>>,
+}
+
+/// A wrapper around a `Decoder<W>` that flushes the stream on drop.
+///
+/// This can be created by the [`auto_flush()`] method on the [`Decoder`].
+///
+/// [`auto_flush()`]: Decoder::auto_flush
+/// [`Decoder`]: Decoder
+pub struct AutoFlushDecoder<
+    'a,
+    W: Write,
+    F: FnMut(io::Result<()>) = Box<dyn Send + FnMut(io::Result<()>)>,
+> {
+    // We wrap this in an option to take it during drop.
+    decoder: Option<Decoder<'a, W>>,
+
+    on_flush: Option<F>,
+}
+
+impl<'a, W: Write, F: FnMut(io::Result<()>)> AutoFlushDecoder<'a, W, F> {
+    fn new(decoder: Decoder<'a, W>, on_flush: F) -> Self {
+        AutoFlushDecoder {
+            decoder: Some(decoder),
+            on_flush: Some(on_flush),
+        }
+    }
+
+    /// Acquires a reference to the underlying writer.
+    pub fn get_ref(&self) -> &W {
+        self.decoder.as_ref().unwrap().get_ref()
+    }
+
+    /// Acquires a mutable reference to the underlying writer.
+    ///
+    /// Note that mutation of the writer may result in surprising results if
+    /// this decoder is continued to be used.
+    ///
+    /// Mostly used for testing purposes.
+    pub fn get_mut(&mut self) -> &mut W {
+        self.decoder.as_mut().unwrap().get_mut()
+    }
+}
+
+impl<W, F> Drop for AutoFlushDecoder<'_, W, F>
+where
+    W: Write,
+    F: FnMut(io::Result<()>),
+{
+    fn drop(&mut self) {
+        let mut decoder = self.decoder.take().unwrap();
+        let result = decoder.flush();
+        if let Some(mut on_finish) = self.on_flush.take() {
+            on_finish(result);
+        }
+    }
+}
+
+impl<W: Write, F: FnMut(io::Result<()>)> Write for AutoFlushDecoder<'_, W, F> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.decoder.as_mut().unwrap().write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.decoder.as_mut().unwrap().flush()
+    }
 }
 
 impl<'a, W: Write> AutoFinishEncoder<'a, W> {
@@ -69,6 +139,8 @@ impl<'a, W: Write> AutoFinishEncoder<'a, W> {
     ///
     /// Note that mutation of the writer may result in surprising results if
     /// this encoder is continued to be used.
+    ///
+    /// Mostly used for testing purposes.
     pub fn get_mut(&mut self) -> &mut W {
         self.encoder.as_mut().unwrap().get_mut()
     }
@@ -286,6 +358,27 @@ impl<'a, W: Write> Decoder<'a, W> {
     /// Return a recommendation for the size of data to write at once.
     pub fn recommended_input_size() -> usize {
         zstd_safe::DCtx::in_size()
+    }
+
+    /// Returns a wrapper around `self` that will flush the stream on drop.
+    ///
+    /// # Panic
+    ///
+    /// Panics on drop if an error happens when flushing the stream.
+    pub fn auto_flush(self) -> AutoFlushDecoder<'a, W> {
+        self.on_flush(Box::new(|result| {
+            result.unwrap();
+        }))
+    }
+
+    /// Returns a decoder that will flush the stream on drop.
+    ///
+    /// Calls the given callback with the result from `flush()`.
+    pub fn on_flush<F: FnMut(io::Result<()>)>(
+        self,
+        f: F,
+    ) -> AutoFlushDecoder<'a, W, F> {
+        AutoFlushDecoder::new(self, f)
     }
 
     crate::decoder_common!(writer);

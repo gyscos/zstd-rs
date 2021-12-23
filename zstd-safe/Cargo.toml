@@ -19,7 +19,7 @@ zstd-sys = { path = "zstd-sys", version = "=1.6.2", default-features = false }
 libc = "0.2.21"
 
 [features]
-default = ["legacy"]
+default = ["legacy", "arrays"]
 
 bindgen = ["zstd-sys/bindgen"]
 debug = ["zstd-sys/debug"]
@@ -28,4 +28,6 @@ legacy = ["zstd-sys/legacy"]
 pkg-config = ["zstd-sys/pkg-config"]
 std = ["zstd-sys/std"] # Use std instead of libc types - useful on wasm.
 zstdmt = ["zstd-sys/zstdmt"]
-thin = ['zstd-sys/thin']
+thin = ["zstd-sys/thin"]
+arrays = []
+no_asm = ["zstd-sys/no_asm"]

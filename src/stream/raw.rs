@@ -292,10 +292,13 @@ impl<'a> Operation for Encoder<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Decoder, Encoder, InBuffer, Operation, OutBuffer};
 
+    // This requires impl for [u8; N] which is currently behind a feature.
+    #[cfg(feature = "arrays")]
     #[test]
     fn test_cycle() {
+        use super::{Decoder, Encoder, InBuffer, Operation, OutBuffer};
+
         let mut encoder = Encoder::new(1).unwrap();
         let mut decoder = Decoder::new().unwrap();
 
@@ -317,7 +320,6 @@ mod tests {
         let initial_data = input.src;
 
         // Step 2: decompress
-
         let mut input = InBuffer::around(output.as_slice());
         let mut output = [0u8; 128];
         let mut output = OutBuffer::around(&mut output);

@@ -28,7 +28,7 @@ partial-io = "0.5"
 walkdir = "2.2"
 
 [features]
-default = ["legacy"]
+default = ["legacy", "arrays"]
 
 bindgen = ["zstd-safe/bindgen"]
 debug = ["zstd-safe/debug"]
@@ -38,3 +38,5 @@ wasm = []
 zstdmt = ["zstd-safe/zstdmt"]
 experimental = ["zstd-safe/experimental"]
 thin = ["zstd-safe/thin"]
+arrays = ["zstd-safe/arrays"]
+no_asm = ["zstd-safe/no_asm"]

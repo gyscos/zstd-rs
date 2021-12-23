@@ -1214,6 +1214,7 @@ unsafe impl WriteBuf for std::vec::Vec<u8> {
     }
 }
 
+#[cfg(feature = "arrays")]
 unsafe impl<const N: usize> WriteBuf for [u8; N] {
     fn as_slice(&self) -> &[u8] {
         self

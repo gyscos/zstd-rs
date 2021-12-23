@@ -125,6 +125,29 @@ macro_rules! encoder_common {
             ))
         }
 
+        /// Sets the expected size of the input.
+        ///
+        /// This affects the compression effectiveness.
+        ///
+        /// It is an error to give an incorrect size (an error will be returned when closing the
+        /// stream if the size does not match what was pledged).
+        ///
+        /// Giving a `None` size means the size is unknown (this is the default).
+        pub fn set_pledged_src_size(
+            &mut self,
+            size: Option<u64>,
+        ) -> io::Result<()> {
+            match size {
+                Some(size) => {
+                    self.$readwrite.operation_mut().set_pledged_src_size(size)
+                }
+                None => self
+                    .$readwrite
+                    .operation_mut()
+                    .set_pledged_src_size(zstd_safe::CONTENTSIZE_UNKNOWN),
+            }
+        }
+
         /// Enables or disables long-distance matching
         pub fn long_distance_matching(
             &mut self,

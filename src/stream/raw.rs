@@ -254,6 +254,22 @@ impl<'a> Encoder<'a> {
             .map_err(map_error_code)?;
         Ok(())
     }
+
+    /// Sets the size of the input expected by zstd.
+    ///
+    /// May affect compression ratio.
+    ///
+    /// It is an error to give an incorrect size (an error _will_ be returned when closing the
+    /// stream).
+    pub fn set_pledged_src_size(
+        &mut self,
+        pledged_src_size: u64,
+    ) -> io::Result<()> {
+        self.context
+            .set_pledged_src_size(pledged_src_size)
+            .map_err(map_error_code)?;
+        Ok(())
+    }
 }
 
 impl<'a> Operation for Encoder<'a> {

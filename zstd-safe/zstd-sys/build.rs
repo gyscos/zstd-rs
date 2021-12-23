@@ -6,7 +6,7 @@ use std::{env, fs};
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     let bindings = bindgen::Builder::default()
         .header("zstd.h")
-        .blacklist_type("max_align_t")
+        .blocklist_type("max_align_t")
         .size_t_is_usize(true)
         .use_core()
         .rustified_enum(".*")

@@ -95,6 +95,9 @@ macro_rules! encoder_common {
         ///
         /// So even `n_workers = 1` may increase performance by separating
         /// IO and compression.
+        ///
+        /// Note: This is only available if the `zstdmt` cargo feature is activated.
+        #[cfg(feature = "zstdmt")]
         pub fn multithread(&mut self, n_workers: u32) -> io::Result<()> {
             self.set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
         }

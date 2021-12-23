@@ -1896,6 +1896,7 @@ pub enum CParameter {
 
     DictIdFlag(bool),
 
+    /// Note: this will only work if the `zstdmt` feature is activated.
     NbWorkers(u32),
 
     JobSize(u32),

@@ -13,7 +13,7 @@ readme = "Readme.md"
 edition = "2018"
 
 [package.metadata.docs.rs]
-features = ["experimental"]
+features = ["experimental", "zstdmt"]
 
 [badges]
 travis-ci = { repository = "gyscos/zstd-rs" }

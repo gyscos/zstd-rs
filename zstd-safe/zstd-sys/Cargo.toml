@@ -29,6 +29,7 @@ include = [
     "/zstd/COPYING",
     "/zstd/lib/**/*.c",
     "/zstd/lib/**/*.h",
+    "/zstd/lib/**/*.S",
 ]
 # exclude = [
 #     "zstd",

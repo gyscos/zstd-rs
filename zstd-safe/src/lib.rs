@@ -44,51 +44,10 @@ use core::ops::Deref;
 use core::ops::DerefMut;
 use core::str;
 
-// Re-define constants from zstd_sys
-pub const VERSION_MAJOR: u32 = zstd_sys::ZSTD_VERSION_MAJOR;
-pub const VERSION_MINOR: u32 = zstd_sys::ZSTD_VERSION_MINOR;
-pub const VERSION_RELEASE: u32 = zstd_sys::ZSTD_VERSION_RELEASE;
-pub const VERSION_NUMBER: u32 = zstd_sys::ZSTD_VERSION_NUMBER;
-
-/// Default compression level.
-pub const CLEVEL_DEFAULT: CompressionLevel =
-    zstd_sys::ZSTD_CLEVEL_DEFAULT as CompressionLevel;
-pub const CONTENTSIZE_UNKNOWN: u64 = zstd_sys::ZSTD_CONTENTSIZE_UNKNOWN as u64;
-pub const CONTENTSIZE_ERROR: u64 = zstd_sys::ZSTD_CONTENTSIZE_ERROR as u64;
-pub const MAGICNUMBER: u32 = zstd_sys::ZSTD_MAGICNUMBER;
-pub const MAGIC_DICTIONARY: u32 = zstd_sys::ZSTD_MAGIC_DICTIONARY;
-pub const MAGIC_SKIPPABLE_START: u32 = zstd_sys::ZSTD_MAGIC_SKIPPABLE_START;
-pub const BLOCKSIZELOG_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZELOG_MAX;
-pub const BLOCKSIZE_MAX: u32 = zstd_sys::ZSTD_BLOCKSIZE_MAX;
+include!("constants.rs");
 
 #[cfg(feature = "experimental")]
-pub const WINDOWLOG_MAX_32: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_32;
-#[cfg(feature = "experimental")]
-pub const WINDOWLOG_MAX_64: u32 = zstd_sys::ZSTD_WINDOWLOG_MAX_64;
-#[cfg(feature = "experimental")]
-pub const WINDOWLOG_MIN: u32 = zstd_sys::ZSTD_WINDOWLOG_MIN;
-#[cfg(feature = "experimental")]
-pub const HASHLOG_MIN: u32 = zstd_sys::ZSTD_HASHLOG_MIN;
-#[cfg(feature = "experimental")]
-pub const CHAINLOG_MAX_32: u32 = zstd_sys::ZSTD_CHAINLOG_MAX_32;
-#[cfg(feature = "experimental")]
-pub const CHAINLOG_MAX_64: u32 = zstd_sys::ZSTD_CHAINLOG_MAX_64;
-#[cfg(feature = "experimental")]
-pub const CHAINLOG_MIN: u32 = zstd_sys::ZSTD_CHAINLOG_MIN;
-#[cfg(feature = "experimental")]
-pub const HASHLOG3_MAX: u32 = zstd_sys::ZSTD_HASHLOG3_MAX;
-#[cfg(feature = "experimental")]
-pub const SEARCHLOG_MIN: u32 = zstd_sys::ZSTD_SEARCHLOG_MIN;
-#[cfg(feature = "experimental")]
-pub const TARGETLENGTH_MAX: u32 = zstd_sys::ZSTD_TARGETLENGTH_MAX;
-#[cfg(feature = "experimental")]
-pub const TARGETLENGTH_MIN: u32 = zstd_sys::ZSTD_TARGETLENGTH_MIN;
-#[cfg(feature = "experimental")]
-pub const LDM_MINMATCH_MAX: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MAX;
-#[cfg(feature = "experimental")]
-pub const LDM_MINMATCH_MIN: u32 = zstd_sys::ZSTD_LDM_MINMATCH_MIN;
-#[cfg(feature = "experimental")]
-pub const LDM_BUCKETSIZELOG_MAX: u32 = zstd_sys::ZSTD_LDM_BUCKETSIZELOG_MAX;
+include!("constants_experimental.rs");
 
 /// Represents the compression level used by zstd.
 pub type CompressionLevel = i32;
@@ -467,7 +426,7 @@ impl<'a> CCtx<'a> {
             ZSTD_c_experimentalParam10 as ZSTD_c_stableOutBuffer,
             ZSTD_c_experimentalParam11 as ZSTD_c_blockDelimiters,
             ZSTD_c_experimentalParam12 as ZSTD_c_validateSequences,
-            ZSTD_c_experimentalParam13 as ZSTD_c_splitBlocks,
+            ZSTD_c_experimentalParam13 as ZSTD_c_useBlockSplitter,
             ZSTD_c_experimentalParam14 as ZSTD_c_useRowMatchFinder,
             ZSTD_c_experimentalParam15 as ZSTD_c_deterministicRefPrefix,
             ZSTD_c_experimentalParam2 as ZSTD_c_format,
@@ -515,7 +474,9 @@ impl<'a> CCtx<'a> {
                 (ZSTD_c_validateSequences, validate as c_int)
             }
             #[cfg(feature = "experimental")]
-            SplitBlocks(split) => (ZSTD_c_splitBlocks, split as c_int),
+            UseBlockSplitter(split) => {
+                (ZSTD_c_useBlockSplitter, split as c_int)
+            }
             #[cfg(feature = "experimental")]
             UseRowMatchFinder(mode) => {
                 (ZSTD_c_useRowMatchFinder, mode as c_int)
@@ -1786,16 +1747,6 @@ pub enum FrameFormat {
 #[cfg(feature = "experimental")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
-pub enum LiteralCompressionMode {
-    Auto = zstd_sys::ZSTD_literalCompressionMode_e::ZSTD_lcm_auto as u32,
-    Huffman = zstd_sys::ZSTD_literalCompressionMode_e::ZSTD_lcm_huffman as u32,
-    Uncompressed =
-        zstd_sys::ZSTD_literalCompressionMode_e::ZSTD_lcm_uncompressed as u32,
-}
-
-#[cfg(feature = "experimental")]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
 pub enum DictAttachPref {
     DefaultAttach =
         zstd_sys::ZSTD_dictAttachPref_e::ZSTD_dictDefaultAttach as u32,
@@ -1807,14 +1758,10 @@ pub enum DictAttachPref {
 #[cfg(feature = "experimental")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
-pub enum UseRowMatchFinderMode {
-    Auto = zstd_sys::ZSTD_useRowMatchFinderMode_e::ZSTD_urm_auto as u32,
-    Disable =
-        zstd_sys::ZSTD_useRowMatchFinderMode_e::ZSTD_urm_disableRowMatchFinder
-            as u32,
-    Enable =
-        zstd_sys::ZSTD_useRowMatchFinderMode_e::ZSTD_urm_enableRowMatchFinder
-            as u32,
+pub enum ParamSwitch {
+    Auto = zstd_sys::ZSTD_paramSwitch_e::ZSTD_ps_auto as u32,
+    Enable = zstd_sys::ZSTD_paramSwitch_e::ZSTD_ps_enable as u32,
+    Disable = zstd_sys::ZSTD_paramSwitch_e::ZSTD_ps_disable as u32,
 }
 
 /// A compression parameter.
@@ -1833,7 +1780,7 @@ pub enum CParameter {
     ForceAttachDict(DictAttachPref),
 
     #[cfg(feature = "experimental")]
-    LiteralCompressionMode(LiteralCompressionMode),
+    LiteralCompressionMode(ParamSwitch),
 
     #[cfg(feature = "experimental")]
     TargetCBlockSize(u32),
@@ -1857,10 +1804,10 @@ pub enum CParameter {
     ValidateSequences(bool),
 
     #[cfg(feature = "experimental")]
-    SplitBlocks(bool),
+    UseBlockSplitter(ParamSwitch),
 
     #[cfg(feature = "experimental")]
-    UseRowMatchFinder(UseRowMatchFinderMode),
+    UseRowMatchFinder(ParamSwitch),
 
     #[cfg(feature = "experimental")]
     DeterministicRefPrefix(bool),

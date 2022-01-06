@@ -1,5 +1,3 @@
-use clap::value_t;
-
 use humansize::{file_size_opts, FileSize};
 use std::io::Read;
 
@@ -8,7 +6,7 @@ fn main() {
         .author("Alexandre Bury <alexandre.bury@gmail.com>")
         .about("Benchmark zstd-rs")
         .arg(
-            clap::Arg::with_name("DIR")
+            clap::Arg::new("DIR")
                 .help(
                     "Directory containing the data to compress.
 
@@ -21,22 +19,22 @@ cargo run --example benchmark -- silesia/",
                 .required(true),
         )
         .arg(
-            clap::Arg::with_name("begin")
-                .short("b")
+            clap::Arg::new("begin")
+                .short('b')
                 .long("begin")
                 .takes_value(true),
         )
         .arg(
-            clap::Arg::with_name("end")
-                .short("e")
+            clap::Arg::new("end")
+                .short('e')
                 .long("end")
                 .takes_value(true),
         )
         .get_matches();
 
     let dir = matches.value_of("DIR").unwrap();
-    let begin = value_t!(matches, "begin", i32).unwrap_or(1);
-    let end = value_t!(matches, "end", i32).unwrap_or(10);
+    let begin: i32 = matches.value_of_t("begin").unwrap_or(1);
+    let end: i32 = matches.value_of_t("end").unwrap_or(10);
 
     // Step 1: load data in memory
     let files: Vec<Vec<u8>> = std::fs::read_dir(dir)

@@ -1,4 +1,4 @@
-use clap::{value_t, App, Arg};
+use clap::{App, Arg};
 use std::io;
 
 // This program trains a dictionary from one or more files,
@@ -12,21 +12,21 @@ fn main() {
         .author("Alexandre Bury <alexandre.bury@gmail.com>")
         .about("A zstd dict trainer")
         .arg(
-            Arg::with_name("MAX_SIZE")
+            Arg::new("MAX_SIZE")
                 .help("Maximum dictionary size in bytes")
-                .short("s")
+                .short('s')
                 .long("max_size")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("FILE")
+            Arg::new("FILE")
                 .help("Files to use as input")
                 .required(true)
-                .multiple(true),
+                .multiple_occurrences(true),
         )
         .get_matches();
 
-    let size = value_t!(matches, "MAX_SIZE", usize).unwrap_or(110 * 1024);
+    let size: usize = matches.value_of_t("MAX_SIZE").unwrap_or(110 * 1024);
 
     let files: Vec<_> = matches.values_of("FILE").unwrap().collect();
 

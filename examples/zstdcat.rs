@@ -9,7 +9,7 @@ fn main() {
         .version("0.1")
         .author("Yann Collet (zstd), Alexandre Bury (zstd-rs)")
         .about("Decompress FILEs to standard output.")
-        .arg(Arg::with_name("FILE").index(1).multiple(true).help(
+        .arg(Arg::new("FILE").index(1).multiple_occurrences(true).help(
             "Files to decompress. With no file, or when given -, \
              read standard input.",
         ))

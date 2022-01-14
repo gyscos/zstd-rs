@@ -277,6 +277,7 @@ impl<'a> CCtx<'a> {
 
     /// Wraps the `ZSTD_initCStream_srcSize()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated]
     pub fn init_src_size(
         &mut self,
@@ -285,7 +286,7 @@ impl<'a> CCtx<'a> {
     ) -> usize {
         unsafe {
             zstd_sys::ZSTD_initCStream_srcSize(
-                self.0,
+                self.0.as_ptr(),
                 compression_level as c_int,
                 pledged_src_size as c_ulonglong,
             )
@@ -294,6 +295,7 @@ impl<'a> CCtx<'a> {
 
     /// Wraps the `ZSTD_initCStream_usingDict()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated]
     pub fn init_using_dict(
         &mut self,
@@ -302,7 +304,7 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingDict(
-                self.0,
+                self.0.as_ptr(),
                 ptr_void(dict),
                 dict.len(),
                 compression_level,
@@ -313,13 +315,18 @@ impl<'a> CCtx<'a> {
 
     /// Wraps the `ZSTD_initCStream_usingCDict()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated]
     pub fn init_using_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
     where
         'b: 'a, // Dictionary outlives the stream.
     {
-        let code =
-            unsafe { zstd_sys::ZSTD_initCStream_usingCDict(self.0, cdict.0) };
+        let code = unsafe {
+            zstd_sys::ZSTD_initCStream_usingCDict(
+                self.0.as_ptr(),
+                cdict.0.as_ptr(),
+            )
+        };
         parse_code(code)
     }
 
@@ -429,11 +436,12 @@ impl<'a> CCtx<'a> {
     }
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated]
     pub fn reset_cstream(&mut self, pledged_src_size: u64) -> SafeResult {
         let code = unsafe {
             zstd_sys::ZSTD_resetCStream(
-                self.0,
+                self.0.as_ptr(),
                 pledged_src_size as c_ulonglong,
             )
         };
@@ -557,14 +565,40 @@ impl<'a> CCtx<'a> {
         })
     }
 
+    /// Creates a copy of this context.
+    ///
+    /// This only works before any data has been compressed. An error will be
+    /// returned otherwise.
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    pub fn try_clone(
+        &self,
+        pledged_src_size: Option<u64>,
+    ) -> Result<Self, ErrorCode> {
+        let context = NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })
+            .ok_or(0usize)?;
+
+        parse_code(unsafe {
+            zstd_sys::ZSTD_copyCCtx(
+                context.as_ptr(),
+                self.0.as_ptr(),
+                pledged_src_size.unwrap_or(CONTENTSIZE_UNKNOWN),
+            )
+        })?;
+
+        Ok(CCtx(context, self.1))
+    }
+
     /// Wraps the `ZSTD_getBlockSize()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn get_block_size(&self) -> usize {
-        unsafe { zstd_sys::ZSTD_getBlockSize(self.0) }
+        unsafe { zstd_sys::ZSTD_getBlockSize(self.0.as_ptr()) }
     }
 
     /// Wraps the `ZSTD_compressBlock()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn compress_block<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
@@ -573,7 +607,7 @@ impl<'a> CCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compressBlock(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
@@ -752,11 +786,12 @@ impl<'a> DCtx<'a> {
 
     /// Wraps the `ZSTD_initDStream_usingDict()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated]
     pub fn init_using_dict(&mut self, dict: &[u8]) -> SafeResult {
         let code = unsafe {
             zstd_sys::ZSTD_initDStream_usingDict(
-                self.0,
+                self.0.as_ptr(),
                 ptr_void(dict),
                 dict.len(),
             )
@@ -766,13 +801,18 @@ impl<'a> DCtx<'a> {
 
     /// Wraps the `ZSTD_initDStream_usingDDict()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated]
     pub fn init_using_ddict<'b>(&mut self, ddict: &DDict<'b>) -> SafeResult
     where
         'b: 'a,
     {
-        let code =
-            unsafe { zstd_sys::ZSTD_initDStream_usingDDict(self.0, ddict.0) };
+        let code = unsafe {
+            zstd_sys::ZSTD_initDStream_usingDDict(
+                self.0.as_ptr(),
+                ddict.0.as_ptr(),
+            )
+        };
         parse_code(code)
     }
 
@@ -894,6 +934,7 @@ impl<'a> DCtx<'a> {
 
     /// Wraps the `ZSTD_decompressBlock()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn decompress_block<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
@@ -914,6 +955,7 @@ impl<'a> DCtx<'a> {
 
     /// Wraps the `ZSTD_insertBlock()` function.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn insert_block(&mut self, block: &[u8]) -> usize {
         unsafe {
             zstd_sys::ZSTD_insertBlock(
@@ -922,6 +964,21 @@ impl<'a> DCtx<'a> {
                 block.len(),
             )
         }
+    }
+
+    /// Creates a copy of this context.
+    ///
+    /// This only works before any data has been decompressed. An error will be
+    /// returned otherwise.
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    pub fn try_clone(&self) -> Result<Self, ErrorCode> {
+        let context = NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })
+            .ok_or(0usize)?;
+
+        unsafe { zstd_sys::ZSTD_copyDCtx(context.as_ptr(), self.0.as_ptr()) };
+
+        Ok(DCtx(context, self.1))
     }
 }
 
@@ -1002,18 +1059,20 @@ impl CDict<'static> {
 
 impl<'a> CDict<'a> {
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(
         dict_buffer: &'a [u8],
         compression_level: CompressionLevel,
     ) -> Self {
         CDict(
-            unsafe {
+            NonNull::new(unsafe {
                 zstd_sys::ZSTD_createCDict_byReference(
                     ptr_void(dict_buffer),
                     dict_buffer.len(),
                     compression_level,
                 )
-            },
+            })
+            .expect("zstd returned null pointer"),
             PhantomData,
         )
     }
@@ -1090,12 +1149,13 @@ impl<'a> DDict<'a> {
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(dict_buffer: &'a [u8]) -> Self {
         DDict(
-            unsafe {
+            NonNull::new(unsafe {
                 zstd_sys::ZSTD_createDDict_byReference(
                     ptr_void(dict_buffer),
                     dict_buffer.len(),
                 )
-            },
+            })
+            .expect("zstd returned null pointer"),
             PhantomData,
         )
     }
@@ -1649,7 +1709,8 @@ pub fn get_dict_id_from_frame(src: &[u8]) -> u32 {
 }
 
 /// Wraps the `ZSTD_initCStream_srcSize()` function.
-#[cfg(feacctxture = "experimental")]
+#[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[deprecated]
 #[allow(deprecated)]
 pub fn init_cstream_src_size(
@@ -2016,7 +2077,7 @@ pub fn get_dict_id(dict_buffer: &[u8]) -> Option<u32> {
 #[cfg(feature = "experimental")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn get_block_size(cctx: &CCtx) -> usize {
-    unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0) }
+    unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0.as_ptr()) }
 }
 
 /// Wraps the `ZSTD_compressBlock()` function.

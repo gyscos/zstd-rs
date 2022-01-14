@@ -41,8 +41,8 @@ use std::os::raw::{c_char, c_int, c_ulonglong, c_void};
 use libc::{c_char, c_int, c_ulonglong, c_void};
 
 use core::marker::PhantomData;
-use core::ops::Deref;
-use core::ops::DerefMut;
+use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
 use core::str;
 
 include!("constants.rs");
@@ -153,18 +153,33 @@ pub fn compress_bound(src_size: usize) -> usize {
     unsafe { zstd_sys::ZSTD_compressBound(src_size) }
 }
 
-pub struct CCtx<'a>(*mut zstd_sys::ZSTD_CCtx, PhantomData<&'a ()>);
+pub struct CCtx<'a>(NonNull<zstd_sys::ZSTD_CCtx>, PhantomData<&'a ()>);
 
-impl<'a> Default for CCtx<'a> {
+impl Default for CCtx<'_> {
     fn default() -> Self {
-        create_cctx()
+        CCtx::create()
     }
 }
 
 impl CCtx<'static> {
+    /// Tries to create a new context.
+    ///
+    /// Returns `None` if zstd returns a NULL pointer - may happen if allocation fails.
+    pub fn try_create() -> Option<Self> {
+        Some(CCtx(
+            NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })?,
+            PhantomData,
+        ))
+    }
+
     /// Wrap `ZSTD_createCCtx`
+    ///
+    /// # Panics
+    ///
+    /// If zstd returns a NULL pointer.
     pub fn create() -> Self {
-        CCtx(unsafe { zstd_sys::ZSTD_createCCtx() }, PhantomData)
+        Self::try_create()
+            .expect("zstd returned null pointer when creating new context")
     }
 }
 
@@ -179,7 +194,7 @@ impl<'a> CCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compressCCtx(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
@@ -199,7 +214,7 @@ impl<'a> CCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress2(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
@@ -220,7 +235,7 @@ impl<'a> CCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress_usingDict(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
@@ -243,19 +258,21 @@ impl<'a> CCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress_usingCDict(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
                     src.len(),
-                    cdict.0,
+                    cdict.0.as_ptr(),
                 ))
             })
         }
     }
 
     pub fn init(&mut self, compression_level: CompressionLevel) -> usize {
-        unsafe { zstd_sys::ZSTD_initCStream(self.0, compression_level) }
+        unsafe {
+            zstd_sys::ZSTD_initCStream(self.0.as_ptr(), compression_level)
+        }
     }
 
     /// Wraps the `ZSTD_initCStream_srcSize()` function.
@@ -309,7 +326,7 @@ impl<'a> CCtx<'a> {
     pub fn load_dictionary(&mut self, dict: &[u8]) -> SafeResult {
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
-                self.0,
+                self.0.as_ptr(),
                 ptr_void(dict),
                 dict.len(),
             )
@@ -323,7 +340,9 @@ impl<'a> CCtx<'a> {
     where
         'b: 'a,
     {
-        parse_code(unsafe { zstd_sys::ZSTD_CCtx_refCDict(self.0, cdict.0) })
+        parse_code(unsafe {
+            zstd_sys::ZSTD_CCtx_refCDict(self.0.as_ptr(), cdict.0.as_ptr())
+        })
     }
 
     pub fn ref_prefix<'b>(&mut self, prefix: &'b [u8]) -> SafeResult
@@ -332,7 +351,7 @@ impl<'a> CCtx<'a> {
     {
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_refPrefix(
-                self.0,
+                self.0.as_ptr(),
                 ptr_void(prefix),
                 prefix.len(),
             )
@@ -348,7 +367,7 @@ impl<'a> CCtx<'a> {
         let mut input = input.wrap();
         let code = unsafe {
             zstd_sys::ZSTD_compressStream(
-                self.0,
+                self.0.as_ptr(),
                 ptr_mut(&mut output),
                 ptr_mut(&mut input),
             )
@@ -367,7 +386,7 @@ impl<'a> CCtx<'a> {
         let mut input = input.wrap();
         parse_code(unsafe {
             zstd_sys::ZSTD_compressStream2(
-                self.0,
+                self.0.as_ptr(),
                 ptr_mut(&mut output),
                 ptr_mut(&mut input),
                 end_op,
@@ -382,7 +401,7 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         let mut output = output.wrap();
         let code = unsafe {
-            zstd_sys::ZSTD_flushStream(self.0, ptr_mut(&mut output))
+            zstd_sys::ZSTD_flushStream(self.0.as_ptr(), ptr_mut(&mut output))
         };
         parse_code(code)
     }
@@ -393,17 +412,20 @@ impl<'a> CCtx<'a> {
         output: &mut OutBuffer<'_, C>,
     ) -> SafeResult {
         let mut output = output.wrap();
-        let code =
-            unsafe { zstd_sys::ZSTD_endStream(self.0, ptr_mut(&mut output)) };
+        let code = unsafe {
+            zstd_sys::ZSTD_endStream(self.0.as_ptr(), ptr_mut(&mut output))
+        };
         parse_code(code)
     }
 
     pub fn sizeof(&self) -> usize {
-        unsafe { zstd_sys::ZSTD_sizeof_CCtx(self.0) }
+        unsafe { zstd_sys::ZSTD_sizeof_CCtx(self.0.as_ptr()) }
     }
 
     pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
-        parse_code(unsafe { zstd_sys::ZSTD_CCtx_reset(self.0, reset) })
+        parse_code(unsafe {
+            zstd_sys::ZSTD_CCtx_reset(self.0.as_ptr(), reset)
+        })
     }
 
     #[cfg(feature = "experimental")]
@@ -519,7 +541,7 @@ impl<'a> CCtx<'a> {
         };
 
         parse_code(unsafe {
-            zstd_sys::ZSTD_CCtx_setParameter(self.0, param, value)
+            zstd_sys::ZSTD_CCtx_setParameter(self.0.as_ptr(), param, value)
         })
     }
 
@@ -529,7 +551,7 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_setPledgedSrcSize(
-                self.0,
+                self.0.as_ptr(),
                 pledged_src_size as c_ulonglong,
             )
         })
@@ -576,7 +598,7 @@ pub fn create_cctx<'a>() -> CCtx<'a> {
 impl<'a> Drop for CCtx<'a> {
     fn drop(&mut self) {
         unsafe {
-            zstd_sys::ZSTD_freeCCtx(self.0);
+            zstd_sys::ZSTD_freeCCtx(self.0.as_ptr());
         }
     }
 }
@@ -637,17 +659,24 @@ pub fn compress2(
 /// If no dictionary was used, it will most likely be `'static`.
 ///
 /// Same as `DStream`.
-pub struct DCtx<'a>(*mut zstd_sys::ZSTD_DCtx, PhantomData<&'a ()>);
+pub struct DCtx<'a>(NonNull<zstd_sys::ZSTD_DCtx>, PhantomData<&'a ()>);
 
 impl Default for DCtx<'_> {
     fn default() -> Self {
-        create_dctx()
+        DCtx::create()
     }
 }
 
 impl DCtx<'static> {
+    pub fn try_create() -> Option<Self> {
+        Some(DCtx(
+            NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })?,
+            PhantomData,
+        ))
+    }
     pub fn create() -> Self {
-        DCtx(unsafe { zstd_sys::ZSTD_createDCtx() }, PhantomData)
+        Self::try_create()
+            .expect("zstd returned null pointer when creating new context")
     }
 }
 
@@ -661,7 +690,7 @@ impl<'a> DCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompressDCtx(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
@@ -681,7 +710,7 @@ impl<'a> DCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompress_usingDict(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
@@ -703,12 +732,12 @@ impl<'a> DCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompress_usingDDict(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
                     src.len(),
-                    ddict.0,
+                    ddict.0.as_ptr(),
                 ))
             })
         }
@@ -718,7 +747,7 @@ impl<'a> DCtx<'a> {
     ///
     /// Initializes an existing `DStream` for decompression.
     pub fn init(&mut self) -> usize {
-        unsafe { zstd_sys::ZSTD_initDStream(self.0) }
+        unsafe { zstd_sys::ZSTD_initDStream(self.0.as_ptr()) }
     }
 
     /// Wraps the `ZSTD_initDStream_usingDict()` function.
@@ -751,7 +780,7 @@ impl<'a> DCtx<'a> {
     pub fn reset(&mut self) -> SafeResult {
         let code = unsafe {
             zstd_sys::ZSTD_DCtx_reset(
-                self.0,
+                self.0.as_ptr(),
                 ResetDirective::ZSTD_reset_session_only,
             )
         };
@@ -761,7 +790,7 @@ impl<'a> DCtx<'a> {
     pub fn load_dictionary(&mut self, dict: &[u8]) -> SafeResult {
         parse_code(unsafe {
             zstd_sys::ZSTD_DCtx_loadDictionary(
-                self.0,
+                self.0.as_ptr(),
                 ptr_void(dict),
                 dict.len(),
             )
@@ -772,7 +801,9 @@ impl<'a> DCtx<'a> {
     where
         'b: 'a,
     {
-        parse_code(unsafe { zstd_sys::ZSTD_DCtx_refDDict(self.0, ddict.0) })
+        parse_code(unsafe {
+            zstd_sys::ZSTD_DCtx_refDDict(self.0.as_ptr(), ddict.0.as_ptr())
+        })
     }
 
     pub fn ref_prefix<'b>(&mut self, prefix: &'b [u8]) -> SafeResult
@@ -781,7 +812,7 @@ impl<'a> DCtx<'a> {
     {
         parse_code(unsafe {
             zstd_sys::ZSTD_DCtx_refPrefix(
-                self.0,
+                self.0.as_ptr(),
                 ptr_void(prefix),
                 prefix.len(),
             )
@@ -820,7 +851,7 @@ impl<'a> DCtx<'a> {
         };
 
         parse_code(unsafe {
-            zstd_sys::ZSTD_DCtx_setParameter(self.0, param, value)
+            zstd_sys::ZSTD_DCtx_setParameter(self.0.as_ptr(), param, value)
         })
     }
 
@@ -834,7 +865,7 @@ impl<'a> DCtx<'a> {
         let mut input = input.wrap();
         let code = unsafe {
             zstd_sys::ZSTD_decompressStream(
-                self.0,
+                self.0.as_ptr(),
                 ptr_mut(&mut output),
                 ptr_mut(&mut input),
             )
@@ -858,7 +889,7 @@ impl<'a> DCtx<'a> {
 
     /// Wraps the `ZSTD_sizeof_DCtx()` function.
     pub fn sizeof(&self) -> usize {
-        unsafe { zstd_sys::ZSTD_sizeof_DCtx(self.0) }
+        unsafe { zstd_sys::ZSTD_sizeof_DCtx(self.0.as_ptr()) }
     }
 
     /// Wraps the `ZSTD_decompressBlock()` function.
@@ -871,7 +902,7 @@ impl<'a> DCtx<'a> {
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompressBlock(
-                    self.0,
+                    self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
@@ -885,7 +916,11 @@ impl<'a> DCtx<'a> {
     #[cfg(feature = "experimental")]
     pub fn insert_block(&mut self, block: &[u8]) -> usize {
         unsafe {
-            zstd_sys::ZSTD_insertBlock(self.0, ptr_void(block), block.len())
+            zstd_sys::ZSTD_insertBlock(
+                self.0.as_ptr(),
+                ptr_void(block),
+                block.len(),
+            )
         }
     }
 }
@@ -898,7 +933,7 @@ pub fn create_dctx() -> DCtx<'static> {
 impl Drop for DCtx<'_> {
     fn drop(&mut self) {
         unsafe {
-            zstd_sys::ZSTD_freeDCtx(self.0);
+            zstd_sys::ZSTD_freeDCtx(self.0.as_ptr());
         }
     }
 }
@@ -937,23 +972,31 @@ pub fn decompress_using_dict(
 }
 
 /// Compression dictionary.
-pub struct CDict<'a>(*mut zstd_sys::ZSTD_CDict, PhantomData<&'a ()>);
+pub struct CDict<'a>(NonNull<zstd_sys::ZSTD_CDict>, PhantomData<&'a ()>);
 
 impl CDict<'static> {
     pub fn create(
         dict_buffer: &[u8],
         compression_level: CompressionLevel,
     ) -> Self {
-        CDict(
-            unsafe {
+        Self::try_create(dict_buffer, compression_level)
+            .expect("zstd returned null pointer when creating dict")
+    }
+
+    pub fn try_create(
+        dict_buffer: &[u8],
+        compression_level: CompressionLevel,
+    ) -> Option<Self> {
+        Some(CDict(
+            NonNull::new(unsafe {
                 zstd_sys::ZSTD_createCDict(
                     ptr_void(dict_buffer),
                     dict_buffer.len(),
                     compression_level,
                 )
-            },
+            })?,
             PhantomData,
-        )
+        ))
     }
 }
 
@@ -976,11 +1019,11 @@ impl<'a> CDict<'a> {
     }
 
     pub fn sizeof(&self) -> usize {
-        unsafe { zstd_sys::ZSTD_sizeof_CDict(self.0) }
+        unsafe { zstd_sys::ZSTD_sizeof_CDict(self.0.as_ptr()) }
     }
 
     pub fn get_dict_id(&self) -> u32 {
-        unsafe { zstd_sys::ZSTD_getDictID_fromCDict(self.0) as u32 }
+        unsafe { zstd_sys::ZSTD_getDictID_fromCDict(self.0.as_ptr()) as u32 }
     }
 }
 
@@ -995,7 +1038,7 @@ pub fn create_cdict(
 impl<'a> Drop for CDict<'a> {
     fn drop(&mut self) {
         unsafe {
-            zstd_sys::ZSTD_freeCDict(self.0);
+            zstd_sys::ZSTD_freeCDict(self.0.as_ptr());
         }
     }
 }
@@ -1014,25 +1057,30 @@ pub fn compress_using_cdict(
 }
 
 /// A digested decompression dictionary.
-pub struct DDict<'a>(*mut zstd_sys::ZSTD_DDict, PhantomData<&'a ()>);
+pub struct DDict<'a>(NonNull<zstd_sys::ZSTD_DDict>, PhantomData<&'a ()>);
 
 impl DDict<'static> {
     pub fn create(dict_buffer: &[u8]) -> Self {
-        DDict(
-            unsafe {
+        Self::try_create(dict_buffer)
+            .expect("zstd returned null pointer when creating dict")
+    }
+
+    pub fn try_create(dict_buffer: &[u8]) -> Option<Self> {
+        Some(DDict(
+            NonNull::new(unsafe {
                 zstd_sys::ZSTD_createDDict(
                     ptr_void(dict_buffer),
                     dict_buffer.len(),
                 )
-            },
+            })?,
             PhantomData,
-        )
+        ))
     }
 }
 
 impl<'a> DDict<'a> {
     pub fn sizeof(&self) -> usize {
-        unsafe { zstd_sys::ZSTD_sizeof_DDict(self.0) }
+        unsafe { zstd_sys::ZSTD_sizeof_DDict(self.0.as_ptr()) }
     }
 
     /// Wraps the `ZSTD_createDDict_byReference()` function.
@@ -1053,7 +1101,7 @@ impl<'a> DDict<'a> {
     }
 
     pub fn get_dict_id(&self) -> u32 {
-        unsafe { zstd_sys::ZSTD_getDictID_fromDDict(self.0) as u32 }
+        unsafe { zstd_sys::ZSTD_getDictID_fromDDict(self.0.as_ptr()) as u32 }
     }
 }
 
@@ -1067,7 +1115,7 @@ pub fn create_ddict(dict_buffer: &[u8]) -> DDict<'static> {
 impl<'a> Drop for DDict<'a> {
     fn drop(&mut self) {
         unsafe {
-            zstd_sys::ZSTD_freeDDict(self.0);
+            zstd_sys::ZSTD_freeDDict(self.0.as_ptr());
         }
     }
 }
@@ -1094,7 +1142,7 @@ pub type CStream<'a> = CCtx<'a>;
 
 /// Allocates a new `CStream`.
 pub fn create_cstream<'a>() -> CStream<'a> {
-    CCtx(unsafe { zstd_sys::ZSTD_createCStream() }, PhantomData)
+    CCtx::create()
 }
 
 /// Prepares an existing `CStream` for compression at the given level.
@@ -1705,7 +1753,7 @@ pub fn cctx_reset(cctx: &mut CCtx<'_>, reset: ResetDirective) -> SafeResult {
 
 /// Wraps the `ZSTD_DCtx_reset()` function.
 pub fn dctx_reset(dctx: &mut DCtx<'_>, reset: ResetDirective) -> SafeResult {
-    parse_code(unsafe { zstd_sys::ZSTD_DCtx_reset(dctx.0, reset) })
+    parse_code(unsafe { zstd_sys::ZSTD_DCtx_reset(dctx.0.as_ptr(), reset) })
 }
 
 /// Wraps the `ZSTD_resetCStream()` function.

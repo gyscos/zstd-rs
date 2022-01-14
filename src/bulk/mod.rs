@@ -7,6 +7,9 @@
 mod compressor;
 mod decompressor;
 
+#[cfg(test)]
+mod tests;
+
 pub use self::compressor::Compressor;
 pub use self::decompressor::Decompressor;
 
@@ -50,21 +53,4 @@ pub fn decompress_to_buffer(
 /// or an error will be returned.
 pub fn decompress(data: &[u8], capacity: usize) -> io::Result<Vec<u8>> {
     Decompressor::new()?.decompress(data, capacity)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{compress, decompress};
-
-    #[test]
-    fn test_direct() {
-        // Can we include_str!("assets/example.txt")?
-        // It's excluded from the packaging step, so maybe not.
-        let text = include_str!("../../assets/example.txt");
-        crate::test_cycle_unwrap(
-            text.as_bytes(),
-            |data| compress(data, 1),
-            |data| decompress(data, text.len()),
-        );
-    }
 }

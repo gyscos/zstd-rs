@@ -23,6 +23,9 @@ use std::path;
 pub use zstd_safe::{CDict, DDict};
 
 /// Prepared dictionary for compression
+///
+/// A dictionary can include its own copy of the data (if it is `'static`), or it can merely point
+/// to a separate buffer (if it has another lifetime).
 pub struct EncoderDictionary<'a> {
     cdict: CDict<'a>,
 }

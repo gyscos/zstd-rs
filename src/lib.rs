@@ -13,10 +13,8 @@
 //! ```no_run
 //! use std::io;
 //!
-//! fn main() {
-//! 	// Uncompress input and print the result.
-//! 	zstd::stream::copy_decode(io::stdin(), io::stdout()).unwrap();
-//! }
+//! // Uncompress input and print the result.
+//! zstd::stream::copy_decode(io::stdin(), io::stdout()).unwrap();
 //! ```
 //!
 //! [zstd]: https://github.com/facebook/zstd
@@ -25,8 +23,10 @@
 // Re-export the zstd-safe crate.
 pub use zstd_safe;
 
-pub mod block;
+pub mod bulk;
 pub mod dict;
+
+#[macro_use]
 pub mod stream;
 
 use std::io;

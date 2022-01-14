@@ -24,19 +24,13 @@ pub use self::write::{AutoFinishEncoder, Encoder};
 #[doc(hidden)]
 #[macro_export]
 /// Common functions for the decoder, both in read and write mode.
-macro_rules! decoder_common {
-    ($readwrite:ident) => {
-        /// Sets a decompression parameter on the decompression stream.
-        pub fn set_parameter(
-            &mut self,
-            parameter: zstd_safe::DParameter,
-        ) -> io::Result<()> {
-            self.$readwrite.operation_mut().set_parameter(parameter)
-        }
-
+macro_rules! decoder_parameters {
+    () => {
         /// Sets the maximum back-reference distance.
         ///
         /// The actual maximum distance is going to be `2^log_distance`.
+        ///
+        /// This will need to at least match the value set when compressing.
         pub fn window_log_max(&mut self, log_distance: u32) -> io::Result<()> {
             self.set_parameter(zstd_safe::DParameter::WindowLogMax(
                 log_distance,
@@ -47,6 +41,8 @@ macro_rules! decoder_common {
         /// Enables or disabled expecting the 4-byte magic header
         ///
         /// Only available with the `experimental` feature.
+        ///
+        /// This will need to match the settings used when compressing.
         pub fn include_magicbytes(
             &mut self,
             include_magicbytes: bool,
@@ -64,17 +60,26 @@ macro_rules! decoder_common {
 
 #[doc(hidden)]
 #[macro_export]
-/// Common functions for the encoder, both in read and write mode.
-macro_rules! encoder_common {
+/// Common functions for the decoder, both in read and write mode.
+macro_rules! decoder_common {
     ($readwrite:ident) => {
-        /// Sets the given zstd compression parameter.
+        /// Sets a decompression parameter on the decompression stream.
         pub fn set_parameter(
             &mut self,
-            parameter: zstd_safe::CParameter,
+            parameter: zstd_safe::DParameter,
         ) -> io::Result<()> {
             self.$readwrite.operation_mut().set_parameter(parameter)
         }
 
+        $crate::decoder_parameters!();
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+/// Parameter-setters for the encoder. Relies on a `set_parameter` method.
+macro_rules! encoder_parameters {
+    () => {
         /// Controls whether zstd should include a content checksum at the end
         /// of each frame.
         pub fn include_checksum(
@@ -126,6 +131,62 @@ macro_rules! encoder_common {
                 include_contentsize,
             ))
         }
+        /// Enables or disables long-distance matching
+        pub fn long_distance_matching(
+            &mut self,
+            long_distance_matching: bool,
+        ) -> io::Result<()> {
+            self.set_parameter(
+                zstd_safe::CParameter::EnableLongDistanceMatching(
+                    long_distance_matching,
+                ),
+            )
+        }
+
+        /// Sets the maximum back-reference distance.
+        ///
+        /// The actual maximum distance is going to be `2^log_distance`.
+        ///
+        /// Note that decompression will need to use at least the same setting.
+        pub fn window_log(&mut self, log_distance: u32) -> io::Result<()> {
+            self.set_parameter(zstd_safe::CParameter::WindowLog(log_distance))
+        }
+
+        #[cfg(feature = "experimental")]
+        /// Enables or disable the magic bytes at the beginning of each frame.
+        ///
+        /// If disabled, include_magicbytes must also be called on the decoder.
+        ///
+        /// Only available with the `experimental` feature.
+        ///
+        /// Note that decompression will need to use the same setting.
+        pub fn include_magicbytes(
+            &mut self,
+            include_magicbytes: bool,
+        ) -> io::Result<()> {
+            self.set_parameter(zstd_safe::CParameter::Format(
+                if include_magicbytes {
+                    zstd_safe::FrameFormat::One
+                } else {
+                    zstd_safe::FrameFormat::Magicless
+                },
+            ))
+        }
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+/// Common functions for the encoder, both in read and write mode.
+macro_rules! encoder_common {
+    ($readwrite:ident) => {
+        /// Sets the given zstd compression parameter.
+        pub fn set_parameter(
+            &mut self,
+            parameter: zstd_safe::CParameter,
+        ) -> io::Result<()> {
+            self.$readwrite.operation_mut().set_parameter(parameter)
+        }
 
         /// Sets the expected size of the input.
         ///
@@ -150,42 +211,6 @@ macro_rules! encoder_common {
             }
         }
 
-        /// Enables or disables long-distance matching
-        pub fn long_distance_matching(
-            &mut self,
-            long_distance_matching: bool,
-        ) -> io::Result<()> {
-            self.set_parameter(
-                zstd_safe::CParameter::EnableLongDistanceMatching(
-                    long_distance_matching,
-                ),
-            )
-        }
-
-        /// Sets the maximum back-reference distance.
-        ///
-        /// The actual maximum distance is going to be `2^log_distance`.
-        pub fn window_log(&mut self, log_distance: u32) -> io::Result<()> {
-            self.set_parameter(zstd_safe::CParameter::WindowLog(log_distance))
-        }
-
-        #[cfg(feature = "experimental")]
-        /// Enables or disable the magic bytes at the beginning of each frame.
-        ///
-        /// If disabled, include_magicbytes must also be called on the decoder.
-        ///
-        /// Only available with the `experimental` feature.
-        pub fn include_magicbytes(
-            &mut self,
-            include_magicbytes: bool,
-        ) -> io::Result<()> {
-            self.set_parameter(zstd_safe::CParameter::Format(
-                if include_magicbytes {
-                    zstd_safe::FrameFormat::One
-                } else {
-                    zstd_safe::FrameFormat::Magicless
-                },
-            ))
-        }
+        $crate::encoder_parameters!();
     };
 }

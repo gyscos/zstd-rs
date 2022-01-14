@@ -49,6 +49,7 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     /// Sets this `Decoder` to stop after the first frame.
     ///
     /// By default, it keeps concatenating frames until EOF is reached.
+    #[must_use]
     pub fn single_frame(mut self) -> Self {
         self.reader.set_single_frame();
         self

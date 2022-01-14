@@ -9,23 +9,68 @@ use zstd_safe;
 ///
 /// This reduces memory usage compared to calling `decompress` multiple times.
 #[derive(Default)]
-pub struct Decompressor {
-    context: zstd_safe::DCtx<'static>,
-    dict: Vec<u8>,
+pub struct Decompressor<'a> {
+    context: zstd_safe::DCtx<'a>,
 }
 
-impl Decompressor {
+impl Decompressor<'static> {
     /// Creates a new zstd decompressor.
-    pub fn new() -> Self {
-        Decompressor::with_dict(Vec::new())
+    pub fn new() -> io::Result<Self> {
+        Self::with_dictionary(&[])
     }
 
     /// Creates a new zstd decompressor, using the given dictionary.
-    pub fn with_dict(dict: Vec<u8>) -> Self {
-        Decompressor {
-            context: zstd_safe::create_dctx(),
-            dict,
-        }
+    pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
+        let mut decompressor = Self::default();
+
+        decompressor.set_dictionary(dictionary)?;
+
+        Ok(decompressor)
+    }
+}
+
+impl<'a> Decompressor<'a> {
+    /// Creates a new decompressor using an existing `DecoderDictionary`.
+    ///
+    /// Note that using a dictionary means that compression will need to use
+    /// the same dictionary.
+    pub fn with_prepared_dictionary(
+        dictionary: &crate::dict::DecoderDictionary<'a>,
+    ) -> io::Result<Self> {
+        let mut decompressor = Self::default();
+
+        decompressor.set_prepared_dictionary(dictionary)?;
+
+        Ok(decompressor)
+    }
+
+    /// Changes the dictionary used by this decompressor.
+    ///
+    /// Will affect future compression jobs.
+    ///
+    /// Note that using a dictionary means that compression will need to use
+    /// the same dictionary.
+    pub fn set_dictionary(&mut self, dictionary: &[u8]) -> io::Result<()> {
+        self.context
+            .load_dictionary(dictionary)
+            .map_err(map_error_code)?;
+
+        Ok(())
+    }
+
+    /// Changes the dictionary used by this decompressor.
+    ///
+    /// Note that using a dictionary means that compression will need to use
+    /// the same dictionary.
+    pub fn set_prepared_dictionary(
+        &mut self,
+        dictionary: &crate::dict::DecoderDictionary<'a>,
+    ) -> io::Result<()> {
+        self.context
+            .ref_ddict(dictionary.as_ddict())
+            .map_err(map_error_code)?;
+
+        Ok(())
     }
 
     /// Deompress a single block of data to the given destination buffer.
@@ -38,7 +83,7 @@ impl Decompressor {
         destination: &mut C,
     ) -> io::Result<usize> {
         self.context
-            .decompress_using_dict(destination, source, &self.dict)
+            .decompress(destination, source)
             .map_err(map_error_code)
     }
 
@@ -58,6 +103,19 @@ impl Decompressor {
         Ok(buffer)
     }
 
+    /// Sets a decompression parameter for this decompressor.
+    pub fn set_parameter(
+        &mut self,
+        parameter: zstd_safe::DParameter,
+    ) -> io::Result<()> {
+        self.context
+            .set_parameter(parameter)
+            .map_err(map_error_code)?;
+        Ok(())
+    }
+
+    crate::decoder_parameters!();
+
     /// Get an upper bound on the decompressed size of data, if available
     ///
     /// This can be used to pre-allocate enough capacity for `decompress_to_buffer`
@@ -65,6 +123,8 @@ impl Decompressor {
     /// you supply a large `capacity`.
     ///
     /// Will return `None` if the upper bound cannot be determined or is larger than `usize::MAX`
+    ///
+    /// Note that unless the `experimental` feature is enabled, this will always return `None`.
     pub fn upper_bound(_data: &[u8]) -> Option<usize> {
         #[cfg(feature = "experimental")]
         {

@@ -44,7 +44,7 @@ impl<'a> Compressor<'a> {
     /// Note that using a dictionary means that decompression will need to use
     /// the same dictionary.
     pub fn with_prepared_dictionary<'b>(
-        dictionary: &crate::dict::EncoderDictionary<'b>,
+        dictionary: &'a crate::dict::EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
@@ -94,10 +94,13 @@ impl<'a> Compressor<'a> {
     ///
     /// Note that using a dictionary means that decompression will need to use
     /// the same dictionary.
-    pub fn set_prepared_dictionary(
+    pub fn set_prepared_dictionary<'b>(
         &mut self,
-        dictionary: &crate::dict::EncoderDictionary<'a>,
-    ) -> io::Result<()> {
+        dictionary: &'a crate::dict::EncoderDictionary<'b>,
+    ) -> io::Result<()>
+    where
+        'b: 'a,
+    {
         self.context
             .ref_cdict(dictionary.as_cdict())
             .map_err(map_error_code)?;

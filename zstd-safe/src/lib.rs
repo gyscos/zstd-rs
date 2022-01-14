@@ -17,6 +17,7 @@
 //!
 //! Features denoted as experimental in the C library are hidden behind an
 //! `experimental` feature.
+#![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -1012,6 +1013,7 @@ pub fn compress_using_cdict(
     cctx.compress_using_cdict(dst, src, cdict)
 }
 
+/// A digested decompression dictionary.
 pub struct DDict<'a>(*mut zstd_sys::ZSTD_DDict, PhantomData<&'a ()>);
 
 impl DDict<'static> {
@@ -1037,6 +1039,7 @@ impl<'a> DDict<'a> {
     ///
     /// The dictionary will keep referencing `dict_buffer`.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(dict_buffer: &'a [u8]) -> Self {
         DDict(
             unsafe {
@@ -1160,6 +1163,7 @@ pub unsafe trait WriteBuf {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
 unsafe impl WriteBuf for std::vec::Vec<u8> {
     fn as_slice(&self) -> &[u8] {
         &self[..]
@@ -1176,6 +1180,7 @@ unsafe impl WriteBuf for std::vec::Vec<u8> {
 }
 
 #[cfg(feature = "arrays")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "arrays")))]
 unsafe impl<const N: usize> WriteBuf for [u8; N] {
     fn as_slice(&self) -> &[u8] {
         self
@@ -1513,6 +1518,7 @@ pub fn get_frame_content_size(src: &[u8]) -> u64 {
 ///
 /// `src` should be exactly a sequence of ZSTD frames.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn find_decompressed_size(src: &[u8]) -> u64 {
     unsafe { zstd_sys::ZSTD_findDecompressedSize(ptr_void(src), src.len()) }
 }
@@ -1551,6 +1557,7 @@ pub fn sizeof_ddict(ddict: &DDict<'_>) -> usize {
 ///
 /// The dictionary will keep referencing `dict_buffer`.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn create_cdict_by_reference<'a>(
     dict_buffer: &'a [u8],
     compression_level: CompressionLevel,
@@ -1560,6 +1567,7 @@ pub fn create_cdict_by_reference<'a>(
 
 /// Wraps the `ZSTD_isFrame()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn is_frame(buffer: &[u8]) -> u32 {
     unsafe { zstd_sys::ZSTD_isFrame(ptr_void(buffer), buffer.len()) as u32 }
 }
@@ -1568,6 +1576,7 @@ pub fn is_frame(buffer: &[u8]) -> u32 {
 ///
 /// The dictionary will keep referencing `dict_buffer`.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn create_ddict_by_reference(dict_buffer: &[u8]) -> DDict {
     DDict::create_by_reference(dict_buffer)
 }
@@ -1605,6 +1614,7 @@ pub fn init_cstream_src_size(
 
 /// Wraps the `ZSTD_initCStream_usingDict()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[deprecated]
 #[allow(deprecated)]
 pub fn init_cstream_using_dict(
@@ -1617,6 +1627,7 @@ pub fn init_cstream_using_dict(
 
 /// Wraps the `ZSTD_initCStream_usingCDict()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[deprecated]
 #[allow(deprecated)]
 pub fn init_cstream_using_cdict<'a, 'b>(
@@ -1699,6 +1710,7 @@ pub fn dctx_reset(dctx: &mut DCtx<'_>, reset: ResetDirective) -> SafeResult {
 
 /// Wraps the `ZSTD_resetCStream()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[deprecated]
 #[allow(deprecated)]
 pub fn reset_cstream(zcs: &mut CStream, pledged_src_size: u64) -> SafeResult {
@@ -1707,6 +1719,7 @@ pub fn reset_cstream(zcs: &mut CStream, pledged_src_size: u64) -> SafeResult {
 
 /// Wraps the `ZSTD_initDStream_usingDict()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[deprecated]
 #[allow(deprecated)]
 pub fn init_dstream_using_dict(zds: &mut DStream, dict: &[u8]) -> SafeResult {
@@ -1715,6 +1728,7 @@ pub fn init_dstream_using_dict(zds: &mut DStream, dict: &[u8]) -> SafeResult {
 
 /// Wraps the `ZSTD_initDStream_usingDDict()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[deprecated]
 #[allow(deprecated)]
 pub fn init_dstream_using_ddict<'a, 'b>(
@@ -1729,11 +1743,13 @@ where
 
 /// Wraps the `ZSTD_resetDStream()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn reset_dstream(zds: &mut DStream) -> SafeResult {
     zds.reset()
 }
 
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum FrameFormat {
@@ -1745,6 +1761,7 @@ pub enum FrameFormat {
 }
 
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum DictAttachPref {
@@ -1756,6 +1773,7 @@ pub enum DictAttachPref {
 }
 
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ParamSwitch {
@@ -1768,48 +1786,63 @@ pub enum ParamSwitch {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CParameter {
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     RSyncable(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     Format(FrameFormat),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     ForceMaxWindow(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     ForceAttachDict(DictAttachPref),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     LiteralCompressionMode(ParamSwitch),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     TargetCBlockSize(u32),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     SrcSizeHint(u32),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     EnableDedicatedDictSearch(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     StableInBuffer(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     StableOutBuffer(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     BlockDelimiters(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     ValidateSequences(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     UseBlockSplitter(ParamSwitch),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     UseRowMatchFinder(ParamSwitch),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     DeterministicRefPrefix(bool),
 
     CompressionLevel(CompressionLevel),
@@ -1858,15 +1891,19 @@ pub enum DParameter {
 
     /// See `FrameFormat`.
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     Format(FrameFormat),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     StableOutBuffer(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     ForceIgnoreChecksum(bool),
 
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     RefMultipleDDicts(bool),
 }
 
@@ -1929,12 +1966,14 @@ pub fn get_dict_id(dict_buffer: &[u8]) -> Option<u32> {
 
 /// Wraps the `ZSTD_getBlockSize()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn get_block_size(cctx: &CCtx) -> usize {
     unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0) }
 }
 
 /// Wraps the `ZSTD_compressBlock()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn compress_block(
     cctx: &mut CCtx,
     dst: &mut [u8],
@@ -1945,6 +1984,7 @@ pub fn compress_block(
 
 /// Wraps the `ZSTD_decompressBlock()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn decompress_block(
     dctx: &mut DCtx,
     dst: &mut [u8],
@@ -1955,12 +1995,14 @@ pub fn decompress_block(
 
 /// Wraps the `ZSTD_insertBlock()` function.
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn insert_block(dctx: &mut DCtx, block: &[u8]) -> usize {
     dctx.insert_block(block)
 }
 
 /// Wraps the `ZSTD_decompressBound` function
 #[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn decompress_bound(data: &[u8]) -> Result<u64, ErrorCode> {
     let bound =
         unsafe { zstd_sys::ZSTD_decompressBound(ptr_void(data), data.len()) };

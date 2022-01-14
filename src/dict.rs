@@ -43,6 +43,7 @@ impl EncoderDictionary<'static> {
 
 impl<'a> EncoderDictionary<'a> {
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     /// Create prepared dictionary for compression
     ///
     /// A level of `0` uses zstd's default (currently `3`).
@@ -78,6 +79,7 @@ impl DecoderDictionary<'static> {
 
 impl<'a> DecoderDictionary<'a> {
     #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     /// Create prepared dictionary for decompression
     ///
     /// Only available with the `experimental` feature. Use `DecoderDictionary::copy` otherwise.

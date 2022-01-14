@@ -13,7 +13,7 @@ readme = "Readme.md"
 edition = "2018"
 
 [package.metadata.docs.rs]
-features = ["experimental", "zstdmt"]
+features = ["experimental", "zstdmt", "doc-cfg"]
 
 [badges]
 travis-ci = { repository = "gyscos/zstd-rs" }
@@ -40,3 +40,4 @@ experimental = ["zstd-safe/experimental"]
 thin = ["zstd-safe/thin"]
 arrays = ["zstd-safe/arrays"]
 no_asm = ["zstd-safe/no_asm"]
+doc-cfg = []

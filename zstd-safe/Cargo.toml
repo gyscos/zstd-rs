@@ -12,7 +12,7 @@ readme = "Readme.md"
 edition = "2018"
 
 [package.metadata.docs.rs]
-features = ["experimental", "arrays", "std"]
+features = ["experimental", "arrays", "std", "doc-cfg"]
 
 [dependencies]
 zstd-sys = { path = "zstd-sys", version = "=1.6.2", default-features = false }
@@ -31,3 +31,4 @@ zstdmt = ["zstd-sys/zstdmt"]
 thin = ["zstd-sys/thin"]
 arrays = []
 no_asm = ["zstd-sys/no_asm"]
+doc-cfg = []

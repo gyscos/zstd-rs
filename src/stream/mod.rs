@@ -38,6 +38,7 @@ macro_rules! decoder_parameters {
         }
 
         #[cfg(feature = "experimental")]
+        #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
         /// Enables or disabled expecting the 4-byte magic header
         ///
         /// Only available with the `experimental` feature.
@@ -103,6 +104,7 @@ macro_rules! encoder_parameters {
         ///
         /// Note: This is only available if the `zstdmt` cargo feature is activated.
         #[cfg(feature = "zstdmt")]
+        #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zstdmt")))]
         pub fn multithread(&mut self, n_workers: u32) -> io::Result<()> {
             self.set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
         }
@@ -153,6 +155,7 @@ macro_rules! encoder_parameters {
         }
 
         #[cfg(feature = "experimental")]
+        #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
         /// Enables or disable the magic bytes at the beginning of each frame.
         ///
         /// If disabled, include_magicbytes must also be called on the decoder.

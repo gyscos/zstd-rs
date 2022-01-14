@@ -34,9 +34,12 @@ impl<'a> Decompressor<'a> {
     ///
     /// Note that using a dictionary means that compression will need to use
     /// the same dictionary.
-    pub fn with_prepared_dictionary(
-        dictionary: &crate::dict::DecoderDictionary<'a>,
-    ) -> io::Result<Self> {
+    pub fn with_prepared_dictionary<'b>(
+        dictionary: &'a crate::dict::DecoderDictionary<'b>,
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
         let mut decompressor = Self::default();
 
         decompressor.set_prepared_dictionary(dictionary)?;
@@ -62,10 +65,13 @@ impl<'a> Decompressor<'a> {
     ///
     /// Note that using a dictionary means that compression will need to use
     /// the same dictionary.
-    pub fn set_prepared_dictionary(
+    pub fn set_prepared_dictionary<'b>(
         &mut self,
-        dictionary: &crate::dict::DecoderDictionary<'a>,
-    ) -> io::Result<()> {
+        dictionary: &'a crate::dict::DecoderDictionary<'b>,
+    ) -> io::Result<()>
+    where
+        'b: 'a,
+    {
         self.context
             .ref_ddict(dictionary.as_ddict())
             .map_err(map_error_code)?;

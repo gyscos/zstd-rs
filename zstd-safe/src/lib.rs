@@ -8,7 +8,7 @@
 //! [zstd]: https://crates.io/crates/zstd
 //!
 //! Most of the functions here map 1-for-1 to a function from
-//! [the C zstd library][zstd-c] mentionned in their descriptions.
+//! [the C zstd library][zstd-c] mentioned in their descriptions.
 //! Check the [source documentation][doc] for more information on their
 //! behaviour.
 //!

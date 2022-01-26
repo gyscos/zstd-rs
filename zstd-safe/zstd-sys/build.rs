@@ -85,6 +85,7 @@ fn compile_zstd() {
         "zstd/lib/common",
         "zstd/lib/compress",
         "zstd/lib/decompress",
+        #[cfg(feature = "dict_builder")]
         "zstd/lib/dictBuilder",
         #[cfg(feature = "legacy")]
         "zstd/lib/legacy",
@@ -112,6 +113,14 @@ fn compile_zstd() {
         config.define("ZSTD_DISABLE_ASM", Some(""));
     } else {
         config.file("zstd/lib/decompress/huf_decompress_amd64.S");
+    }
+
+    if env::var("CARGO_CFG_TARGET_ARCH").ok() == Some("wasm32".into()) {
+        println!("cargo:rerun-if-changed=wasm-shim/stdlib.h");
+        println!("cargo:rerun-if-changed=wasm-shim/string.h");
+
+        config.include("wasm-shim/");
+        config.define("XXH_STATIC_ASSERT", Some("0"));
     }
 
     // Some extra parameters
@@ -152,7 +161,9 @@ fn compile_zstd() {
      * 7+: events at every position (*very* verbose)
      */
     #[cfg(feature = "debug")]
-    config.define("DEBUGLEVEL", Some("5"));
+    if env::var("CARGO_CFG_TARGET_ARCH").ok() != Some("wasm32".into()) {
+        config.define("DEBUGLEVEL", Some("5"));
+    }
 
     set_pthread(&mut config);
     set_legacy(&mut config);

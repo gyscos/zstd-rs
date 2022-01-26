@@ -9,6 +9,9 @@
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(target_arch = "wasm32")]
+mod wasm_shim;
+
 // If running bindgen, we'll end up with the correct bindings anyway.
 #[cfg(feature = "bindgen")]
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

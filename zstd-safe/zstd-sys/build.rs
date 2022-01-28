@@ -166,7 +166,7 @@ fn compile_zstd() {
      * 7+: events at every position (*very* verbose)
      */
     #[cfg(feature = "debug")]
-    if is_wasm_unknown_unknown {
+    if !is_wasm_unknown_unknown {
         config.define("DEBUGLEVEL", Some("5"));
     }
 

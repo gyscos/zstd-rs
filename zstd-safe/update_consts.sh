@@ -22,11 +22,11 @@ fetch_constants() {
     done | sort
 }
 
-constants=$(fetch_constants zstd-sys/src/bindings.rs)
+constants=$(fetch_constants zstd-sys/src/bindings_zstd.rs)
 header > src/constants.rs
 echo "$constants" >> src/constants.rs
 
 (
     header
-    comm -23 <(fetch_constants zstd-sys/src/bindings_experimental.rs) <(echo "$constants")
+    comm -23 <(fetch_constants zstd-sys/src/bindings_zstd_experimental.rs) <(echo "$constants")
 ) > src/constants_experimental.rs

@@ -2041,6 +2041,7 @@ pub fn cctx_set_pledged_src_size(
 }
 
 /// Wraps the `ZDICT_trainFromBuffer()` function.
+#[cfg(feature = "zdict_builder")]
 pub fn train_from_buffer<C: WriteBuf + ?Sized>(
     dict_buffer: &mut C,
     samples_buffer: &[u8],
@@ -2062,6 +2063,7 @@ pub fn train_from_buffer<C: WriteBuf + ?Sized>(
 }
 
 /// Wraps the `ZSTD_getDictID_fromDict()` function.
+#[cfg(feature = "zdict_builder")]
 pub fn get_dict_id(dict_buffer: &[u8]) -> Option<u32> {
     let id = unsafe {
         zstd_sys::ZDICT_getDictID(ptr_void(dict_buffer), dict_buffer.len())

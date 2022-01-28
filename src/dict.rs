@@ -14,11 +14,8 @@
 //! [`Encoder::with_dictionary`]: ../struct.Encoder.html#method.with_dictionary
 //! [`Decoder::with_dictionary`]: ../struct.Decoder.html#method.with_dictionary
 
-use crate::map_error_code;
-use std::fs;
-
+#[cfg(feature = "zdict")]
 use std::io::{self, Read};
-use std::path;
 
 pub use zstd_safe::{CDict, DDict};
 
@@ -99,11 +96,14 @@ impl<'a> DecoderDictionary<'a> {
 ///
 /// This is the most efficient way to train a dictionary,
 /// since this is directly fed into `zstd`.
+#[cfg(feature = "zdict")]
 pub fn from_continuous(
     sample_data: &[u8],
     sample_sizes: &[usize],
     max_size: usize,
 ) -> io::Result<Vec<u8>> {
+    use crate::map_error_code;
+
     // Complain if the lengths don't add up to the entire data.
     if sample_sizes.iter().sum::<usize>() != sample_data.len() {
         return Err(io::Error::new(
@@ -127,6 +127,7 @@ pub fn from_continuous(
 /// [`from_continuous`] directly uses the given slice.
 ///
 /// [`from_continuous`]: ./fn.from_continuous.html
+#[cfg(feature = "zdict")]
 pub fn from_samples<S: AsRef<[u8]>>(
     samples: &[S],
     max_size: usize,
@@ -140,11 +141,14 @@ pub fn from_samples<S: AsRef<[u8]>>(
 }
 
 /// Train a dict from a list of files.
+#[cfg(feature = "zdict")]
 pub fn from_files<I, P>(filenames: I, max_size: usize) -> io::Result<Vec<u8>>
 where
-    P: AsRef<path::Path>,
+    P: AsRef<std::path::Path>,
     I: IntoIterator<Item = P>,
 {
+    use std::fs;
+
     let mut buffer = Vec::new();
     let mut sizes = Vec::new();
 
@@ -158,6 +162,7 @@ where
 }
 
 #[cfg(test)]
+#[cfg(feature = "zdict")]
 mod tests {
     use std::fs;
     use std::io;

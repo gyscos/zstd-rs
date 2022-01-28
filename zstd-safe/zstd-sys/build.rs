@@ -6,7 +6,7 @@ use std::{env, fs};
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     let bindings = bindgen::Builder::default()
         .header("zstd.h");
-    #[cfg(feature = "zdict")]
+    #[cfg(feature = "zdict_builder")]
     let bindings = bindings.header("zdict.h");
     let bindings = bindings
         .blocklist_type("max_align_t")
@@ -22,7 +22,7 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
 
     #[cfg(feature = "experimental")]
     let bindings = bindings.clang_arg("-DZSTD_STATIC_LINKING_ONLY");
-    #[cfg(all(feature = "experimental", feature = "zdict"))]
+    #[cfg(all(feature = "experimental", feature = "zdict_builder"))]
     let bindings = bindings.clang_arg("-DZDICT_STATIC_LINKING_ONLY");
 
     #[cfg(not(feature = "std"))]
@@ -87,7 +87,7 @@ fn compile_zstd() {
         "zstd/lib/common",
         "zstd/lib/compress",
         "zstd/lib/decompress",
-        #[cfg(feature = "zdict")]
+        #[cfg(feature = "zdict_builder")]
         "zstd/lib/dictBuilder",
         #[cfg(feature = "legacy")]
         "zstd/lib/legacy",
@@ -150,7 +150,7 @@ fn compile_zstd() {
     config.flag("-fvisibility=hidden");
     config.define("XXH_PRIVATE_API", Some(""));
     config.define("ZSTDLIB_VISIBILITY", Some(""));
-    #[cfg(feature = "zdict")]
+    #[cfg(feature = "zdict_builder")]
     config.define("ZDICTLIB_VISIBILITY", Some(""));
     config.define("ZSTDERRORLIB_VISIBILITY", Some(""));
 
@@ -184,7 +184,7 @@ fn compile_zstd() {
     fs::copy(src.join("zstd.h"), include.join("zstd.h")).unwrap();
     fs::copy(src.join("zstd_errors.h"), include.join("zstd_errors.h"))
         .unwrap();
-    #[cfg(feature = "zdict")]
+    #[cfg(feature = "zdict_builder")]
     fs::copy(src.join("zdict.h"), include.join("zdict.h")).unwrap();
     println!("cargo:root={}", dst.display());
 }

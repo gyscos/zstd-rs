@@ -29,6 +29,7 @@ include!("bindings_zstd.rs");
 #[cfg(all(
     not(feature = "std"),
     not(feature = "experimental"),
+    feature = "zdict",
     not(feature = "bindgen")
 ))]
 include!("bindings_zdict.rs");
@@ -43,6 +44,7 @@ include!("bindings_zstd_experimental.rs");
 #[cfg(all(
     not(feature = "std"),
     feature = "experimental",
+    feature = "zdict",
     not(feature = "bindgen")
 ))]
 include!("bindings_zdict_experimental.rs");
@@ -59,6 +61,7 @@ include!("bindings_zstd_std.rs");
 #[cfg(all(
     feature = "std",
     not(feature = "experimental"),
+    feature = "zdict",
     not(feature = "bindgen")
 ))]
 include!("bindings_zdict_std.rs");
@@ -73,6 +76,7 @@ include!("bindings_zstd_std_experimental.rs");
 #[cfg(all(
     feature = "std",
     feature = "experimental",
+    feature = "zdict",
     not(feature = "bindgen")
 ))]
 include!("bindings_zdict_std_experimental.rs");

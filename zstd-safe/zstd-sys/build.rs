@@ -5,8 +5,10 @@ use std::{env, fs};
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     let bindings = bindgen::Builder::default()
-        .header("zstd.h")
-        .header("zdict.h")
+        .header("zstd.h");
+    #[cfg(feature = "zdict")]
+    let bindings = bindings.header("zdict.h");
+    bindings
         .blocklist_type("max_align_t")
         .size_t_is_usize(true)
         .use_core()
@@ -19,9 +21,10 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
         .clang_args(defs.into_iter().map(|def| format!("-D{}", def)));
 
     #[cfg(feature = "experimental")]
-    let bindings = bindings
-        .clang_arg("-DZSTD_STATIC_LINKING_ONLY")
-        .clang_arg("-DZDICT_STATIC_LINKING_ONLY");
+    let bindings = bindings.clang_arg("-DZSTD_STATIC_LINKING_ONLY");
+    #[cfg(feature = "experimental")]
+    #[cfg(feature = "zdict")]
+    let bindings = bindings.clang_arg("-DZDICT_STATIC_LINKING_ONLY");
 
     #[cfg(not(feature = "std"))]
     let bindings = bindings.ctypes_prefix("libc");
@@ -85,7 +88,7 @@ fn compile_zstd() {
         "zstd/lib/common",
         "zstd/lib/compress",
         "zstd/lib/decompress",
-        #[cfg(feature = "dict_builder")]
+        #[cfg(feature = "zdict")]
         "zstd/lib/dictBuilder",
         #[cfg(feature = "legacy")]
         "zstd/lib/legacy",
@@ -146,6 +149,7 @@ fn compile_zstd() {
     config.flag("-fvisibility=hidden");
     config.define("XXH_PRIVATE_API", Some(""));
     config.define("ZSTDLIB_VISIBILITY", Some(""));
+    #[cfg(feature = "zdict")]
     config.define("ZDICTLIB_VISIBILITY", Some(""));
     config.define("ZSTDERRORLIB_VISIBILITY", Some(""));
 
@@ -179,6 +183,7 @@ fn compile_zstd() {
     fs::copy(src.join("zstd.h"), include.join("zstd.h")).unwrap();
     fs::copy(src.join("zstd_errors.h"), include.join("zstd_errors.h"))
         .unwrap();
+    #[cfg(feature = "zdict")]
     fs::copy(src.join("zdict.h"), include.join("zdict.h")).unwrap();
     println!("cargo:root={}", dst.display());
 }

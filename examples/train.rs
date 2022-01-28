@@ -30,11 +30,8 @@ fn main() {
 
     let files: Vec<_> = matches.values_of("FILE").unwrap().collect();
 
-    #[cfg(feature = "zdict_builder")]
-    {
-        let dict = zstd::dict::from_files(&files, size).unwrap();
+    let dict = zstd::dict::from_files(&files, size).unwrap();
 
-        let mut dict_reader: &[u8] = &dict;
-        io::copy(&mut dict_reader, &mut io::stdout()).unwrap();
-    }
+    let mut dict_reader: &[u8] = &dict;
+    io::copy(&mut dict_reader, &mut io::stdout()).unwrap();
 }

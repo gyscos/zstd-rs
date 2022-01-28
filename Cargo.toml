@@ -42,3 +42,7 @@ arrays = ["zstd-safe/arrays"]
 no_asm = ["zstd-safe/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-safe/zdict_builder"]
+
+[[example]]
+name = "train"
+required-features = ["zdict_builder"]

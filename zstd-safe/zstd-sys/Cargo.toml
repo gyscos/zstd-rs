@@ -61,7 +61,7 @@ features = ["parallel"]
 libc = "0.2.45"
 
 [features]
-default = ["legacy"]
+default = ["legacy", "zdict_builder"]
 
 debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API
@@ -71,3 +71,4 @@ std = [] # Use std types instead of libc in bindgen
 zstdmt = [] # Enable multi-thread support (with pthread)
 thin = [] # Optimize binary by size
 no_asm = [] # Disable ASM files (only on amd64 for decompression)
+zdict_builder = []

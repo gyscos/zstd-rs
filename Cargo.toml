@@ -13,7 +13,7 @@ readme = "Readme.md"
 edition = "2018"
 
 [package.metadata.docs.rs]
-features = ["experimental", "zstdmt", "doc-cfg"]
+features = ["experimental", "zstdmt", "zdict_builder", "doc-cfg"]
 
 [badges]
 travis-ci = { repository = "gyscos/zstd-rs" }
@@ -28,7 +28,7 @@ partial-io = "0.5"
 walkdir = "2.2"
 
 [features]
-default = ["legacy", "arrays"]
+default = ["legacy", "arrays", "zdict_builder"]
 
 bindgen = ["zstd-safe/bindgen"]
 debug = ["zstd-safe/debug"]
@@ -41,3 +41,8 @@ thin = ["zstd-safe/thin"]
 arrays = ["zstd-safe/arrays"]
 no_asm = ["zstd-safe/no_asm"]
 doc-cfg = []
+zdict_builder = ["zstd-safe/zdict_builder"]
+
+[[example]]
+name = "train"
+required-features = ["zdict_builder"]

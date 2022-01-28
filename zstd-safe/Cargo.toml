@@ -12,14 +12,14 @@ readme = "Readme.md"
 edition = "2018"
 
 [package.metadata.docs.rs]
-features = ["experimental", "arrays", "std", "doc-cfg"]
+features = ["experimental", "arrays", "std", "zdict_builder", "doc-cfg"]
 
 [dependencies]
 zstd-sys = { path = "zstd-sys", version = "=1.6.3", default-features = false }
 libc = "0.2.21"
 
 [features]
-default = ["legacy", "arrays"]
+default = ["legacy", "arrays", "zdict_builder"]
 
 bindgen = ["zstd-sys/bindgen"]
 debug = ["zstd-sys/debug"]
@@ -32,3 +32,4 @@ thin = ["zstd-sys/thin"]
 arrays = []
 no_asm = ["zstd-sys/no_asm"]
 doc-cfg = []
+zdict_builder = ["zstd-sys/zdict_builder"]

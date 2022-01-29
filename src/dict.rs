@@ -97,6 +97,7 @@ impl<'a> DecoderDictionary<'a> {
 /// This is the most efficient way to train a dictionary,
 /// since this is directly fed into `zstd`.
 #[cfg(feature = "zdict_builder")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
 pub fn from_continuous(
     sample_data: &[u8],
     sample_sizes: &[usize],
@@ -128,6 +129,7 @@ pub fn from_continuous(
 ///
 /// [`from_continuous`]: ./fn.from_continuous.html
 #[cfg(feature = "zdict_builder")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
 pub fn from_samples<S: AsRef<[u8]>>(
     samples: &[S],
     max_size: usize,
@@ -142,6 +144,7 @@ pub fn from_samples<S: AsRef<[u8]>>(
 
 /// Train a dict from a list of files.
 #[cfg(feature = "zdict_builder")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
 pub fn from_files<I, P>(filenames: I, max_size: usize) -> io::Result<Vec<u8>>
 where
     P: AsRef<std::path::Path>,

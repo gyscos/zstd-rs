@@ -21,7 +21,8 @@ for NO_STD_ARG in "$no_std" ""; do
         if [ -z "$EXPERIMENTAL_ARG" ]; then EXPERIMENTAL=""; else EXPERIMENTAL="_experimental"; fi
         SUFFIX=${STD}${EXPERIMENTAL}
         filename=src/bindings${STD}${EXPERIMENTAL}.rs
-        run_bindgen zstd.h $NO_STD_ARG -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zstd${SUFFIX}.rs
-        run_bindgen --blocklist-type wchar_t zdict.h $NO_STD_ARG -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zdict${SUFFIX}.rs
+
+        run_bindgen zstd.h --allowlist-type "ZSTD_.*" --allowlist-function "ZSTD_.*" --allowlist-var "ZSTD_.*" $NO_STD_ARG -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zstd${SUFFIX}.rs
+        run_bindgen zdict.h --blocklist-type wchar_t $NO_STD_ARG -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zdict${SUFFIX}.rs
     done
 done

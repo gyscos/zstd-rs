@@ -25,12 +25,12 @@ include = [
     "/LICENSE",
     "/*.*",
     "/src/",
+    "/wasm-shim/**/*.h",
     "/zstd/LICENSE",
     "/zstd/COPYING",
     "/zstd/lib/**/*.c",
     "/zstd/lib/**/*.h",
     "/zstd/lib/**/*.S",
-    "/wasm-shim/**/*.h",
 ]
 # exclude = [
 #     "zstd",

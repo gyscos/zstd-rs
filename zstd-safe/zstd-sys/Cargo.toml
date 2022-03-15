@@ -30,6 +30,7 @@ include = [
     "/zstd/lib/**/*.c",
     "/zstd/lib/**/*.h",
     "/zstd/lib/**/*.S",
+    "/wasm-shim/**/*.h",
 ]
 # exclude = [
 #     "zstd",

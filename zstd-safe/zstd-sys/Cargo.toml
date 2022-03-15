@@ -25,6 +25,7 @@ include = [
     "/LICENSE",
     "/*.*",
     "/src/",
+    "/wasm-shim/**/*.h",
     "/zstd/LICENSE",
     "/zstd/COPYING",
     "/zstd/lib/**/*.c",

@@ -50,7 +50,7 @@ jobs:
       shell: bash
     - name: Update gcc
       if: matrix.target == 'x86_64-pc-windows-gnu'
-      run: pacman.exe -Syu --noconfirm mingw-w64-x86_64-toolchain
+      run: pacman.exe -Sy --noconfirm mingw-w64-x86_64-toolchain
     - name: Update gcc
       if: matrix.target == 'i686-pc-windows-gnu'
       run: pacman.exe -Syu --noconfirm mingw-w64-i686-toolchain

@@ -15,7 +15,7 @@ edition = "2018"
 features = ["experimental", "arrays", "std", "zdict_builder", "doc-cfg"]
 
 [dependencies]
-zstd-sys = { path = "zstd-sys", version = "=2.0.1", default-features = false }
+zstd-sys = { path = "zstd-sys", version = "2.0.1", default-features = false }
 libc = "0.2.21"
 
 [features]

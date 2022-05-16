@@ -26,6 +26,23 @@ pub use self::write::{AutoFinishEncoder, Encoder};
 /// Common functions for the decoder, both in read and write mode.
 macro_rules! decoder_parameters {
     () => {
+        /// Enables multithreaded decompression
+        ///
+        /// * If `n_workers == 0` (default), then multithreaded will be
+        ///   disabled.
+        /// * If `n_workers >= 1`, then decompression will be done in separate
+        ///   threads.
+        ///
+        /// So even `n_workers = 1` may increase performance by separating
+        /// IO and decompression.
+        ///
+        /// Note: This is only available if the `zstdmt` cargo feature is activated.
+        #[cfg(feature = "zstdmt")]
+        #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zstdmt")))]
+        pub fn multithread(&mut self, n_workers: u32) -> io::Result<()> {
+            self.set_parameter(zstd_safe::CParameter::NbWorkers(n_workers))
+        }
+
         /// Sets the maximum back-reference distance.
         ///
         /// The actual maximum distance is going to be `2^log_distance`.

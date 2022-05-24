@@ -8,6 +8,44 @@ const LONG_CONTENT: &str = include_str!("lib.rs");
 
 #[cfg(feature = "std")]
 #[test]
+fn test_writebuf() {
+    use zstd_safe::WriteBuf;
+
+    let mut data = Vec::with_capacity(8);
+    unsafe {
+        data.write_from(|ptr, n| {
+            assert!(n >= 4);
+            let ptr = ptr as *mut u8;
+            ptr.write(0);
+            ptr.add(1).write(1);
+            ptr.add(2).write(2);
+            ptr.add(3).write(3);
+            Ok(4)
+        })
+    }
+    .unwrap();
+    assert_eq!(data.as_slice(), &[0, 1, 2, 3]);
+
+    let mut cursor = std::io::Cursor::new(&mut data);
+    cursor.set_position(4);
+    unsafe {
+        cursor.write_from(|ptr, n| {
+            assert!(n >= 4);
+            let ptr = ptr as *mut u8;
+            ptr.write(4);
+            ptr.add(1).write(5);
+            ptr.add(2).write(6);
+            ptr.add(3).write(7);
+            Ok(4)
+        })
+    }
+    .unwrap();
+
+    assert_eq!(data.as_slice(), &[0, 1, 2, 3, 4, 5, 6, 7]);
+}
+
+#[cfg(feature = "std")]
+#[test]
 fn test_simple_cycle() {
     let mut buffer = std::vec![0u8; 256];
     let written = zstd_safe::compress(&mut buffer, INPUT, 3).unwrap();
@@ -125,7 +163,7 @@ fn test_checksum() {
     assert!(err.contains("checksum"));
 }
 
-#[cfg(feature="experimental")]
+#[cfg(feature = "experimental")]
 #[test]
 fn test_upper_bound() {
     let mut buffer = std::vec![0u8; 256];
@@ -135,5 +173,8 @@ fn test_upper_bound() {
     let written = zstd_safe::compress(&mut buffer, INPUT, 3).unwrap();
     let compressed = &buffer[..written];
 
-    assert_eq!(zstd_safe::decompress_bound(&compressed), Ok(INPUT.len() as u64));
+    assert_eq!(
+        zstd_safe::decompress_bound(&compressed),
+        Ok(INPUT.len() as u64)
+    );
 }

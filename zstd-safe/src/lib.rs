@@ -1272,6 +1272,56 @@ pub unsafe trait WriteBuf {
 
 #[cfg(feature = "std")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
+unsafe impl<T> WriteBuf for std::io::Cursor<T>
+where
+    T: WriteBuf,
+{
+    fn as_slice(&self) -> &[u8] {
+        &self.get_ref().as_slice()[self.position() as usize..]
+    }
+
+    fn capacity(&self) -> usize {
+        self.get_ref()
+            .capacity()
+            .saturating_sub(self.position() as usize)
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        let start = self.position() as usize;
+        assert!(start <= self.get_ref().capacity());
+        // Safety: start is still in the same memory allocation
+        unsafe { self.get_mut().as_mut_ptr().add(start) }
+    }
+
+    unsafe fn filled_until(&mut self, n: usize) {
+        let start = self.position() as usize;
+        assert!(start + n <= self.get_ref().capacity());
+        self.get_mut().filled_until(start + n);
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
+unsafe impl<'a> WriteBuf for &'a mut std::vec::Vec<u8> {
+    fn as_slice(&self) -> &[u8] {
+        std::vec::Vec::as_slice(self)
+    }
+
+    fn capacity(&self) -> usize {
+        std::vec::Vec::capacity(self)
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        std::vec::Vec::as_mut_ptr(self)
+    }
+
+    unsafe fn filled_until(&mut self, n: usize) {
+        std::vec::Vec::set_len(self, n)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
 unsafe impl WriteBuf for std::vec::Vec<u8> {
     fn as_slice(&self) -> &[u8] {
         &self[..]

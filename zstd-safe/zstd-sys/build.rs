@@ -4,8 +4,7 @@ use std::{env, fs};
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
-    let bindings = bindgen::Builder::default()
-        .header("zstd.h");
+    let bindings = bindgen::Builder::default().header("zstd.h");
     #[cfg(feature = "zdict_builder")]
     let bindings = bindings.header("zdict.h");
     let bindings = bindings
@@ -117,7 +116,8 @@ fn compile_zstd() {
         config.file("zstd/lib/decompress/huf_decompress_amd64.S");
     }
 
-    let is_wasm_unknown_unknown = env::var("TARGET").ok() == Some("wasm32-unknown-unknown".into());
+    let is_wasm_unknown_unknown =
+        env::var("TARGET").ok() == Some("wasm32-unknown-unknown".into());
 
     if is_wasm_unknown_unknown {
         println!("cargo:rerun-if-changed=wasm-shim/stdlib.h");
@@ -200,7 +200,9 @@ fn main() {
     }
 
     // println!("cargo:rustc-link-lib=zstd");
-    let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
+    let (defs, headerpaths) = if cfg!(feature = "pkg-config")
+        && !cfg!(feature = "static")
+    {
         pkg_config()
     } else {
         if !Path::new("zstd/lib").exists() {

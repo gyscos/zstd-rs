@@ -1,43 +1,35 @@
-use humansize::{file_size_opts, FileSize};
+use clap::Parser;
+use humansize::{format_size, DECIMAL};
 use std::io::Read;
+use std::path::PathBuf;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about=None)]
+struct Args {
+    /// Directory containing the data to compress.
+    /// To use the silesia corpus, run the following commands:
+    ///
+    /// ```
+    /// wget http://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
+    /// unzip silesia.zip -d silesia/
+    /// cargo run --example benchmark -- silesia/",
+    /// ```
+    dir: PathBuf,
+
+    /// First compression level to test.
+    #[arg(short, long)]
+    begin: i32,
+
+    /// Last compression level to test.
+    #[arg(short, long)]
+    end: i32,
+}
 
 fn main() {
-    let matches = clap::App::new("benchmark")
-        .author("Alexandre Bury <alexandre.bury@gmail.com>")
-        .about("Benchmark zstd-rs")
-        .arg(
-            clap::Arg::new("DIR")
-                .help(
-                    "Directory containing the data to compress.
-
-To use the silesia corpus, run the following commands:
-
-wget http://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
-unzip silesia.zip -d silesia/
-cargo run --example benchmark -- silesia/",
-                )
-                .required(true),
-        )
-        .arg(
-            clap::Arg::new("begin")
-                .short('b')
-                .long("begin")
-                .takes_value(true),
-        )
-        .arg(
-            clap::Arg::new("end")
-                .short('e')
-                .long("end")
-                .takes_value(true),
-        )
-        .get_matches();
-
-    let dir = matches.value_of("DIR").unwrap();
-    let begin: i32 = matches.value_of_t("begin").unwrap_or(1);
-    let end: i32 = matches.value_of_t("end").unwrap_or(10);
+    let args = Args::parse();
 
     // Step 1: load data in memory
-    let files: Vec<Vec<u8>> = std::fs::read_dir(dir)
+    let files: Vec<Vec<u8>> = std::fs::read_dir(args.dir)
         .unwrap()
         .map(|file| {
             let file = file.unwrap();
@@ -64,7 +56,7 @@ cargo run --example benchmark -- silesia/",
         "Decompression speed"
     );
 
-    for level in begin..end {
+    for level in args.begin..args.end {
         // Compress each sample sequentially.
         let start = std::time::Instant::now();
 
@@ -96,10 +88,10 @@ cargo run --example benchmark -- silesia/",
         let compressed_size: usize = compressed.iter().map(Vec::len).sum();
 
         let speed = (total_size as f64 / compress_seconds) as usize;
-        let speed = speed.file_size(file_size_opts::DECIMAL).unwrap();
+        let speed = format_size(speed, DECIMAL);
 
         let d_speed = (total_size as f64 / decompress_seconds) as usize;
-        let d_speed = d_speed.file_size(file_size_opts::DECIMAL).unwrap();
+        let d_speed = format_size(d_speed, DECIMAL);
 
         let ratio = compressed_size as f64 / total_size as f64;
         println!("{}\t{:.3}\t{}/s\t{}/s", level, 1.0 / ratio, speed, d_speed);

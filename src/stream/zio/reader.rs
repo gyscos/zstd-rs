@@ -66,6 +66,16 @@ impl<R, D> Reader<R, D> {
     pub fn into_inner(self) -> R {
         self.reader
     }
+
+    /// Flush any internal buffer.
+    ///
+    /// For encoders, this ensures all input consumed so far is compressed.
+    pub fn flush(&mut self, output: &mut [u8]) -> io::Result<usize>
+    where
+        D: Operation,
+    {
+        self.operation.flush(&mut OutBuffer::around(output))
+    }
 }
 // Read and retry on Interrupted errors.
 fn fill_buf<R>(reader: &mut R) -> io::Result<&[u8]>

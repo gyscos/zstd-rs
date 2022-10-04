@@ -91,7 +91,10 @@ fn compile_zstd() {
         #[cfg(feature = "legacy")]
         "zstd/lib/legacy",
     ] {
-        let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|r| r.unwrap().path()).collect();
+        let mut entries: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .map(|r| r.unwrap().path())
+            .collect();
         entries.sort();
         for path in entries {
             // Skip xxhash*.c files: since we are using the "PRIVATE API"

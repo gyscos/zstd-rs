@@ -14,9 +14,13 @@ then
     git add zstd
     ./update_bindings.sh
     git add src/bindings*.rs
+    cd ..
+    ./update_consts.sh
+    git add src/constants*.rs
+    cd zstd-sys
 
-    # Note: You'll need a forked version of cargo-dump that supports metadata
-    # For instance https://github.com/gyscos/cargo-dump
+    # Note: You'll need a forked version of cargo-bump that supports metadata
+    # For instance https://github.com/gyscos/cargo-bump
     METADATA="zstd.${TAG/v/}"
     cargo bump patch --build $METADATA
     ZSTD_SYS_VERSION=$(cargo read-manifest | jq -r .version | cut -d+ -f1)

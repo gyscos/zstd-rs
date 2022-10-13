@@ -203,7 +203,9 @@ fn main() {
     }
 
     // println!("cargo:rustc-link-lib=zstd");
-    let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
+    let (defs, headerpaths) = if cfg!(feature = "pkg-config")
+        && !cfg!(feature = "static")
+    {
         pkg_config()
     } else {
         if !Path::new("zstd/lib").exists() {

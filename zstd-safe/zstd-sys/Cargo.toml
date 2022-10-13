@@ -66,6 +66,7 @@ libc = "0.2.45"
 [features]
 default = ["legacy", "zdict_builder"]
 
+static = [] # Force the libzstd to be built and linked statically
 debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API
 legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)

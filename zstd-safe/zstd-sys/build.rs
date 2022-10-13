@@ -78,6 +78,18 @@ fn enable_threading(config: &mut cc::Build) {
 #[cfg(not(feature = "zstdmt"))]
 fn enable_threading(_config: &mut cc::Build) {}
 
+/// This function would find the first flag in `flags` that is supported
+/// and add that to `config`.
+fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
+    let option = flags
+        .iter()
+        .find(|flag| config.is_flag_supported(flag).unwrap_or_default());
+
+    if let Some(flag) = option {
+        config.flag(flag);
+    }
+}
+
 fn compile_zstd() {
     let mut config = cc::Build::new();
 
@@ -151,7 +163,8 @@ fn compile_zstd() {
         config.define("HUF_FORCE_DECOMPRESS_X1", Some("1"));
         config.define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"));
         config.define("ZSTD_NO_INLINE ", Some("1"));
-        config.flag_if_supported("-Oz");
+
+        flag_if_supported_with_fallbacks(&mut config, &["-Oz", "-Os", "-O2"]);
     }
 
     // Hide symbols from resulting library,

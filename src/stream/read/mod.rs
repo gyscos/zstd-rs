@@ -171,6 +171,19 @@ impl<'a, R: BufRead> Encoder<'a, R> {
         self.reader.reader_mut()
     }
 
+    /// Flush any internal buffer.
+    ///
+    /// This ensures all input consumed so far is compressed.
+    ///
+    /// Since it prevents bundling currently buffered data with future input,
+    /// it may affect compression ratio.
+    ///
+    /// * Returns the number of bytes written to `out`.
+    /// * Returns `Ok(0)` when everything has been flushed.
+    pub fn flush(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        self.reader.flush(out)
+    }
+
     /// Return the inner `Read`.
     ///
     /// Calling `finish()` is not *required* after reading a stream -

@@ -53,7 +53,6 @@ default-features = false
 features = ["runtime", "which-rustfmt"]
 
 [build-dependencies.pkg-config]
-optional = true
 version = "0.3"
 
 [build-dependencies.cc]

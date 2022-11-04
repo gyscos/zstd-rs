@@ -203,15 +203,7 @@ macro_rules! encoder_common {
             &mut self,
             size: Option<u64>,
         ) -> io::Result<()> {
-            match size {
-                Some(size) => {
-                    self.$readwrite.operation_mut().set_pledged_src_size(size)
-                }
-                None => self
-                    .$readwrite
-                    .operation_mut()
-                    .set_pledged_src_size(zstd_safe::CONTENTSIZE_UNKNOWN),
-            }
+            self.$readwrite.operation_mut().set_pledged_src_size(size)
         }
 
         $crate::encoder_parameters!();

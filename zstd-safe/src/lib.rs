@@ -32,7 +32,7 @@ pub use zstd_sys;
 pub use zstd_sys::ZSTD_strategy as Strategy;
 
 /// Reset directive.
-pub use zstd_sys::ZSTD_ResetDirective as ResetDirective;
+// pub use zstd_sys::ZSTD_ResetDirective as ResetDirective;
 
 #[cfg(feature = "std")]
 use std::os::raw::{c_char, c_int, c_ulonglong, c_void};
@@ -41,6 +41,7 @@ use std::os::raw::{c_char, c_int, c_ulonglong, c_void};
 use libc::{c_char, c_int, c_ulonglong, c_void};
 
 use core::marker::PhantomData;
+use core::num::{NonZeroU32, NonZeroU64};
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::str;
@@ -61,6 +62,11 @@ pub type ErrorCode = usize;
 /// Either a success code (usually number of bytes written), or an error code.
 pub type SafeResult = Result<usize, ErrorCode>;
 
+/// Indicates an error happened when parsing the frame content size.
+///
+/// The stream may be corrupted, or the given frame prefix was too small.
+pub struct ContentSizeError;
+
 /// Returns true if code represents error.
 fn is_error(code: usize) -> bool {
     unsafe { zstd_sys::ZSTD_isError(code) != 0 }
@@ -78,6 +84,19 @@ fn parse_code(code: usize) -> SafeResult {
     }
 }
 
+/// Parse a content size value.
+///
+/// zstd uses 2 special content size values to indicate either unknown size or parsing error.
+fn parse_content_size(
+    content_size: u64,
+) -> Result<Option<u64>, ContentSizeError> {
+    match content_size {
+        CONTENTSIZE_ERROR => Err(ContentSizeError),
+        CONTENTSIZE_UNKNOWN => Ok(None),
+        other => Ok(Some(other)),
+    }
+}
+
 fn ptr_void(src: &[u8]) -> *const c_void {
     src.as_ptr() as *const c_void
 }
@@ -86,15 +105,24 @@ fn ptr_mut_void(dst: &mut (impl WriteBuf + ?Sized)) -> *mut c_void {
     dst.as_mut_ptr() as *mut c_void
 }
 
+/// Returns the ZSTD version.
+///
+/// Returns `major * 10_000 + minor * 100 + patch`.
+/// So 1.5.3 would be returned as `10_503`.
 pub fn version_number() -> u32 {
     unsafe { zstd_sys::ZSTD_versionNumber() as u32 }
 }
 
+/// Returns a string representation of the ZSTD version.
+///
+/// For example "1.5.3".
 pub fn version_string() -> &'static str {
     unsafe { c_char_to_str(zstd_sys::ZSTD_versionString()) }
 }
 
 /// Returns the minimum (fastest) compression level supported.
+///
+/// This is likely going to be a _very_ large negative number.
 pub fn min_c_level() -> CompressionLevel {
     unsafe { zstd_sys::ZSTD_minCLevel() as CompressionLevel }
 }
@@ -105,6 +133,12 @@ pub fn max_c_level() -> CompressionLevel {
 }
 
 /// Wraps the `ZSTD_compress` function.
+///
+/// This will try to compress `src` entirely and write the result to `dst`, returning the number of
+/// bytes written.
+///
+/// For streaming operations that don't require to store the entire input/ouput in memory, see
+/// `compress_stream`.
 pub fn compress<C: WriteBuf + ?Sized>(
     dst: &mut C,
     src: &[u8],
@@ -141,18 +175,24 @@ pub fn decompress<C: WriteBuf + ?Sized>(
 }
 
 /// Wraps the `ZSTD_getDecompressedSize` function.
+///
+/// Returns `None` if the size could not be found, or if the content is actually empty.
 #[deprecated(note = "Use ZSTD_getFrameContentSize instead")]
-pub fn get_decompressed_size(src: &[u8]) -> u64 {
-    unsafe {
+pub fn get_decompressed_size(src: &[u8]) -> Option<NonZeroU64> {
+    NonZeroU64::new(unsafe {
         zstd_sys::ZSTD_getDecompressedSize(ptr_void(src), src.len()) as u64
-    }
+    })
 }
 
-/// maximum compressed size in worst case single-pass scenario
+/// Maximum compressed size in worst case single-pass scenario
 pub fn compress_bound(src_size: usize) -> usize {
     unsafe { zstd_sys::ZSTD_compressBound(src_size) }
 }
 
+/// Compression context
+///
+/// It is recommended to allocate a single context per thread and re-use it
+/// for many compression operations.
 pub struct CCtx<'a>(NonNull<zstd_sys::ZSTD_CCtx>, PhantomData<&'a ()>);
 
 impl Default for CCtx<'_> {
@@ -161,7 +201,7 @@ impl Default for CCtx<'_> {
     }
 }
 
-impl CCtx<'static> {
+impl<'a> CCtx<'a> {
     /// Tries to create a new context.
     ///
     /// Returns `None` if zstd returns a NULL pointer - may happen if allocation fails.
@@ -181,9 +221,7 @@ impl CCtx<'static> {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
     }
-}
 
-impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_compressCCtx()` function
     pub fn compress<C: WriteBuf + ?Sized>(
         &mut self,
@@ -269,10 +307,16 @@ impl<'a> CCtx<'a> {
         }
     }
 
-    pub fn init(&mut self, compression_level: CompressionLevel) -> usize {
-        unsafe {
+    /// Initializes the context with the given compression level.
+    ///
+    /// This is equivalent to running:
+    /// * `reset()`
+    /// * `set_parameter(CompressionLevel, compression_level)`
+    pub fn init(&mut self, compression_level: CompressionLevel) -> SafeResult {
+        let code = unsafe {
             zstd_sys::ZSTD_initCStream(self.0.as_ptr(), compression_level)
-        }
+        };
+        parse_code(code)
     }
 
     /// Wraps the `ZSTD_initCStream_srcSize()` function.
@@ -283,14 +327,15 @@ impl<'a> CCtx<'a> {
         &mut self,
         compression_level: CompressionLevel,
         pledged_src_size: u64,
-    ) -> usize {
-        unsafe {
+    ) -> SafeResult {
+        let code = unsafe {
             zstd_sys::ZSTD_initCStream_srcSize(
                 self.0.as_ptr(),
                 compression_level as c_int,
                 pledged_src_size as c_ulonglong,
             )
-        }
+        };
+        parse_code(code)
     }
 
     /// Wraps the `ZSTD_initCStream_usingDict()` function.
@@ -330,6 +375,15 @@ impl<'a> CCtx<'a> {
         parse_code(code)
     }
 
+    /// Tries to load a dictionary.
+    ///
+    /// The dictionary content will be copied internally and does not need to be kept alive after
+    /// calling this function.
+    ///
+    /// If you need to use the same dictionary for multiple contexts, it may be more efficient to
+    /// create a `CDict` first, then loads that.
+    ///
+    /// The dictionary will apply to all compressed frames, until a new dictionary is set.
     pub fn load_dictionary(&mut self, dict: &[u8]) -> SafeResult {
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
@@ -352,6 +406,24 @@ impl<'a> CCtx<'a> {
         })
     }
 
+    /// Return to "no-dictionary" mode.
+    ///
+    /// This will disable any dictionary/prefix previously registered for future frames.
+    pub fn disable_dictionary(&mut self) -> SafeResult {
+        parse_code(unsafe {
+            zstd_sys::ZSTD_CCtx_loadDictionary(
+                self.0.as_ptr(),
+                core::ptr::null(),
+                0,
+            )
+        })
+    }
+
+    /// Use some prefix as single-use dictionary for the next compressed frame.
+    ///
+    /// Just like a dictionary, decompression will need to be given the same prefix.
+    ///
+    /// This is best used if the "prefix" looks like the data to be compressed.
     pub fn ref_prefix<'b>(&mut self, prefix: &'b [u8]) -> SafeResult
     where
         'b: 'a,
@@ -365,6 +437,17 @@ impl<'a> CCtx<'a> {
         })
     }
 
+    /// Performs a step of a streaming compression operation.
+    ///
+    /// This will read some data from `input` and/or write some data to `output`.
+    ///
+    /// # Returns
+    ///
+    /// A hint for the "ideal" amount of input data to provide in the next call.
+    ///
+    /// This hint is only for performance purposes.
+    ///
+    /// Wraps the `ZSTD_compressStream()` function.
     pub fn compress_stream<C: WriteBuf + ?Sized>(
         &mut self,
         output: &mut OutBuffer<'_, C>,
@@ -382,6 +465,20 @@ impl<'a> CCtx<'a> {
         parse_code(code)
     }
 
+    /// Performs a step of a streaming compression operation.
+    ///
+    /// This will read some data from `input` and/or write some data to `output`.
+    ///
+    /// The `end_op` directive can be used to specify what to do after: nothing special, flush
+    /// internal buffers, or end the frame.
+    ///
+    /// # Returns
+    ///
+    /// An lower bound for the amount of data that still needs to be flushed out.
+    ///
+    /// This is useful when flushing or ending the frame: you need to keep calling this function
+    /// until it returns 0.
+    ///
     /// Wraps the `ZSTD_compressStream2()` function.
     pub fn compress_stream2<C: WriteBuf + ?Sized>(
         &mut self,
@@ -401,6 +498,10 @@ impl<'a> CCtx<'a> {
         })
     }
 
+    /// Flush any intermediate buffer.
+    ///
+    /// To fully flush, you should keep calling this function until it returns `Ok(0)`.
+    ///
     /// Wraps the `ZSTD_flushStream()` function.
     pub fn flush_stream<C: WriteBuf + ?Sized>(
         &mut self,
@@ -413,6 +514,10 @@ impl<'a> CCtx<'a> {
         parse_code(code)
     }
 
+    /// Ends the stream.
+    ///
+    /// You should keep calling this function until it returns `Ok(0)`.
+    ///
     /// Wraps the `ZSTD_endStream()` function.
     pub fn end_stream<C: WriteBuf + ?Sized>(
         &mut self,
@@ -425,29 +530,27 @@ impl<'a> CCtx<'a> {
         parse_code(code)
     }
 
+    /// Returns the size currently used by this context.
+    ///
+    /// This may change over time.
     pub fn sizeof(&self) -> usize {
         unsafe { zstd_sys::ZSTD_sizeof_CCtx(self.0.as_ptr()) }
     }
 
+    /// Resets the state of the context.
+    ///
+    /// Depending on the reset mode, it can reset the session, the parameters, or both.
+    ///
+    /// Wraps the `ZSTD_CCtx_reset()` function.
     pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
         parse_code(unsafe {
-            zstd_sys::ZSTD_CCtx_reset(self.0.as_ptr(), reset)
+            zstd_sys::ZSTD_CCtx_reset(self.0.as_ptr(), reset.as_sys())
         })
     }
 
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated]
-    pub fn reset_cstream(&mut self, pledged_src_size: u64) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_resetCStream(
-                self.0.as_ptr(),
-                pledged_src_size as c_ulonglong,
-            )
-        };
-        parse_code(code)
-    }
-
+    /// Sets a compression parameter.
+    ///
+    /// Some of these parameters need to be set during de-compression as well.
     pub fn set_parameter(&mut self, param: CParameter) -> SafeResult {
         // TODO: Until bindgen properly generates a binding for this, we'll need to do it here.
 
@@ -553,14 +656,22 @@ impl<'a> CCtx<'a> {
         })
     }
 
+    /// Guarantee that the input size will be this value.
+    ///
+    /// If given `None`, assumes the size is unknown.
+    ///
+    /// Unless explicitly disabled, this will cause the size to be written in the compressed frame
+    /// header.
+    ///
+    /// If the actual data given to compress has a different size, an error will be returned.
     pub fn set_pledged_src_size(
         &mut self,
-        pledged_src_size: u64,
+        pledged_src_size: Option<u64>,
     ) -> SafeResult {
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_setPledgedSrcSize(
                 self.0.as_ptr(),
-                pledged_src_size as c_ulonglong,
+                pledged_src_size.unwrap_or(CONTENTSIZE_UNKNOWN) as c_ulonglong,
             )
         })
     }
@@ -616,17 +727,20 @@ impl<'a> CCtx<'a> {
             })
         }
     }
+
+    /// Returns the recommended input buffer size.
+    ///
+    /// Using this size may result in minor performance boost.
     pub fn in_size() -> usize {
         unsafe { zstd_sys::ZSTD_CStreamInSize() }
     }
 
+    /// Returns the recommended output buffer size.
+    ///
+    /// Using this may result in minor performance boost.
     pub fn out_size() -> usize {
         unsafe { zstd_sys::ZSTD_CStreamOutSize() }
     }
-}
-
-pub fn create_cctx<'a>() -> CCtx<'a> {
-    CCtx::create()
 }
 
 impl<'a> Drop for CCtx<'a> {
@@ -660,30 +774,12 @@ unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
     }
 }
 
+/// Returns the error string associated with an error code.
 pub fn get_error_name(code: usize) -> &'static str {
     unsafe {
         let name = zstd_sys::ZSTD_getErrorName(code);
         c_char_to_str(name)
     }
-}
-
-/// Wraps the `ZSTD_compressCCtx()` function
-pub fn compress_cctx(
-    ctx: &mut CCtx<'_>,
-    dst: &mut [u8],
-    src: &[u8],
-    compression_level: CompressionLevel,
-) -> SafeResult {
-    ctx.compress(dst, src, compression_level)
-}
-
-/// Wraps the `ZSTD_compress2()` function.
-pub fn compress2(
-    ctx: &mut CCtx<'_>,
-    dst: &mut [u8],
-    src: &[u8],
-) -> SafeResult {
-    ctx.compress2(dst, src)
 }
 
 /// A Decompression Context.
@@ -701,20 +797,32 @@ impl Default for DCtx<'_> {
     }
 }
 
-impl DCtx<'static> {
+impl<'a> DCtx<'a> {
+    /// Try to create a new decompression context.
+    ///
+    /// Returns `None` if the operation failed (for example, not enough memory).
     pub fn try_create() -> Option<Self> {
         Some(DCtx(
             NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })?,
             PhantomData,
         ))
     }
+
+    /// Creates a new decoding context.
+    ///
+    /// # Panics
+    ///
+    /// If the context creation fails.
     pub fn create() -> Self {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
     }
-}
 
-impl<'a> DCtx<'a> {
+    /// Fully decompress the given frame.
+    ///
+    /// This decompress an entire frame in-memory. If you can have enough memory to store both the
+    /// input and output buffer, then it may be faster that streaming decompression.
+    ///
     /// Wraps the `ZSTD_decompressDCtx()` function.
     pub fn decompress<C: WriteBuf + ?Sized>(
         &mut self,
@@ -734,6 +842,13 @@ impl<'a> DCtx<'a> {
         }
     }
 
+    /// Fully decompress the given frame using a dictionary.
+    ///
+    /// Dictionary must be identical to the one used during compression.
+    ///
+    /// If you plan on using the same dictionary multiple times, it is faster to create a `DDict`
+    /// first and use `decompress_using_ddict`.
+    ///
     /// Wraps `ZSTD_decompress_usingDict`
     pub fn decompress_using_dict<C: WriteBuf + ?Sized>(
         &mut self,
@@ -756,6 +871,10 @@ impl<'a> DCtx<'a> {
         }
     }
 
+    /// Fully decompress the given frame using a dictionary.
+    ///
+    /// Dictionary must be identical to the one used during compression.
+    ///
     /// Wraps the `ZSTD_decompress_usingDDict()` function.
     pub fn decompress_using_ddict<C: WriteBuf + ?Sized>(
         &mut self,
@@ -777,11 +896,16 @@ impl<'a> DCtx<'a> {
         }
     }
 
-    /// Wraps the `ZSTD_initCStream()` function.
-    ///
     /// Initializes an existing `DStream` for decompression.
-    pub fn init(&mut self) -> usize {
-        unsafe { zstd_sys::ZSTD_initDStream(self.0.as_ptr()) }
+    ///
+    /// This is equivalent to calling:
+    /// * `reset(SessionOnly)`
+    /// * `disable_dictionary()`
+    ///
+    /// Wraps the `ZSTD_initCStream()` function.
+    pub fn init(&mut self) -> SafeResult {
+        let code = unsafe { zstd_sys::ZSTD_initDStream(self.0.as_ptr()) };
+        parse_code(code)
     }
 
     /// Wraps the `ZSTD_initDStream_usingDict()` function.
@@ -816,17 +940,28 @@ impl<'a> DCtx<'a> {
         parse_code(code)
     }
 
-    /// Wraps the `ZSTD_resetDStream()` function.
-    pub fn reset(&mut self) -> SafeResult {
-        let code = unsafe {
-            zstd_sys::ZSTD_DCtx_reset(
-                self.0.as_ptr(),
-                ResetDirective::ZSTD_reset_session_only,
-            )
-        };
-        parse_code(code)
+    /// Resets the state of the context.
+    ///
+    /// Depending on the reset mode, it can reset the session, the parameters, or both.
+    ///
+    /// Wraps the `ZSTD_DCtx_reset()` function.
+    pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
+        parse_code(unsafe {
+            zstd_sys::ZSTD_DCtx_reset(self.0.as_ptr(), reset.as_sys())
+        })
     }
 
+    /// Loads a dictionary.
+    ///
+    /// This will let this context decompress frames that were compressed using this dictionary.
+    ///
+    /// The dictionary content will be copied internally and does not need to be kept alive after
+    /// calling this function.
+    ///
+    /// If you need to use the same dictionary for multiple contexts, it may be more efficient to
+    /// create a `DDict` first, then loads that.
+    ///
+    /// The dictionary will apply to all future frames, until a new dictionary is set.
     pub fn load_dictionary(&mut self, dict: &[u8]) -> SafeResult {
         parse_code(unsafe {
             zstd_sys::ZSTD_DCtx_loadDictionary(
@@ -837,6 +972,26 @@ impl<'a> DCtx<'a> {
         })
     }
 
+    /// Return to "no-dictionary" mode.
+    ///
+    /// This will disable any dictionary/prefix previously registered for future frames.
+    pub fn disable_dictionary(&mut self) -> SafeResult {
+        parse_code(unsafe {
+            zstd_sys::ZSTD_DCtx_loadDictionary(
+                self.0.as_ptr(),
+                core::ptr::null(),
+                0,
+            )
+        })
+    }
+
+    /// References a dictionary.
+    ///
+    /// This will let this context decompress frames compressed with the same dictionary.
+    ///
+    /// It will apply to all frames decompressed by this context (until a new dictionary is set).
+    ///
+    /// Wraps the `ZSTD_DCtx_refDDict()` function.
     pub fn ref_ddict<'b>(&mut self, ddict: &DDict<'b>) -> SafeResult
     where
         'b: 'a,
@@ -846,6 +1001,13 @@ impl<'a> DCtx<'a> {
         })
     }
 
+    /// Use some prefix as single-use dictionary for the next frame.
+    ///
+    /// Just like a dictionary, this only works if compression was done with the same prefix.
+    ///
+    /// But unlike a dictionary, this only applies to the next frame.
+    ///
+    /// Wraps the `ZSTD_DCtx_refPrefix()` function.
     pub fn ref_prefix<'b>(&mut self, prefix: &'b [u8]) -> SafeResult
     where
         'b: 'a,
@@ -859,6 +1021,7 @@ impl<'a> DCtx<'a> {
         })
     }
 
+    /// Sets a decompression parameter.
     pub fn set_parameter(&mut self, param: DParameter) -> SafeResult {
         #[cfg(feature = "experimental")]
         use zstd_sys::ZSTD_dParameter::{
@@ -895,6 +1058,16 @@ impl<'a> DCtx<'a> {
         })
     }
 
+    /// Performs a step of a streaming decompression operation.
+    ///
+    /// This will read some data from `input` and/or write some data to `output`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(0)` if the current frame just finished decompressing successfully.
+    /// * `Ok(hint)` with a hint for the "ideal" amount of input data to provide in the next call.
+    ///     Can be safely ignored.
+    ///
     /// Wraps the `ZSTD_decompressStream()` function.
     pub fn decompress_stream<C: WriteBuf + ?Sized>(
         &mut self,
@@ -982,11 +1155,6 @@ impl<'a> DCtx<'a> {
     }
 }
 
-/// Prepares a new decompression context without dictionary.
-pub fn create_dctx() -> DCtx<'static> {
-    DCtx::create()
-}
-
 impl Drop for DCtx<'_> {
     fn drop(&mut self) {
         unsafe {
@@ -998,40 +1166,19 @@ impl Drop for DCtx<'_> {
 unsafe impl Send for DCtx<'_> {}
 // DCtx can't be shared across threads, so it does not implement Sync.
 
-/// Wraps the `ZSTD_decompressDCtx()` function.
-pub fn decompress_dctx(
-    ctx: &mut DCtx<'_>,
-    dst: &mut [u8],
-    src: &[u8],
-) -> SafeResult {
-    ctx.decompress(dst, src)
-}
-
-/// Wraps the `ZSTD_compress_usingDict()` function.
-pub fn compress_using_dict(
-    ctx: &mut CCtx<'_>,
-    dst: &mut [u8],
-    src: &[u8],
-    dict: &[u8],
-    compression_level: CompressionLevel,
-) -> SafeResult {
-    ctx.compress_using_dict(dst, src, dict, compression_level)
-}
-
-/// Wraps the `ZSTD_decompress_usingDict()` function.
-pub fn decompress_using_dict(
-    dctx: &mut DCtx<'_>,
-    dst: &mut [u8],
-    src: &[u8],
-    dict: &[u8],
-) -> SafeResult {
-    dctx.decompress_using_dict(dst, src, dict)
-}
-
 /// Compression dictionary.
 pub struct CDict<'a>(NonNull<zstd_sys::ZSTD_CDict>, PhantomData<&'a ()>);
 
 impl CDict<'static> {
+    /// Prepare a dictionary to compress data.
+    ///
+    /// This will make it easier for compression contexts to load this dictionary.
+    ///
+    /// The dictionary content will be copied internally, and does not need to be kept around.
+    ///
+    /// # Panics
+    ///
+    /// If loading this dictionary failed.
     pub fn create(
         dict_buffer: &[u8],
         compression_level: CompressionLevel,
@@ -1040,6 +1187,11 @@ impl CDict<'static> {
             .expect("zstd returned null pointer when creating dict")
     }
 
+    /// Prepare a dictionary to compress data.
+    ///
+    /// This will make it easier for compression contexts to load this dictionary.
+    ///
+    /// The dictionary content will be copied internally, and does not need to be kept around.
     pub fn try_create(
         dict_buffer: &[u8],
         compression_level: CompressionLevel,
@@ -1077,12 +1229,20 @@ impl<'a> CDict<'a> {
         )
     }
 
+    /// Returns the _current_ memory usage of this dictionary.
+    ///
+    /// Note that this may change over time.
     pub fn sizeof(&self) -> usize {
         unsafe { zstd_sys::ZSTD_sizeof_CDict(self.0.as_ptr()) }
     }
 
-    pub fn get_dict_id(&self) -> u32 {
-        unsafe { zstd_sys::ZSTD_getDictID_fromCDict(self.0.as_ptr()) as u32 }
+    /// Returns the dictionary ID for this dict.
+    ///
+    /// Returns `None` if this dictionary is empty or invalid.
+    pub fn get_dict_id(&self) -> Option<NonZeroU32> {
+        NonZeroU32::new(unsafe {
+            zstd_sys::ZSTD_getDictID_fromCDict(self.0.as_ptr()) as u32
+        })
     }
 }
 
@@ -1160,8 +1320,13 @@ impl<'a> DDict<'a> {
         )
     }
 
-    pub fn get_dict_id(&self) -> u32 {
-        unsafe { zstd_sys::ZSTD_getDictID_fromDDict(self.0.as_ptr()) as u32 }
+    /// Returns the dictionary ID for this dict.
+    ///
+    /// Returns `None` if this dictionary is empty or invalid.
+    pub fn get_dict_id(&self) -> Option<NonZeroU32> {
+        NonZeroU32::new(unsafe {
+            zstd_sys::ZSTD_getDictID_fromDDict(self.0.as_ptr()) as u32
+        })
     }
 }
 
@@ -1209,7 +1374,7 @@ pub fn create_cstream<'a>() -> CStream<'a> {
 pub fn init_cstream(
     zcs: &mut CStream<'_>,
     compression_level: CompressionLevel,
-) -> usize {
+) -> SafeResult {
     zcs.init(compression_level)
 }
 
@@ -1572,88 +1737,16 @@ impl<'a, 'b> Drop for InBufferWrapper<'a, 'b> {
     }
 }
 
-/// Wraps the `ZSTD_compressStream()` function.
-pub fn compress_stream<C: WriteBuf + ?Sized>(
-    zcs: &mut CStream<'_>,
-    output: &mut OutBuffer<'_, C>,
-    input: &mut InBuffer<'_>,
-) -> SafeResult {
-    zcs.compress_stream(output, input)
-}
-
-pub fn compress_stream2<C: WriteBuf + ?Sized>(
-    cctx: &mut CCtx<'_>,
-    output: &mut OutBuffer<'_, C>,
-    input: &mut InBuffer<'_>,
-    end_op: zstd_sys::ZSTD_EndDirective,
-) -> SafeResult {
-    cctx.compress_stream2(output, input, end_op)
-}
-
-/// Wraps the `ZSTD_flushStream()` function.
-pub fn flush_stream<C: WriteBuf + ?Sized>(
-    zcs: &mut CStream<'_>,
-    output: &mut OutBuffer<'_, C>,
-) -> SafeResult {
-    zcs.flush_stream(output)
-}
-
-/// Wraps the `ZSTD_endStream()` function.
-pub fn end_stream<C: WriteBuf + ?Sized>(
-    zcs: &mut CStream<'_>,
-    output: &mut OutBuffer<'_, C>,
-) -> SafeResult {
-    zcs.end_stream(output)
-}
-
-/// Wraps `ZSTD_CStreamInSize()`
-pub fn cstream_in_size() -> usize {
-    CCtx::in_size()
-}
-
-/// Wraps `ZSTD_CStreamOutSize()`
-pub fn cstream_out_size() -> usize {
-    CCtx::out_size()
-}
-
 /// A Decompression stream.
 ///
 /// Same as `DCtx`.
 pub type DStream<'a> = DCtx<'a>;
 
-pub fn create_dstream() -> DStream<'static> {
-    DStream::create()
-}
-
-/// Wraps the `ZSTD_initCStream()` function.
-///
-/// Initializes an existing `DStream` for decompression.
-pub fn init_dstream(zds: &mut DStream<'_>) -> usize {
-    zds.init()
-}
-
-/// Wraps the `ZSTD_decompressStream()` function.
-pub fn decompress_stream<C: WriteBuf + ?Sized>(
-    zds: &mut DStream<'_>,
-    output: &mut OutBuffer<'_, C>,
-    input: &mut InBuffer<'_>,
-) -> SafeResult {
-    zds.decompress_stream(output, input)
-}
-
-/// Wraps the `ZSTD_DStreamInSize()` function.
-///
-/// Returns a hint for the recommended size of the input buffer for decompression.
-pub fn dstream_in_size() -> usize {
-    DStream::in_size()
-}
-
-/// Wraps the `ZSTD_DStreamOutSize()` function.
-///
-/// Returns a hint for the recommended size of the output buffer for decompression.
-pub fn dstream_out_size() -> usize {
-    DStream::out_size()
-}
+// Some functions work on a "frame prefix".
+// TODO: Define `struct FramePrefix(&[u8]);` and move these functions to it?
+//
+// Some other functions work on a dictionary (not CDict or DDict).
+// Same thing?
 
 /// Wraps the `ZSTD_findFrameCompressedSize()` function.
 ///
@@ -1667,9 +1760,19 @@ pub fn find_frame_compressed_size(src: &[u8]) -> SafeResult {
 
 /// Wraps the `ZSTD_getFrameContentSize()` function.
 ///
-/// `src` should contain at least a frame header.
-pub fn get_frame_content_size(src: &[u8]) -> u64 {
-    unsafe { zstd_sys::ZSTD_getFrameContentSize(ptr_void(src), src.len()) }
+/// Args:
+/// * `src`: A prefix of the compressed frame. It should at least include the frame header.
+///
+/// Returns:
+/// * `Err(ContentSizeError)` if `src` is too small of a prefix, or if it appears corrupted.
+/// * `Ok(None)` if the frame does not include a content size.
+/// * `Ok(Some(content_size_in_bytes))` otherwise.
+pub fn get_frame_content_size(
+    src: &[u8],
+) -> Result<Option<u64>, ContentSizeError> {
+    parse_content_size(unsafe {
+        zstd_sys::ZSTD_getFrameContentSize(ptr_void(src), src.len())
+    })
 }
 
 /// Wraps the `ZSTD_findDecompressedSize()` function.
@@ -1677,234 +1780,58 @@ pub fn get_frame_content_size(src: &[u8]) -> u64 {
 /// `src` should be exactly a sequence of ZSTD frames.
 #[cfg(feature = "experimental")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn find_decompressed_size(src: &[u8]) -> u64 {
-    unsafe { zstd_sys::ZSTD_findDecompressedSize(ptr_void(src), src.len()) }
-}
-
-/// Wraps the `ZSTD_sizeofCCtx()` function.
-pub fn sizeof_cctx(cctx: &CCtx<'_>) -> usize {
-    cctx.sizeof()
-}
-
-/// Wraps the `ZSTD_sizeof_DCtx()` function.
-pub fn sizeof_dctx(dctx: &DCtx<'_>) -> usize {
-    dctx.sizeof()
-}
-
-/// Wraps the `ZSTD_sizeof_CStream()` function.
-pub fn sizeof_cstream(zcs: &CStream<'_>) -> usize {
-    zcs.sizeof()
-}
-
-/// Wraps the `ZSTD_sizeof_DStream()` function.
-pub fn sizeof_dstream(zds: &DStream<'_>) -> usize {
-    zds.sizeof()
-}
-
-/// Wraps the `ZSTD_sizeof_CDict()` function.
-pub fn sizeof_cdict(cdict: &CDict<'_>) -> usize {
-    cdict.sizeof()
-}
-
-/// Wraps the `ZSTD_sizeof_DDict()` function.
-pub fn sizeof_ddict(ddict: &DDict<'_>) -> usize {
-    ddict.sizeof()
-}
-
-/// Wraps the `ZSTD_createCDict_byReference()` function.
-///
-/// The dictionary will keep referencing `dict_buffer`.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn create_cdict_by_reference<'a>(
-    dict_buffer: &'a [u8],
-    compression_level: CompressionLevel,
-) -> CDict<'a> {
-    CDict::create_by_reference(dict_buffer, compression_level)
+pub fn find_decompressed_size(
+    src: &[u8],
+) -> Result<Option<u64>, ContentSizeError> {
+    parse_content_size(unsafe {
+        zstd_sys::ZSTD_findDecompressedSize(ptr_void(src), src.len())
+    })
 }
 
 /// Wraps the `ZSTD_isFrame()` function.
 #[cfg(feature = "experimental")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn is_frame(buffer: &[u8]) -> u32 {
-    unsafe { zstd_sys::ZSTD_isFrame(ptr_void(buffer), buffer.len()) as u32 }
-}
-
-/// Wraps the `ZSTD_createDDict_byReference()` function.
-///
-/// The dictionary will keep referencing `dict_buffer`.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn create_ddict_by_reference(dict_buffer: &[u8]) -> DDict {
-    DDict::create_by_reference(dict_buffer)
+pub fn is_frame(buffer: &[u8]) -> bool {
+    unsafe { zstd_sys::ZSTD_isFrame(ptr_void(buffer), buffer.len()) > 0 }
 }
 
 /// Wraps the `ZSTD_getDictID_fromDict()` function.
-pub fn get_dict_id_from_dict(dict: &[u8]) -> u32 {
-    unsafe {
+///
+/// Returns `None` if the dictionary is not a valid zstd dictionary.
+pub fn get_dict_id_from_dict(dict: &[u8]) -> Option<NonZeroU32> {
+    NonZeroU32::new(unsafe {
         zstd_sys::ZSTD_getDictID_fromDict(ptr_void(dict), dict.len()) as u32
-    }
-}
-
-/// Wraps the `ZSTD_getDictID_fromDDict()` function.
-pub fn get_dict_id_from_ddict(ddict: &DDict<'_>) -> u32 {
-    ddict.get_dict_id()
+    })
 }
 
 /// Wraps the `ZSTD_getDictID_fromFrame()` function.
-pub fn get_dict_id_from_frame(src: &[u8]) -> u32 {
-    unsafe {
+///
+/// Returns `None` if the dictionary ID could not be decoded. This may happen if:
+/// * The frame was not encoded with a dictionary.
+/// * The frame intentionally did not include dicionary ID.
+/// * The dictionary was non-conformant.
+/// * `src` is too small and does not include the frame header.
+/// * `src` is not a valid zstd frame prefix.
+pub fn get_dict_id_from_frame(src: &[u8]) -> Option<NonZeroU32> {
+    NonZeroU32::new(unsafe {
         zstd_sys::ZSTD_getDictID_fromFrame(ptr_void(src), src.len()) as u32
+    })
+}
+
+pub enum ResetDirective {
+    SessionOnly,
+    Parameters,
+    SessionAndParameters,
+}
+
+impl ResetDirective {
+    fn as_sys(self) -> zstd_sys::ZSTD_ResetDirective {
+        match self {
+            ResetDirective::SessionOnly => zstd_sys::ZSTD_ResetDirective::ZSTD_reset_session_only,
+            ResetDirective::Parameters => zstd_sys::ZSTD_ResetDirective::ZSTD_reset_parameters,
+            ResetDirective::SessionAndParameters => zstd_sys::ZSTD_ResetDirective::ZSTD_reset_session_and_parameters,
+        }
     }
-}
-
-/// Wraps the `ZSTD_initCStream_srcSize()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-#[deprecated]
-#[allow(deprecated)]
-pub fn init_cstream_src_size(
-    zcs: &mut CStream,
-    compression_level: CompressionLevel,
-    pledged_src_size: u64,
-) -> usize {
-    zcs.init_src_size(compression_level, pledged_src_size)
-}
-
-/// Wraps the `ZSTD_initCStream_usingDict()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-#[deprecated]
-#[allow(deprecated)]
-pub fn init_cstream_using_dict(
-    zcs: &mut CStream,
-    dict: &[u8],
-    compression_level: CompressionLevel,
-) -> SafeResult {
-    zcs.init_using_dict(dict, compression_level)
-}
-
-/// Wraps the `ZSTD_initCStream_usingCDict()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-#[deprecated]
-#[allow(deprecated)]
-pub fn init_cstream_using_cdict<'a, 'b>(
-    zcs: &mut CStream<'a>,
-    cdict: &CDict<'b>,
-) -> SafeResult
-where
-    'b: 'a, // Dictionary outlives the stream.
-{
-    zcs.init_using_cdict(cdict)
-}
-
-/// Wraps the `ZSTD_CCtx_loadDictionary()` function.
-pub fn cctx_load_dictionary(cctx: &mut CCtx<'_>, dict: &[u8]) -> SafeResult {
-    cctx.load_dictionary(dict)
-}
-
-/// Wraps the `ZSTD_CCtx_refCDict()` function.
-///
-/// Dictionary must outlive the context.
-pub fn cctx_ref_cdict<'a, 'b>(
-    cctx: &mut CCtx<'a>,
-    cdict: &CDict<'b>,
-) -> SafeResult
-where
-    'b: 'a,
-{
-    cctx.ref_cdict(cdict)
-}
-
-/// Wraps the `ZSTD_CCtx_refPrefix()` function.
-///
-/// Dictionary must outlive the prefix.
-pub fn cctx_ref_prefix<'a, 'b>(
-    cctx: &mut CCtx<'a>,
-    prefix: &'b [u8],
-) -> SafeResult
-where
-    'b: 'a,
-{
-    cctx.ref_prefix(prefix)
-}
-
-/// Wraps the `ZSTD_DCtx_loadDictionary()` function.
-pub fn dctx_load_dictionary(dctx: &mut DCtx<'_>, dict: &[u8]) -> SafeResult {
-    dctx.load_dictionary(dict)
-}
-
-/// Wraps the `ZSTD_DCtx_refDDict()` function.
-pub fn dctx_ref_ddict<'a, 'b>(
-    dctx: &mut DCtx<'a>,
-    ddict: &'b DDict<'b>,
-) -> SafeResult
-where
-    'b: 'a,
-{
-    dctx.ref_ddict(ddict)
-}
-
-/// Wraps the `ZSTD_DCtx_refPrefix()` function.
-pub fn dctx_ref_prefix<'a, 'b>(
-    dctx: &mut DCtx<'a>,
-    prefix: &'b [u8],
-) -> SafeResult
-where
-    'b: 'a,
-{
-    dctx.ref_prefix(prefix)
-}
-
-/// Wraps the `ZSTD_CCtx_reset()` function.
-pub fn cctx_reset(cctx: &mut CCtx<'_>, reset: ResetDirective) -> SafeResult {
-    cctx.reset(reset)
-}
-
-/// Wraps the `ZSTD_DCtx_reset()` function.
-pub fn dctx_reset(dctx: &mut DCtx<'_>, reset: ResetDirective) -> SafeResult {
-    parse_code(unsafe { zstd_sys::ZSTD_DCtx_reset(dctx.0.as_ptr(), reset) })
-}
-
-/// Wraps the `ZSTD_resetCStream()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-#[deprecated]
-#[allow(deprecated)]
-pub fn reset_cstream(zcs: &mut CStream, pledged_src_size: u64) -> SafeResult {
-    zcs.reset_cstream(pledged_src_size)
-}
-
-/// Wraps the `ZSTD_initDStream_usingDict()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-#[deprecated]
-#[allow(deprecated)]
-pub fn init_dstream_using_dict(zds: &mut DStream, dict: &[u8]) -> SafeResult {
-    zds.init_using_dict(dict)
-}
-
-/// Wraps the `ZSTD_initDStream_usingDDict()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-#[deprecated]
-#[allow(deprecated)]
-pub fn init_dstream_using_ddict<'a, 'b>(
-    zds: &mut DStream<'a>,
-    ddict: &DDict<'b>,
-) -> SafeResult
-where
-    'b: 'a,
-{
-    zds.init_using_ddict(ddict)
-}
-
-/// Wraps the `ZSTD_resetDStream()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn reset_dstream(zds: &mut DStream) -> SafeResult {
-    zds.reset()
 }
 
 #[cfg(feature = "experimental")]
@@ -2066,30 +1993,6 @@ pub enum DParameter {
     RefMultipleDDicts(bool),
 }
 
-/// Wraps the `ZSTD_DCtx_setParameter()` function.
-pub fn dctx_set_parameter(
-    dctx: &mut DCtx<'_>,
-    param: DParameter,
-) -> SafeResult {
-    dctx.set_parameter(param)
-}
-
-/// Wraps the `ZSTD_CCtx_setParameter()` function.
-pub fn cctx_set_parameter(
-    cctx: &mut CCtx<'_>,
-    param: CParameter,
-) -> SafeResult {
-    cctx.set_parameter(param)
-}
-
-/// Wraps the `ZSTD_CCtx_setPledgedSrcSize()` function.
-pub fn cctx_set_pledged_src_size(
-    cctx: &mut CCtx<'_>,
-    pledged_src_size: u64,
-) -> SafeResult {
-    cctx.set_pledged_src_size(pledged_src_size)
-}
-
 /// Wraps the `ZDICT_trainFromBuffer()` function.
 #[cfg(feature = "zdict_builder")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
@@ -2113,18 +2016,13 @@ pub fn train_from_buffer<C: WriteBuf + ?Sized>(
     }
 }
 
-/// Wraps the `ZSTD_getDictID_fromDict()` function.
+/// Wraps the `ZDICT_getDictID()` function.
 #[cfg(feature = "zdict_builder")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
-pub fn get_dict_id(dict_buffer: &[u8]) -> Option<u32> {
-    let id = unsafe {
+pub fn get_dict_id(dict_buffer: &[u8]) -> Option<NonZeroU32> {
+    NonZeroU32::new(unsafe {
         zstd_sys::ZDICT_getDictID(ptr_void(dict_buffer), dict_buffer.len())
-    };
-    if id > 0 {
-        Some(id)
-    } else {
-        None
-    }
+    })
 }
 
 /// Wraps the `ZSTD_getBlockSize()` function.
@@ -2132,35 +2030,6 @@ pub fn get_dict_id(dict_buffer: &[u8]) -> Option<u32> {
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub fn get_block_size(cctx: &CCtx) -> usize {
     unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0.as_ptr()) }
-}
-
-/// Wraps the `ZSTD_compressBlock()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn compress_block(
-    cctx: &mut CCtx,
-    dst: &mut [u8],
-    src: &[u8],
-) -> SafeResult {
-    cctx.compress_block(dst, src)
-}
-
-/// Wraps the `ZSTD_decompressBlock()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn decompress_block(
-    dctx: &mut DCtx,
-    dst: &mut [u8],
-    src: &[u8],
-) -> SafeResult {
-    dctx.decompress_block(dst, src)
-}
-
-/// Wraps the `ZSTD_insertBlock()` function.
-#[cfg(feature = "experimental")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-pub fn insert_block(dctx: &mut DCtx, block: &[u8]) -> usize {
-    dctx.insert_block(block)
 }
 
 /// Wraps the `ZSTD_decompressBound` function

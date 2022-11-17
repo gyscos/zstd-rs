@@ -470,6 +470,23 @@ impl<'a> CCtx<'a> {
         })
     }
 
+    #[cfg(feature = "experimental")]
+    // TODO: use InBuffer?
+    pub fn write_skippable_frame<C: WriteBuf + ?Sized>(output: &mut OutBuffer<'_, C>, input: &[u8], magic_variant: u32) -> SafeResult {
+        let input_len = input.len();
+        unsafe {
+            output.dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_writeSkippableFrame(
+                    buffer,
+                    capacity,
+                    input.as_ptr() as *mut _,
+                    input_len,
+                    magic_variant,
+                ))
+            })
+        }
+    }
+
     /// Performs a step of a streaming compression operation.
     ///
     /// This will read some data from `input` and/or write some data to `output`.
@@ -949,6 +966,31 @@ impl<'a> DCtx<'a> {
         }
     }
 
+    #[cfg(feature = "experimental")]
+    pub fn read_skippable_frame<C: WriteBuf + ?Sized>(output: &mut OutBuffer<'_, C>, magic_variant: &mut u32, input: &[u8]) -> SafeResult {
+        let input_len = input.len();
+        unsafe {
+            output.dst.write_from(|buffer, capacity| {
+                parse_code(zstd_sys::ZSTD_readSkippableFrame(
+                    buffer,
+                    capacity,
+                    magic_variant,
+                    input.as_ptr() as *mut _,
+                    input_len,
+                ))
+            })
+        }
+    }
+
+    #[cfg(feature = "experimental")]
+    pub fn is_skippable_frame(input: &[u8]) -> SafeResult {
+        unsafe {
+            parse_code(zstd_sys::ZSTD_isSkippableFrame(input.as_ptr() as *mut _, input.len()) as usize)
+        }
+    }
+
+    /// Wraps the `ZSTD_initCStream()` function.
+    ///
     /// Initializes an existing `DStream` for decompression.
     ///
     /// This is equivalent to calling:
@@ -1854,6 +1896,14 @@ pub type DStream<'a> = DCtx<'a>;
 pub fn find_frame_compressed_size(src: &[u8]) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_findFrameCompressedSize(ptr_void(src), src.len())
+    };
+    parse_code(code)
+}
+
+#[cfg(feature = "experimental")]
+pub fn frame_header_size(src: &[u8]) -> SafeResult {
+    let code = unsafe {
+        zstd_sys::ZSTD_frameHeaderSize(ptr_void(src), src.len())
     };
     parse_code(code)
 }

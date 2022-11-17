@@ -22,6 +22,7 @@ pub struct Writer<W, D> {
     finished: bool,
 
     finished_frame: bool,
+    writing_frame: bool,
 }
 
 impl<W, D> Writer<W, D>
@@ -43,6 +44,8 @@ where
 
             finished: false,
             finished_frame: false,
+
+            writing_frame: false,
         }
     }
 
@@ -63,6 +66,7 @@ where
             // At this point the buffer has been fully written out.
 
             if self.finished {
+                self.writing_frame = false;
                 return Ok(());
             }
 
@@ -127,6 +131,24 @@ where
         Ok(())
     }
 
+    /// Write a skippable frame after finishing the previous frame if needed.
+    #[cfg(feature = "experimental")]
+    pub fn write_skippable_frame(&mut self, buf: &[u8], magic_variant: u32) -> io::Result<()> {
+        use zstd_safe::CCtx;
+
+        use crate::map_error_code;
+
+        if self.writing_frame {
+            self.finish()?; // Since we're about to overwrite the buffer, flush its content to the destination.
+        }
+
+        CCtx::write_skippable_frame(&mut OutBuffer::around(&mut self.buffer), buf, magic_variant)
+            .map_err(map_error_code)?;
+        self.offset = 0;
+        self.write_from_offset()?;
+        Ok(())
+    }
+
     /// Return the wrapped `Writer` and `Operation`.
     ///
     /// Careful: if you call this before calling [`Writer::finish()`], the
@@ -174,6 +196,7 @@ where
     D: Operation,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.writing_frame = true;
         // Keep trying until _something_ has been consumed.
         // As soon as some input has been taken, we cannot afford
         // to take any chance: if an error occurs, the user couldn't know
@@ -238,8 +261,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature="experimental")]
+    use crate::{Encoder, Decoder};
+
     use super::Writer;
     use std::io::Write;
+    #[cfg(feature="experimental")]
+    use std::io::{self, Cursor};
 
     #[test]
     fn test_noop() {
@@ -292,5 +320,119 @@ mod tests {
         }
         // println!("Output: {:?}", output);
         assert_eq!(&output, input);
+    }
+
+    #[test]
+    #[cfg(feature="experimental")]
+    fn test_skippable_frames() {
+        // Compress and write skippable frames.
+        let content = b"compressed frame 1";
+        let mut encoder = Encoder::new(vec![], 1).unwrap();
+
+        encoder.write_skippable_frame(b"test content", 0).unwrap();
+        io::copy(&mut content.as_slice(), &mut encoder).unwrap();
+        let target = encoder.finish().unwrap();
+
+        let mut encoder = Encoder::new(target, 1).unwrap();
+        let content = b"compressed frame 2";
+        encoder.write_skippable_frame(b"SKIP", 0).unwrap();
+        io::copy(&mut content.as_slice(), &mut encoder).unwrap();
+        let target = encoder.finish().unwrap();
+
+        let mut encoder = Encoder::new(target, 1).unwrap();
+        let content = b"compressed frame 3";
+        encoder.write_skippable_frame(b"end", 0).unwrap();
+        io::copy(&mut content.as_slice(), &mut encoder).unwrap();
+        let data = Cursor::new(encoder.finish().unwrap());
+
+        // Decompress and skip a frame.
+        let mut decoder = Decoder::new(data).unwrap().single_frame();
+
+        let mut frame = vec![0; 20];
+        decoder.read_skippable_frame(&mut frame).unwrap();
+        assert_eq!("test content", String::from_utf8_lossy(&frame));
+
+        let inner = decoder.finish();
+
+        decoder = {
+            Decoder::with_buffer(inner).unwrap()
+                .single_frame()
+        };
+
+        let mut target = vec![];
+        io::copy(&mut decoder, &mut target).unwrap();
+        assert_eq!("compressed frame 1", String::from_utf8(target).unwrap());
+
+        let inner = decoder.finish();
+
+        decoder = {
+            Decoder::with_buffer(inner).unwrap()
+                .single_frame()
+        };
+
+        decoder.read_skippable_frame(&mut frame).unwrap();
+        assert_eq!("SKIP", String::from_utf8_lossy(&frame));
+
+        decoder.skip_frame().unwrap();
+
+        let inner = decoder.finish();
+
+        decoder = {
+            Decoder::with_buffer(inner).unwrap()
+                .single_frame()
+        };
+
+        decoder.read_skippable_frame(&mut frame).unwrap();
+        assert_eq!("end", String::from_utf8_lossy(&frame));
+
+        let inner = decoder.finish();
+
+        decoder = {
+            Decoder::with_buffer(inner).unwrap()
+                .single_frame()
+        };
+
+        let mut target = vec![];
+        io::copy(&mut decoder, &mut target).unwrap();
+        assert_eq!("compressed frame 3", String::from_utf8(target).unwrap());
+    }
+
+    #[test]
+    #[cfg(feature="experimental")]
+    fn test_mixed_up_frames() {
+        // Compress and write skippable frames.
+        let content = b"compressed frame 1";
+        let mut encoder = Encoder::new(vec![], 1).unwrap();
+
+        io::copy(&mut content.as_slice(), &mut encoder).unwrap();
+
+        // Don't finish and immediately call write_skippable_frame to test that it will finish the
+        // previous frame instead of overwriting it.
+        encoder.write_skippable_frame(b"SKIP", 0).unwrap();
+
+        encoder.write_skippable_frame(b"second skip frame", 0).unwrap();
+
+        let data = Cursor::new(encoder.finish().unwrap());
+
+        // Decompress and skip a frame.
+        let mut decoder = Decoder::new(data).unwrap().single_frame();
+
+        let mut target = vec![];
+        io::copy(&mut decoder, &mut target).unwrap();
+        assert_eq!("compressed frame 1", String::from_utf8(target).unwrap());
+
+        let inner = decoder.finish();
+
+        decoder = {
+            Decoder::with_buffer(inner).unwrap()
+                .single_frame()
+        };
+
+        let mut frame = vec![0; 20];
+        decoder.read_skippable_frame(&mut frame).unwrap();
+        assert_eq!("SKIP", String::from_utf8_lossy(&frame));
+
+        decoder.read_skippable_frame(&mut frame).unwrap();
+        assert_eq!("second skip frame", String::from_utf8_lossy(&frame));
     }
 }

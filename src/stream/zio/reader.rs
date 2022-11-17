@@ -47,6 +47,11 @@ impl<R, D> Reader<R, D> {
         self.single_frame = true;
     }
 
+    /// Returns a reference to the underlying operation.
+    pub fn operation(&self) -> &D {
+        &self.operation
+    }
+
     /// Returns a mutable reference to the underlying operation.
     pub fn operation_mut(&mut self) -> &mut D {
         &mut self.operation

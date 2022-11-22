@@ -114,7 +114,7 @@ fn compile_zstd() {
 
     // Either include ASM files, or disable ASM entirely.
     // Also disable it on windows, apparently it doesn't do well with these .S files at the moment.
-    if cfg!(any(target_os = "windows", feature = "no_asm")) {
+    if cfg!(feature = "no_asm") || std::env::var("CARGO_CFG_WINDOWS").is_ok() {
         config.define("ZSTD_DISABLE_ASM", Some(""));
     } else {
         config.file("zstd/lib/decompress/huf_decompress_amd64.S");

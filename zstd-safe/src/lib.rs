@@ -1818,9 +1818,27 @@ pub fn get_dict_id_from_frame(src: &[u8]) -> Option<NonZeroU32> {
     })
 }
 
+/// What kind of context reset should be applied.
 pub enum ResetDirective {
+    /// Only the session will be reset.
+    ///
+    /// All parameters will be preserved (including the dictionary).
+    /// But any frame being processed will be dropped.
+    ///
+    /// It can be useful to start re-using a context after an error or when an
+    /// ongoing compression is no longer needed.
     SessionOnly,
+
+    /// Only reset parameters (including dictionary or referenced prefix).
+    ///
+    /// All parameters will be reset to default values.
+    ///
+    /// This can only be done between sessions - no compression or decompression must be ongoing.
     Parameters,
+
+    /// Reset both the session and parameters.
+    ///
+    /// The result is similar to a newly created context.
     SessionAndParameters,
 }
 
@@ -1931,8 +1949,14 @@ pub enum CParameter {
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     DeterministicRefPrefix(bool),
 
+    /// Compression level to use.
+    ///
+    /// Compression levels are global presets for the other compression parameters.
     CompressionLevel(CompressionLevel),
 
+    /// Maximum allowed back-reference distance.
+    ///
+    /// The actual distance is 2 power "this value".
     WindowLog(u32),
 
     HashLog(u32),
@@ -1963,11 +1987,36 @@ pub enum CParameter {
 
     DictIdFlag(bool),
 
+    /// How many threads will be spawned.
+    ///
+    /// With a default value of `0`, `compress_stream*` functions block until they complete.
+    ///
+    /// With any other value (including 1, a single compressing thread), these methods directly
+    /// return, and the actual compression is done in the background (until a flush is requested).
+    ///
     /// Note: this will only work if the `zstdmt` feature is activated.
     NbWorkers(u32),
 
+    /// Size in bytes of a compression job.
+    ///
+    /// Does not have any effect when `NbWorkers` is set to 0.
+    ///
+    /// The default value of 0 finds the best job size based on the compression parameters.
+    ///
+    /// Note: this will only work if the `zstdmt` feature is activated.
     JobSize(u32),
 
+    /// Specifies how much overlap must be given to each worker.
+    ///
+    /// Possible values:
+    ///
+    /// * `0` (default value): automatic overlap based on compression strategy.
+    /// * `1`: No overlap
+    /// * `1 < n < 9`: Overlap a fraction of the window size, defined as `1/(2 ^ 9-n)`.
+    /// * `9`: Full overlap (as long as the window)
+    /// * `9 < m`: Will return an error.
+    ///
+    /// Note: this will only work if the `zstdmt` feature is activated.
     OverlapSizeLog(u32),
 }
 
@@ -1975,9 +2024,9 @@ pub enum CParameter {
 pub enum DParameter {
     WindowLogMax(u32),
 
-    /// See `FrameFormat`.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    /// See `FrameFormat`.
     Format(FrameFormat),
 
     #[cfg(feature = "experimental")]

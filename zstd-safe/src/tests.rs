@@ -11,7 +11,7 @@ const LONG_CONTENT: &str = include_str!("lib.rs");
 fn test_writebuf() {
     use zstd_safe::WriteBuf;
 
-    let mut data = Vec::with_capacity(8);
+    let mut data = Vec::with_capacity(10);
     unsafe {
         data.write_from(|ptr, n| {
             assert!(n >= 4);
@@ -27,7 +27,9 @@ fn test_writebuf() {
     assert_eq!(data.as_slice(), &[0, 1, 2, 3]);
 
     let mut cursor = std::io::Cursor::new(&mut data);
-    cursor.set_position(4);
+    // Here we use a position larger than the actual data.
+    // So expect the data to be zero-filled.
+    cursor.set_position(6);
     unsafe {
         cursor.write_from(|ptr, n| {
             assert!(n >= 4);
@@ -41,7 +43,7 @@ fn test_writebuf() {
     }
     .unwrap();
 
-    assert_eq!(data.as_slice(), &[0, 1, 2, 3, 4, 5, 6, 7]);
+    assert_eq!(data.as_slice(), &[0, 1, 2, 3, 0, 0, 4, 5, 6, 7]);
 }
 
 #[cfg(feature = "std")]

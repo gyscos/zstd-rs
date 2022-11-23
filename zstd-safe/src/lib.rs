@@ -1398,15 +1398,18 @@ pub struct InBuffer<'a> {
 
 /// Describe a resizeable bytes container like `Vec<u8>`.
 ///
-/// Can start from uninitialized memory, and will be partially filled.
+/// Represents a contiguous segment of memory, a prefix of which is initialized.
 ///
-/// Should be implemented by a contiguous chunk of memory.
+/// It allows starting from an uninitializes chunk of memory and writing to it.
 ///
 /// The main implementors are:
 /// * `Vec<u8>` and similar structures. These can start empty with a non-zero capacity, and they
 ///   will be resized to cover the data written.
+///   Any existing data will be overwritten.
 /// * `[u8]` and `[u8; N]`. These must start already-initialized, and will not be resized. It will
 ///   be up to the caller to only use the part that was written.
+/// * `std::io::Cursor<T: WriteBuf>`. This will ignore data before the cursor's position, and
+///   append data after that.
 pub unsafe trait WriteBuf {
     /// Returns the valid data part of this container. Should only cover initialized data.
     fn as_slice(&self) -> &[u8];
@@ -1418,6 +1421,9 @@ pub unsafe trait WriteBuf {
     fn as_mut_ptr(&mut self) -> *mut u8;
 
     /// Indicates that the first `n` bytes of the container have been written.
+    ///
+    /// Safety: this should only be called if the `n` first bytes of this buffer have actually been
+    /// initialized.
     unsafe fn filled_until(&mut self, n: usize);
 
     /// Call the given closure using the pointer and capacity from `self`.
@@ -1466,6 +1472,34 @@ where
     }
 
     unsafe fn filled_until(&mut self, n: usize) {
+        // Early exit: `n = 0` does not indicate anything.
+        if n == 0 {
+            return;
+        }
+
+        // Here we assume data _before_ self.position() was already initialized.
+        // Egh it's not actually guaranteed by Cursor? So let's guarantee it ourselves.
+        let position = self.position() as usize;
+        let initialized = self.get_ref().as_slice().len();
+        if let Some(uninitialized) = position.checked_sub(initialized) {
+            // Cursor's solution is to pad with zeroes
+            // From the end of valid data (as_slice().len()) to the position.
+
+            // Safety:
+            // * We know `n > 0`
+            // * This means `self.capacity() > 0` (promise by the caller)
+            // * This means `self.get_ref().capacity() > self.position`
+            // * This means that `position` is within the nested pointer's allocation.
+            // * Finally, `initialized + uninitialized = position`, so the entire byte
+            //   range here is within the allocation
+            unsafe {
+                self.get_mut()
+                    .as_mut_ptr()
+                    .add(initialized)
+                    .write_bytes(0u8, uninitialized)
+            };
+        }
+
         let start = self.position() as usize;
         assert!(start + n <= self.get_ref().capacity());
         self.get_mut().filled_until(start + n);

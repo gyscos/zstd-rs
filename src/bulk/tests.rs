@@ -36,7 +36,7 @@ fn has_content_size() {
 
     // Bulk functions by default include the content size.
     assert_eq!(
-        zstd_safe::get_frame_content_size(&compressed),
-        TEXT.len() as u64
+        zstd_safe::get_frame_content_size(&compressed).unwrap(),
+        Some(TEXT.len() as u64)
     );
 }

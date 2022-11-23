@@ -65,7 +65,14 @@ pub type SafeResult = Result<usize, ErrorCode>;
 /// Indicates an error happened when parsing the frame content size.
 ///
 /// The stream may be corrupted, or the given frame prefix was too small.
+#[derive(Debug)]
 pub struct ContentSizeError;
+
+impl core::fmt::Display for ContentSizeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("Could not get content size")
+    }
+}
 
 /// Returns true if code represents error.
 fn is_error(code: usize) -> bool {

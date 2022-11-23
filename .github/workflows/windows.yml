@@ -56,6 +56,6 @@ jobs:
       run: pacman.exe -Sy --noconfirm mingw-w64-i686-toolchain
 
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --verbose
     - name: Run tests
       run: cargo test --verbose

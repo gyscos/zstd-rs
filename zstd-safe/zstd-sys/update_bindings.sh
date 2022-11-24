@@ -1,5 +1,5 @@
 #!/bin/sh
-bindgen="bindgen --no-layout-tests --blacklist-type=max_align_t --size_t-is-usize --rustified-enum=.* --use-core"
+bindgen="bindgen --no-layout-tests --blocklist-type=max_align_t --size_t-is-usize --rustified-enum=.* --use-core"
 no_std="--ctypes-prefix libc"
 experimental="-DZSTD_STATIC_LINKING_ONLY -DZDICT_STATIC_LINKING_ONLY"
 

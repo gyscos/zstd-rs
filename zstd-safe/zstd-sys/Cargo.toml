@@ -16,7 +16,7 @@ links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "2.0.2+zstd.1.5.2"
+version = "2.0.3+zstd.1.5.2"
 edition = "2018"
 
 # Use include instead of exclude, as a (temporary)

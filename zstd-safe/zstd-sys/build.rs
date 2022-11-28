@@ -80,6 +80,7 @@ fn enable_threading(_config: &mut cc::Build) {}
 
 /// This function would find the first flag in `flags` that is supported
 /// and add that to `config`.
+#[allow(dead_code)]
 fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
     let option = flags
         .iter()
@@ -150,6 +151,8 @@ fn compile_zstd() {
 
     config.define("ZSTD_LIB_DEPRECATED", Some("0"));
 
+    // TODO: re-enable thin lto when a more robust solution is found.
+    /*
     if config.get_compiler().is_like_gnu() {
         config.flag_if_supported("-fwhopr");
     } else {
@@ -157,6 +160,7 @@ fn compile_zstd() {
         // Apparently this is causing crashes on windows-gnu?
         config.flag_if_supported("-flto=thin");
     }
+    */
 
     #[cfg(feature = "thin")]
     {

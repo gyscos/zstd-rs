@@ -18,6 +18,7 @@ readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "2.0.3+zstd.1.5.2"
 edition = "2018"
+rust-version = "1.43" # But with the bindgen feature, this jumps to 1.53
 
 # Use include instead of exclude, as a (temporary)
 # workaround for https://github.com/rust-lang/cargo/issues/9555
@@ -48,7 +49,7 @@ doctest = false  # Documentation is for C code, good luck testing that.
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.60"
+version = "0.63"
 default-features = false
 features = ["runtime", "which-rustfmt"]
 

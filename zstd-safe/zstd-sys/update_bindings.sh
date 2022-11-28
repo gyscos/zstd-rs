@@ -1,5 +1,8 @@
 #!/bin/sh
-bindgen="bindgen --no-layout-tests --blocklist-type=max_align_t --size_t-is-usize --rustified-enum=.* --use-core"
+
+# Bump this to 1.64 (released Sep 2022) at some point. 6 months after release?
+RUST_TARGET=1.47
+bindgen="bindgen --no-layout-tests --blocklist-type=max_align_t --size_t-is-usize --rustified-enum=.* --use-core --rust-target $RUST_TARGET"
 no_std="--ctypes-prefix libc"
 experimental="-DZSTD_STATIC_LINKING_ONLY -DZDICT_STATIC_LINKING_ONLY"
 

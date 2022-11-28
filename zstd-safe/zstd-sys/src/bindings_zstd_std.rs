@@ -50,11 +50,11 @@ pub const ZSTD_CONTENTSIZE_UNKNOWN: i32 = -1;
 pub const ZSTD_CONTENTSIZE_ERROR: i32 = -2;
 extern "C" {
     #[doc = " ZSTD_versionNumber() :\n  Return runtime library version, the value is (MAJOR*100*100 + MINOR*100 + RELEASE)."]
-    pub fn ZSTD_versionNumber() -> ::core::ffi::c_uint;
+    pub fn ZSTD_versionNumber() -> ::std::os::raw::c_uint;
 }
 extern "C" {
     #[doc = " ZSTD_versionString() :\n  Return runtime library version, like \"1.4.5\". Requires v1.3.0+."]
-    pub fn ZSTD_versionString() -> *const ::core::ffi::c_char;
+    pub fn ZSTD_versionString() -> *const ::std::os::raw::c_char;
 }
 extern "C" {
     #[doc = "  Simple API\n/\n/*! ZSTD_compress() :\n  Compresses `src` content as a single zstd compressed frame into already allocated `dst`.\n  Hint : compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`.\n  @return : compressed size written into `dst` (<= `dstCapacity),\n            or an error code if it fails (which can be tested using ZSTD_isError())."]
@@ -63,7 +63,7 @@ extern "C" {
         dstCapacity: usize,
         src: *const ::core::ffi::c_void,
         srcSize: usize,
-        compressionLevel: ::core::ffi::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -79,14 +79,14 @@ extern "C" {
     pub fn ZSTD_getFrameContentSize(
         src: *const ::core::ffi::c_void,
         srcSize: usize,
-    ) -> ::core::ffi::c_ulonglong;
+    ) -> ::std::os::raw::c_ulonglong;
 }
 extern "C" {
     #[doc = " ZSTD_getDecompressedSize() :\n  NOTE: This function is now obsolete, in favor of ZSTD_getFrameContentSize().\n  Both functions work the same way, but ZSTD_getDecompressedSize() blends\n  \"empty\", \"unknown\" and \"error\" results to the same return value (0),\n  while ZSTD_getFrameContentSize() gives them separate return values.\n @return : decompressed size of `src` frame content _if known and not empty_, 0 otherwise."]
     pub fn ZSTD_getDecompressedSize(
         src: *const ::core::ffi::c_void,
         srcSize: usize,
-    ) -> ::core::ffi::c_ulonglong;
+    ) -> ::std::os::raw::c_ulonglong;
 }
 extern "C" {
     #[doc = " ZSTD_findFrameCompressedSize() : Requires v1.4.0+\n `src` should point to the start of a ZSTD frame or skippable frame.\n `srcSize` must be >= first frame size\n @return : the compressed size of the first frame starting at `src`,\n           suitable to pass as `srcSize` to `ZSTD_decompress` or similar,\n        or an error code if input is invalid"]
@@ -99,19 +99,19 @@ extern "C" {
     pub fn ZSTD_compressBound(srcSize: usize) -> usize;
 }
 extern "C" {
-    pub fn ZSTD_isError(code: usize) -> ::core::ffi::c_uint;
+    pub fn ZSTD_isError(code: usize) -> ::std::os::raw::c_uint;
 }
 extern "C" {
-    pub fn ZSTD_getErrorName(code: usize) -> *const ::core::ffi::c_char;
+    pub fn ZSTD_getErrorName(code: usize) -> *const ::std::os::raw::c_char;
 }
 extern "C" {
-    pub fn ZSTD_minCLevel() -> ::core::ffi::c_int;
+    pub fn ZSTD_minCLevel() -> ::std::os::raw::c_int;
 }
 extern "C" {
-    pub fn ZSTD_maxCLevel() -> ::core::ffi::c_int;
+    pub fn ZSTD_maxCLevel() -> ::std::os::raw::c_int;
 }
 extern "C" {
-    pub fn ZSTD_defaultCLevel() -> ::core::ffi::c_int;
+    pub fn ZSTD_defaultCLevel() -> ::std::os::raw::c_int;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -134,7 +134,7 @@ extern "C" {
         dstCapacity: usize,
         src: *const ::core::ffi::c_void,
         srcSize: usize,
-        compressionLevel: ::core::ffi::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 #[repr(C)]
@@ -215,8 +215,8 @@ pub enum ZSTD_cParameter {
 #[derive(Debug, Copy, Clone)]
 pub struct ZSTD_bounds {
     pub error: usize,
-    pub lowerBound: ::core::ffi::c_int,
-    pub upperBound: ::core::ffi::c_int,
+    pub lowerBound: ::std::os::raw::c_int,
+    pub upperBound: ::std::os::raw::c_int,
 }
 extern "C" {
     #[doc = " ZSTD_cParam_getBounds() :\n  All parameters must belong to an interval with lower and upper bounds,\n  otherwise they will either trigger an error or be automatically clamped.\n @return : a structure, ZSTD_bounds, which contains\n         - an error status field, which must be tested using ZSTD_isError()\n         - lower and upper bounds, both inclusive"]
@@ -227,14 +227,14 @@ extern "C" {
     pub fn ZSTD_CCtx_setParameter(
         cctx: *mut ZSTD_CCtx,
         param: ZSTD_cParameter,
-        value: ::core::ffi::c_int,
+        value: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
     #[doc = " ZSTD_CCtx_setPledgedSrcSize() :\n  Total input data size to be compressed as a single frame.\n  Value will be written in frame header, unless if explicitly forbidden using ZSTD_c_contentSizeFlag.\n  This value will also be controlled at end of frame, and trigger an error if not respected.\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Note 1 : pledgedSrcSize==0 actually means zero, aka an empty frame.\n           In order to mean \"unknown content size\", pass constant ZSTD_CONTENTSIZE_UNKNOWN.\n           ZSTD_CONTENTSIZE_UNKNOWN is default value for any new frame.\n  Note 2 : pledgedSrcSize is only valid once, for the next frame.\n           It's discarded at the end of the frame, and replaced by ZSTD_CONTENTSIZE_UNKNOWN.\n  Note 3 : Whenever all input data is provided and consumed in a single round,\n           for example with ZSTD_compress2(),\n           or invoking immediately ZSTD_compressStream2(,,,ZSTD_e_end),\n           this value is automatically overridden by srcSize instead."]
     pub fn ZSTD_CCtx_setPledgedSrcSize(
         cctx: *mut ZSTD_CCtx,
-        pledgedSrcSize: ::core::ffi::c_ulonglong,
+        pledgedSrcSize: ::std::os::raw::c_ulonglong,
     ) -> usize;
 }
 #[repr(u32)]
@@ -280,7 +280,7 @@ extern "C" {
     pub fn ZSTD_DCtx_setParameter(
         dctx: *mut ZSTD_DCtx,
         param: ZSTD_dParameter,
-        value: ::core::ffi::c_int,
+        value: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -347,7 +347,7 @@ extern "C" {
     #[doc = " Equivalent to:\n\n     ZSTD_CCtx_reset(zcs, ZSTD_reset_session_only);\n     ZSTD_CCtx_refCDict(zcs, NULL); // clear the dictionary (if any)\n     ZSTD_CCtx_setParameter(zcs, ZSTD_c_compressionLevel, compressionLevel);"]
     pub fn ZSTD_initCStream(
         zcs: *mut ZSTD_CStream,
-        compressionLevel: ::core::ffi::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -405,7 +405,7 @@ extern "C" {
         srcSize: usize,
         dict: *const ::core::ffi::c_void,
         dictSize: usize,
-        compressionLevel: ::core::ffi::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> usize;
 }
 extern "C" {
@@ -432,7 +432,7 @@ extern "C" {
     pub fn ZSTD_createCDict(
         dictBuffer: *const ::core::ffi::c_void,
         dictSize: usize,
-        compressionLevel: ::core::ffi::c_int,
+        compressionLevel: ::std::os::raw::c_int,
     ) -> *mut ZSTD_CDict;
 }
 extern "C" {
@@ -483,26 +483,26 @@ extern "C" {
     pub fn ZSTD_getDictID_fromDict(
         dict: *const ::core::ffi::c_void,
         dictSize: usize,
-    ) -> ::core::ffi::c_uint;
+    ) -> ::std::os::raw::c_uint;
 }
 extern "C" {
     #[doc = " ZSTD_getDictID_fromCDict() : Requires v1.5.0+\n  Provides the dictID of the dictionary loaded into `cdict`.\n  If @return == 0, the dictionary is not conformant to Zstandard specification, or empty.\n  Non-conformant dictionaries can still be loaded, but as content-only dictionaries."]
     pub fn ZSTD_getDictID_fromCDict(
         cdict: *const ZSTD_CDict,
-    ) -> ::core::ffi::c_uint;
+    ) -> ::std::os::raw::c_uint;
 }
 extern "C" {
     #[doc = " ZSTD_getDictID_fromDDict() : Requires v1.4.0+\n  Provides the dictID of the dictionary loaded into `ddict`.\n  If @return == 0, the dictionary is not conformant to Zstandard specification, or empty.\n  Non-conformant dictionaries can still be loaded, but as content-only dictionaries."]
     pub fn ZSTD_getDictID_fromDDict(
         ddict: *const ZSTD_DDict,
-    ) -> ::core::ffi::c_uint;
+    ) -> ::std::os::raw::c_uint;
 }
 extern "C" {
     #[doc = " ZSTD_getDictID_fromFrame() : Requires v1.4.0+\n  Provides the dictID required to decompressed the frame stored within `src`.\n  If @return == 0, the dictID could not be decoded.\n  This could for one of the following reasons :\n  - The frame does not require a dictionary to be decoded (most common case).\n  - The frame was built with dictID intentionally removed. Whatever dictionary is necessary is a hidden information.\n    Note : this use case also happens when using a non-conformant dictionary.\n  - `srcSize` is too small, and as a result, the frame header could not be decoded (only possible if `srcSize < ZSTD_FRAMEHEADERSIZE_MAX`).\n  - This is not a Zstandard frame.\n  When identifying the exact failure cause, it's possible to use ZSTD_getFrameHeader(), which will provide a more precise error code."]
     pub fn ZSTD_getDictID_fromFrame(
         src: *const ::core::ffi::c_void,
         srcSize: usize,
-    ) -> ::core::ffi::c_uint;
+    ) -> ::std::os::raw::c_uint;
 }
 extern "C" {
     #[doc = " ZSTD_CCtx_loadDictionary() : Requires v1.4.0+\n  Create an internal CDict from `dict` buffer.\n  Decompression will have to use same dictionary.\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Loading a NULL (or 0-size) dictionary invalidates previous dictionary,\n           meaning \"return to no-dictionary mode\".\n  Note 1 : Dictionary is sticky, it will be used for all future compressed frames.\n           To return to \"no-dictionary\" situation, load a NULL dictionary (or reset parameters).\n  Note 2 : Loading a dictionary involves building tables.\n           It's also a CPU consuming operation, with non-negligible impact on latency.\n           Tables are dependent on compression parameters, and for this reason,\n           compression parameters can no longer be changed after loading a dictionary.\n  Note 3 :`dict` content will be copied internally.\n           Use experimental ZSTD_CCtx_loadDictionary_byReference() to reference content instead.\n           In such a case, dictionary buffer must outlive its users.\n  Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()\n           to precisely select how dictionary content must be interpreted."]

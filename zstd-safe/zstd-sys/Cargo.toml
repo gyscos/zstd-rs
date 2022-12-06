@@ -69,6 +69,7 @@ debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API
 legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
 non-cargo = [] # Silence cargo-specific build flags
+pkg-config = []
 std = [] # Use std types instead of libc in bindgen
 zstdmt = [] # Enable multi-thread support (with pthread)
 thin = [] # Optimize binary by size

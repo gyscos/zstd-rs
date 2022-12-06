@@ -38,7 +38,6 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
 #[cfg(not(feature = "bindgen"))]
 fn generate_bindings(_: Vec<&str>, _: Vec<PathBuf>) {}
 
-#[cfg(feature = "pkg-config")]
 fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
     let library = pkg_config::Config::new()
         .statik(true)
@@ -46,11 +45,6 @@ fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
         .probe("libzstd")
         .expect("Can't probe for zstd in pkg-config");
     (vec!["PKG_CONFIG"], library.include_paths)
-}
-
-#[cfg(not(feature = "pkg-config"))]
-fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
-    unimplemented!()
 }
 
 #[cfg(not(feature = "legacy"))]
@@ -217,6 +211,9 @@ fn compile_zstd() {
 }
 
 fn main() {
+    #[cfg(not(feature = "non-cargo"))]
+    println!("cargo:rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
+
     let target_arch =
         std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -226,7 +223,9 @@ fn main() {
     }
 
     // println!("cargo:rustc-link-lib=zstd");
-    let (defs, headerpaths) = if cfg!(feature = "pkg-config") {
+    let (defs, headerpaths) = if cfg!(feature = "pkg-config")
+        || env::var_os("ZSTD_SYS_USE_PKG_CONFIG").is_some()
+    {
         pkg_config()
     } else {
         if !Path::new("zstd/lib").exists() {

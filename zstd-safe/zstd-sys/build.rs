@@ -188,6 +188,7 @@ fn compile_zstd() {
 }
 
 fn main() {
+    #[cfg(not(feature = "non-cargo"))]
     println!("cargo:rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
 
     let target_arch =

@@ -131,8 +131,8 @@ fn compile_zstd() {
         env::var("TARGET").ok() == Some("wasm32-unknown-unknown".into());
 
     if is_wasm_unknown_unknown {
-        println!("cargo:rerun-if-changed=wasm-shim/stdlib.h");
-        println!("cargo:rerun-if-changed=wasm-shim/string.h");
+        cargo_print("cargo:rerun-if-changed=wasm-shim/stdlib.h");
+        cargo_print("cargo:rerun-if-changed=wasm-shim/string.h");
 
         config.include("wasm-shim/");
         config.define("XXH_STATIC_ASSERT", Some("0"));
@@ -158,6 +158,7 @@ fn compile_zstd() {
 
     #[cfg(feature = "thin")]
     {
+        // Here we try to build a lib as thin/small as possible.
         config.define("HUF_FORCE_DECOMPRESS_X1", Some("1"));
         config.define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"));
         config.define("ZSTD_NO_INLINE ", Some("1"));
@@ -207,19 +208,26 @@ fn compile_zstd() {
         .unwrap();
     #[cfg(feature = "zdict_builder")]
     fs::copy(src.join("zdict.h"), include.join("zdict.h")).unwrap();
-    println!("cargo:root={}", dst.display());
+    cargo_print(&format!("cargo:root={}", dst.display()));
+}
+
+/// Print a line for cargo.
+///
+/// If non-cargo is set, do not print anything.
+fn cargo_print(content: &str) {
+    #[cfg(not(feature = "non-cargo"))]
+    println!("{content}");
 }
 
 fn main() {
-    #[cfg(not(feature = "non-cargo"))]
-    println!("cargo:rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
+    cargo_print("cargo:rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
 
     let target_arch =
         std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
     if target_arch == "wasm32" || target_os == "hermit" {
-        println!("cargo:rustc-cfg=feature=\"std\"");
+        cargo_print("cargo:rustc-cfg=feature=\"std\"");
     }
 
     // println!("cargo:rustc-link-lib=zstd");
@@ -245,7 +253,7 @@ fn main() {
         .iter()
         .map(|p| p.display().to_string())
         .collect();
-    println!("cargo:include={}", includes.join(";"));
+    cargo_print(&format!("cargo:include={}", includes.join(";")));
 
     generate_bindings(defs, headerpaths);
 }

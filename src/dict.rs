@@ -48,7 +48,7 @@ impl<'a> EncoderDictionary<'a> {
     /// Only available with the `experimental` feature. Use `EncoderDictionary::copy` otherwise.
     pub fn new(dictionary: &'a [u8], level: i32) -> Self {
         Self {
-            cdict: zstd_safe::create_cdict_by_reference(dictionary, level),
+            cdict: zstd_safe::CDict::create_by_reference(dictionary, level),
         }
     }
 
@@ -82,7 +82,7 @@ impl<'a> DecoderDictionary<'a> {
     /// Only available with the `experimental` feature. Use `DecoderDictionary::copy` otherwise.
     pub fn new(dict: &'a [u8]) -> Self {
         Self {
-            ddict: zstd_safe::create_ddict_by_reference(dict),
+            ddict: zstd_safe::DDict::create_by_reference(dict),
         }
     }
 

@@ -127,10 +127,10 @@ fn compile_zstd() {
         config.file("zstd/lib/decompress/huf_decompress_amd64.S");
     }
 
-    let is_wasm_unknown_unknown =
-        env::var("TARGET").ok() == Some("wasm32-unknown-unknown".into());
+    let is_wasm = env::var("TARGET")
+        .map_or(false, |target| target.starts_with("wasm32-"));
 
-    if is_wasm_unknown_unknown {
+    if is_wasm {
         cargo_print("cargo:rerun-if-changed=wasm-shim/stdlib.h");
         cargo_print("cargo:rerun-if-changed=wasm-shim/string.h");
 
@@ -188,7 +188,7 @@ fn compile_zstd() {
      * 7+: events at every position (*very* verbose)
      */
     #[cfg(feature = "debug")]
-    if !is_wasm_unknown_unknown {
+    if !is_wasm {
         config.define("DEBUGLEVEL", Some("5"));
     }
 

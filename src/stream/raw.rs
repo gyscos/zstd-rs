@@ -184,6 +184,23 @@ impl Operation for Decoder<'_> {
             .map_err(map_error_code)
     }
 
+    fn flush<C: WriteBuf + ?Sized>(
+        &mut self,
+        output: &mut OutBuffer<'_, C>,
+    ) -> io::Result<usize> {
+        // To flush, we just offer no additional input.
+        self.run(&mut InBuffer::around(&[]), output)?;
+
+        // We don't _know_ how much (decompressed data) there is still in buffer.
+        if output.pos() < output.dst.capacity() {
+            // We only know when there's none (the output buffer is not full).
+            Ok(0)
+        } else {
+            // Otherwise, pretend there's still "1 byte" remaining.
+            Ok(1)
+        }
+    }
+
     fn reinit(&mut self) -> io::Result<()> {
         self.context
             .reset(zstd_safe::ResetDirective::SessionOnly)

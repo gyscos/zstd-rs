@@ -32,4 +32,4 @@ cargo build --features bindgen
 
 [zstd]: https://github.com/facebook/zstd
 [zstd-rs]: https://github.com/gyscos/zstd-rs
-[zstd-safe]: https://github.com/gyscos/zstd-rs/tree/master/zstd-safe
+[zstd-safe]: https://github.com/gyscos/zstd-rs/tree/main/zstd-safe

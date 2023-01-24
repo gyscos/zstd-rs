@@ -145,6 +145,13 @@ fn compile_zstd() {
 
     config.define("ZSTD_LIB_DEPRECATED", Some("0"));
 
+    config
+        .flag_if_supported("-ffunction-sections")
+        .flag_if_supported("-fdata-sections")
+        .flag_if_supported("-fmerge-all-constants")
+        .flag_if_supported("-Wl,--gc-sections")
+        .flag_if_supported("-Wl,--icf=safe");
+
     // TODO: re-enable thin lto when a more robust solution is found.
     /*
     if config.get_compiler().is_like_gnu() {

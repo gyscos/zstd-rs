@@ -161,7 +161,7 @@ fn compile_zstd() {
         // Here we try to build a lib as thin/small as possible.
         config.define("HUF_FORCE_DECOMPRESS_X1", Some("1"));
         config.define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"));
-        config.define("ZSTD_NO_INLINE ", Some("1"));
+        config.define("ZSTD_NO_INLINE", Some("1"));
 
         flag_if_supported_with_fallbacks(&mut config, &["-Oz", "-Os", "-O2"]);
     }

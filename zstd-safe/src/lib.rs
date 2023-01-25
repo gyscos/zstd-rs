@@ -76,6 +76,7 @@ impl core::fmt::Display for ContentSizeError {
 
 /// Returns true if code represents error.
 fn is_error(code: usize) -> bool {
+    // Safety: Just FFI
     unsafe { zstd_sys::ZSTD_isError(code) != 0 }
 }
 
@@ -117,6 +118,7 @@ fn ptr_mut_void(dst: &mut (impl WriteBuf + ?Sized)) -> *mut c_void {
 /// Returns `major * 10_000 + minor * 100 + patch`.
 /// So 1.5.3 would be returned as `10_503`.
 pub fn version_number() -> u32 {
+    // Safety: Just FFI
     unsafe { zstd_sys::ZSTD_versionNumber() as u32 }
 }
 
@@ -124,6 +126,7 @@ pub fn version_number() -> u32 {
 ///
 /// For example "1.5.3".
 pub fn version_string() -> &'static str {
+    // Safety: Assumes `ZSTD_versionString` returns a valid utf8 string.
     unsafe { c_char_to_str(zstd_sys::ZSTD_versionString()) }
 }
 
@@ -131,11 +134,13 @@ pub fn version_string() -> &'static str {
 ///
 /// This is likely going to be a _very_ large negative number.
 pub fn min_c_level() -> CompressionLevel {
+    // Safety: Just FFI
     unsafe { zstd_sys::ZSTD_minCLevel() as CompressionLevel }
 }
 
 /// Returns the maximum (slowest) compression level supported.
 pub fn max_c_level() -> CompressionLevel {
+    // Safety: Just FFI
     unsafe { zstd_sys::ZSTD_maxCLevel() as CompressionLevel }
 }
 
@@ -151,6 +156,7 @@ pub fn compress<C: WriteBuf + ?Sized>(
     src: &[u8],
     compression_level: CompressionLevel,
 ) -> SafeResult {
+    // Safety: ZSTD_compress indeed returns how many bytes have been written.
     unsafe {
         dst.write_from(|buffer, capacity| {
             parse_code(zstd_sys::ZSTD_compress(
@@ -169,6 +175,7 @@ pub fn decompress<C: WriteBuf + ?Sized>(
     dst: &mut C,
     src: &[u8],
 ) -> SafeResult {
+    // Safety: ZSTD_decompress indeed returns how many bytes have been written.
     unsafe {
         dst.write_from(|buffer, capacity| {
             parse_code(zstd_sys::ZSTD_decompress(
@@ -186,6 +193,7 @@ pub fn decompress<C: WriteBuf + ?Sized>(
 /// Returns `None` if the size could not be found, or if the content is actually empty.
 #[deprecated(note = "Use ZSTD_getFrameContentSize instead")]
 pub fn get_decompressed_size(src: &[u8]) -> Option<NonZeroU64> {
+    // Safety: Just FFI
     NonZeroU64::new(unsafe {
         zstd_sys::ZSTD_getDecompressedSize(ptr_void(src), src.len()) as u64
     })
@@ -193,6 +201,7 @@ pub fn get_decompressed_size(src: &[u8]) -> Option<NonZeroU64> {
 
 /// Maximum compressed size in worst case single-pass scenario
 pub fn compress_bound(src_size: usize) -> usize {
+    // Safety: Just FFI
     unsafe { zstd_sys::ZSTD_compressBound(src_size) }
 }
 
@@ -213,6 +222,7 @@ impl<'a> CCtx<'a> {
     ///
     /// Returns `None` if zstd returns a NULL pointer - may happen if allocation fails.
     pub fn try_create() -> Option<Self> {
+        // Safety: Just FFI
         Some(CCtx(
             NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })?,
             PhantomData,
@@ -236,6 +246,7 @@ impl<'a> CCtx<'a> {
         src: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
+        // Safety: ZSTD_compressCCtx returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compressCCtx(
@@ -256,6 +267,7 @@ impl<'a> CCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        // Safety: ZSTD_compress2 returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress2(
@@ -277,6 +289,7 @@ impl<'a> CCtx<'a> {
         dict: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
+        // Safety: ZSTD_compress_usingDict returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress_usingDict(
@@ -300,6 +313,7 @@ impl<'a> CCtx<'a> {
         src: &[u8],
         cdict: &CDict<'_>,
     ) -> SafeResult {
+        // Safety: ZSTD_compress_usingCDict returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress_usingCDict(
@@ -320,6 +334,7 @@ impl<'a> CCtx<'a> {
     /// * `reset()`
     /// * `set_parameter(CompressionLevel, compression_level)`
     pub fn init(&mut self, compression_level: CompressionLevel) -> SafeResult {
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream(self.0.as_ptr(), compression_level)
         };
@@ -335,6 +350,7 @@ impl<'a> CCtx<'a> {
         compression_level: CompressionLevel,
         pledged_src_size: u64,
     ) -> SafeResult {
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_srcSize(
                 self.0.as_ptr(),
@@ -354,6 +370,7 @@ impl<'a> CCtx<'a> {
         dict: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingDict(
                 self.0.as_ptr(),
@@ -373,6 +390,7 @@ impl<'a> CCtx<'a> {
     where
         'b: 'a, // Dictionary outlives the stream.
     {
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingCDict(
                 self.0.as_ptr(),
@@ -392,6 +410,7 @@ impl<'a> CCtx<'a> {
     ///
     /// The dictionary will apply to all compressed frames, until a new dictionary is set.
     pub fn load_dictionary(&mut self, dict: &[u8]) -> SafeResult {
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
                 self.0.as_ptr(),
@@ -408,6 +427,7 @@ impl<'a> CCtx<'a> {
     where
         'b: 'a,
     {
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_refCDict(self.0.as_ptr(), cdict.0.as_ptr())
         })
@@ -417,6 +437,7 @@ impl<'a> CCtx<'a> {
     ///
     /// This will disable any dictionary/prefix previously registered for future frames.
     pub fn disable_dictionary(&mut self) -> SafeResult {
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
                 self.0.as_ptr(),
@@ -435,6 +456,7 @@ impl<'a> CCtx<'a> {
     where
         'b: 'a,
     {
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_refPrefix(
                 self.0.as_ptr(),
@@ -462,6 +484,7 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         let mut output = output.wrap();
         let mut input = input.wrap();
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_compressStream(
                 self.0.as_ptr(),
@@ -495,6 +518,7 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         let mut output = output.wrap();
         let mut input = input.wrap();
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_compressStream2(
                 self.0.as_ptr(),
@@ -515,6 +539,7 @@ impl<'a> CCtx<'a> {
         output: &mut OutBuffer<'_, C>,
     ) -> SafeResult {
         let mut output = output.wrap();
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_flushStream(self.0.as_ptr(), ptr_mut(&mut output))
         };
@@ -531,6 +556,7 @@ impl<'a> CCtx<'a> {
         output: &mut OutBuffer<'_, C>,
     ) -> SafeResult {
         let mut output = output.wrap();
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_endStream(self.0.as_ptr(), ptr_mut(&mut output))
         };
@@ -541,6 +567,7 @@ impl<'a> CCtx<'a> {
     ///
     /// This may change over time.
     pub fn sizeof(&self) -> usize {
+        // Safety: Just FFI
         unsafe { zstd_sys::ZSTD_sizeof_CCtx(self.0.as_ptr()) }
     }
 
@@ -550,6 +577,7 @@ impl<'a> CCtx<'a> {
     ///
     /// Wraps the `ZSTD_CCtx_reset()` function.
     pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_reset(self.0.as_ptr(), reset.as_sys())
         })
@@ -658,6 +686,7 @@ impl<'a> CCtx<'a> {
             OverlapSizeLog(value) => (ZSTD_c_overlapLog, value as c_int),
         };
 
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_setParameter(self.0.as_ptr(), param, value)
         })
@@ -675,6 +704,7 @@ impl<'a> CCtx<'a> {
         &mut self,
         pledged_src_size: Option<u64>,
     ) -> SafeResult {
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_setPledgedSrcSize(
                 self.0.as_ptr(),
@@ -693,9 +723,11 @@ impl<'a> CCtx<'a> {
         &self,
         pledged_src_size: Option<u64>,
     ) -> Result<Self, ErrorCode> {
+        // Safety: Just FFI
         let context = NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })
             .ok_or(0usize)?;
 
+        // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_copyCCtx(
                 context.as_ptr(),
@@ -711,6 +743,7 @@ impl<'a> CCtx<'a> {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn get_block_size(&self) -> usize {
+        // Safety: Just FFI
         unsafe { zstd_sys::ZSTD_getBlockSize(self.0.as_ptr()) }
     }
 
@@ -722,6 +755,7 @@ impl<'a> CCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        // Safety: ZSTD_compressBlock returns the number of bytes written.
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compressBlock(
@@ -739,6 +773,7 @@ impl<'a> CCtx<'a> {
     ///
     /// Using this size may result in minor performance boost.
     pub fn in_size() -> usize {
+        // Safety: Just FFI
         unsafe { zstd_sys::ZSTD_CStreamInSize() }
     }
 
@@ -746,12 +781,14 @@ impl<'a> CCtx<'a> {
     ///
     /// Using this may result in minor performance boost.
     pub fn out_size() -> usize {
+        // Safety: Just FFI
         unsafe { zstd_sys::ZSTD_CStreamOutSize() }
     }
 }
 
 impl<'a> Drop for CCtx<'a> {
     fn drop(&mut self) {
+        // Safety: Just FFI
         unsafe {
             zstd_sys::ZSTD_freeCCtx(self.0.as_ptr());
         }
@@ -766,7 +803,6 @@ unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
     {
         // To be safe, we need to compute right now its length
         let len = libc::strlen(text);
-
         // Cast it to a slice
         let slice = core::slice::from_raw_parts(text as *mut u8, len);
         // And hope it's still text.
@@ -784,6 +820,7 @@ unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
 /// Returns the error string associated with an error code.
 pub fn get_error_name(code: usize) -> &'static str {
     unsafe {
+        // Safety: assumes ZSTD returns a well-formed utf8 string.
         let name = zstd_sys::ZSTD_getErrorName(code);
         c_char_to_str(name)
     }

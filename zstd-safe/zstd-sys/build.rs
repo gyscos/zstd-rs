@@ -166,9 +166,22 @@ fn compile_zstd() {
     #[cfg(feature = "thin")]
     {
         // Here we try to build a lib as thin/small as possible.
-        config.define("HUF_FORCE_DECOMPRESS_X1", Some("1"));
-        config.define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"));
-        config.define("ZSTD_NO_INLINE ", Some("1"));
+
+        // ZSTD_LIB_MINIFY implies:
+        //  - HUF_FORCE_DECOMPRESS_X1
+        //  - ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT
+        //  - ZSTD_NO_INLINE
+        //  - ZSTD_STRIP_ERROR_STRINGS, removes the error messages that are
+        //    otherwise returned by ZSTD_getErrorName
+        config.define("ZSTD_LIB_MINIFY", Some("1"));
+
+        // Disable use of BMI2 instructions since it involves runtime checking
+        // of the feature and fallback if no BMI2 instruction is detected.
+        config.define("DYNAMIC_BMI2", Some("0"));
+
+        // Disable support for all legacy formats
+        #[cfg(not(feature = "legacy"))]
+        config.define("ZSTD_LEGACY_SUPPORT", Some("0"));
 
         flag_if_supported_with_fallbacks(&mut config, &["-Oz", "-Os", "-O2"]);
     }

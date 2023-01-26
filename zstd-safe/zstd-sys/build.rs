@@ -261,7 +261,7 @@ fn main() {
         }
 
         let manifest_dir = PathBuf::from(
-            env::var("CARGO_MANIFEST_DIR")
+            env::var_os("CARGO_MANIFEST_DIR")
                 .expect("Manifest dir is always set by cargo"),
         );
 

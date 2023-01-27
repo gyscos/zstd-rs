@@ -76,3 +76,6 @@ zstdmt = [] # Enable multi-thread support (with pthread)
 thin = [] # Optimize binary by size
 no_asm = [] # Disable ASM files (only on amd64 for decompression)
 zdict_builder = []
+
+fat-lto = [] # Enable fat-lto, will override thin-lto if specified
+thin-lto = [] # Enable thin-lto, will fallback to fat-lto if not supported

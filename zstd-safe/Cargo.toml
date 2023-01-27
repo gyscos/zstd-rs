@@ -34,3 +34,6 @@ arrays = []
 no_asm = ["zstd-sys/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-sys/zdict_builder"]
+
+fat-lto = ["zstd-sys/fat-lto"]
+thin-lto = ["zstd-sys/thin-lto"]

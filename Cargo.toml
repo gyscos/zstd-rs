@@ -44,6 +44,9 @@ no_asm = ["zstd-safe/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-safe/zdict_builder"]
 
+fat-lto = ["zstd-safe/fat-lto"]
+thin-lto = ["zstd-safe/thin-lto"]
+
 [[example]]
 name = "train"
 required-features = ["zdict_builder"]

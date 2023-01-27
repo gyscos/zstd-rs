@@ -151,16 +151,14 @@ fn compile_zstd() {
         .flag_if_supported("-Wl,--gc-sections")
         .flag_if_supported("-Wl,--icf=safe");
 
-    // TODO: re-enable thin lto when a more robust solution is found.
-    /*
-    if config.get_compiler().is_like_gnu() {
-        config.flag_if_supported("-fwhopr");
-    } else {
-        // gcc has a -flto but not -flto=thin
-        // Apparently this is causing crashes on windows-gnu?
-        config.flag_if_supported("-flto=thin");
+    if cfg!(feature = "fat-lto") {
+        config.flag_if_supported("-flto");
+    } else if cfg!(feature = "thin-lto") {
+        flag_if_supported_with_fallbacks(
+            &mut config,
+            &["-flto=thin", "-flto"],
+        );
     }
-    */
 
     #[cfg(feature = "thin")]
     {

@@ -165,14 +165,18 @@ fn compile_zstd() {
     #[cfg(feature = "thin")]
     {
         // Here we try to build a lib as thin/small as possible.
+        // We cannot use ZSTD_LIB_MINIFY since it is only
+        // used in Makefile to define other options.
 
-        // ZSTD_LIB_MINIFY implies:
-        //  - HUF_FORCE_DECOMPRESS_X1
-        //  - ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT
-        //  - ZSTD_NO_INLINE
-        //  - ZSTD_STRIP_ERROR_STRINGS, removes the error messages that are
-        //    otherwise returned by ZSTD_getErrorName
-        config.define("ZSTD_LIB_MINIFY", Some("1"));
+        config
+            .define("HUF_FORCE_DECOMPRESS_X1", Some("1"))
+            .define("HUF_FORCE_DECOMPRESS_X2", Some("0"))
+            .define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"))
+            .define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_LONG", Some("0"))
+            .define("ZSTD_NO_INLINE", Some("1"))
+            // removes the error messages that are
+            // otherwise returned by ZSTD_getErrorName
+            .define("ZSTD_STRIP_ERROR_STRINGS", Some("1"));
 
         // Disable use of BMI2 instructions since it involves runtime checking
         // of the feature and fallback if no BMI2 instruction is detected.

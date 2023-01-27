@@ -2,8 +2,8 @@
 #[cfg(feature = "experimental")]
 use std::cmp::min;
 #[cfg(feature = "experimental")]
-use std::io::SeekFrom;
-use std::io::{self, BufRead, BufReader, Read, Seek};
+use std::io::{SeekFrom, Seek};
+use std::io::{self, BufRead, BufReader, Read};
 #[cfg(feature = "experimental")]
 use std::mem::size_of;
 
@@ -114,8 +114,8 @@ fn read_exact_or_seek_back<R: Read + Seek + ?Sized>(this: &mut R, mut buf: &mut 
     }
 }
 
+#[cfg(feature = "experimental")]
 impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
-    #[cfg(feature = "experimental")]
     fn read_skippable_frame_size(&mut self) -> io::Result<usize> {
         let mut magic_buffer = [0u8; U32_SIZE];
         read_exact_or_seek_back(self.reader.reader_mut(), &mut magic_buffer)?;
@@ -130,17 +130,15 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
         Ok(content_size + SKIPPABLEHEADERSIZE as usize)
     }
 
-    #[cfg(feature = "experimental")]
     fn seek_back(&mut self, bytes_count: usize) {
         if let Err(error) = self.reader.reader_mut().seek(SeekFrom::Current(-(bytes_count as i64))) {
             panic!("Error while seeking back to the start: {}", error);
         }
     }
 
-    #[cfg(feature = "experimental")]
     /// Attempt to read a skippable frame and write its content to `dest`.
     /// If it cannot read a skippable frame, the reader will be back to its starting position.
-    pub fn read_skippable_frame(&mut self, dest: &mut Vec<u8>) -> io::Result<(usize, MagicVariant)> {
+    pub fn read_skippable_frame(&mut self, dest: &mut [u8]) -> io::Result<(usize, MagicVariant)> {
         let mut bytes_to_seek = 0;
 
         let res = (|| {
@@ -160,14 +158,13 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
                 bytes_to_seek = U32_SIZE * 2;
                 return Err(io::Error::new(io::ErrorKind::Other, "Unsupported frame parameter"));
             }
-            if content_size > dest.capacity() {
+            if content_size > dest.len() {
                 bytes_to_seek = U32_SIZE * 2;
                 return Err(io::Error::new(io::ErrorKind::Other, "Destination buffer is too small"));
             }
 
             if content_size > 0 {
-                dest.resize(content_size, 0);
-                read_exact_or_seek_back(self.reader.reader_mut(), dest)?;
+                read_exact_or_seek_back(self.reader.reader_mut(), &mut dest[..content_size])?;
             }
 
             Ok((magic_number, content_size))
@@ -189,7 +186,6 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
         Ok((content_size, MagicVariant(magic_variant as u8)))
     }
 
-    #[cfg(feature = "experimental")]
     fn get_block_size(&mut self) -> io::Result<(usize, bool)> {
         let mut buffer = [0u8; U24_SIZE];
         self.reader.reader_mut().read_exact(&mut buffer)?;
@@ -201,7 +197,6 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
         Ok((compressed_size as usize, last_block != 0))
     }
 
-    #[cfg(feature = "experimental")]
     fn find_frame_compressed_size(&mut self) -> io::Result<usize> {
         const ZSTD_BLOCK_HEADER_SIZE: usize = 3;
 
@@ -241,7 +236,6 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
         }
     }
 
-    #[cfg(feature = "experimental")]
     fn frame_header_size(&mut self) -> io::Result<(usize, bool)> {
         use crate::map_error_code;
         const MAX_FRAME_HEADER_SIZE_PREFIX: usize = 5;
@@ -255,7 +249,6 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
         Ok((size, checksum_flag != 0))
     }
 
-    #[cfg(feature = "experimental")]
     /// Skip over a frame, without decompressing it.
     pub fn skip_frame(&mut self) -> io::Result<()> {
         let size = self.find_frame_compressed_size()?;

@@ -100,17 +100,19 @@ fn compile_zstd() {
     ] {
         let mut entries: Vec<_> = fs::read_dir(dir)
             .unwrap()
-            .map(|r| r.unwrap().path())
-            .filter(|path| path.extension() == Some(OsStr::new("c")))
-            // Skip xxhash*.c files: since we are using the "PRIVATE API"
-            // mode, it will be inlined in the headers.
-            .filter(|path| {
-               !path
-                    .file_name()
-                    // If path.extension() is Some, then file_name cannot be None.
-                    .unwrap()
-                    .to_string_lossy()
-                    .contains("xxhash")
+            .map(Result::unwrap)
+            .filter_map(|entry| {
+                let filename = entry.file_name();
+
+                if Path::new(&filename).extension() == Some(OsStr::new("c"))
+                    // Skip xxhash*.c files: since we are using the "PRIVATE API"
+                    // mode, it will be inlined in the headers.
+                    && !filename.to_string_lossy().contains("xxhash")
+                {
+                    Some(entry.path())
+                } else {
+                    None
+                }
             })
             .collect();
         entries.sort();

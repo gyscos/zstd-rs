@@ -186,7 +186,7 @@ fn compile_zstd() {
         #[cfg(not(feature = "legacy"))]
         config.define("ZSTD_LEGACY_SUPPORT", Some("0"));
 
-        flag_if_supported_with_fallbacks(&mut config, &["-Oz", "-Os", "-O2"]);
+        config.opt_level_str("z");
     }
 
     // Hide symbols from resulting library,

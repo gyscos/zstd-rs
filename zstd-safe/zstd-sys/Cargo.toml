@@ -77,5 +77,7 @@ thin = [] # Optimize binary by size
 no_asm = [] # Disable ASM files (only on amd64 for decompression)
 zdict_builder = []
 
+# These two are for cross-language LTO.
+# Will only work if `clang` is used to build the C library.
 fat-lto = [] # Enable fat-lto, will override thin-lto if specified
 thin-lto = [] # Enable thin-lto, will fallback to fat-lto if not supported

@@ -35,5 +35,7 @@ no_asm = ["zstd-sys/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-sys/zdict_builder"]
 
+# These two are for cross-language LTO.
+# Will only work if `clang` is used to build the C library.
 fat-lto = ["zstd-sys/fat-lto"]
 thin-lto = ["zstd-sys/thin-lto"]

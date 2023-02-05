@@ -22,3 +22,8 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Build with feature thin
+      run: cargo build --verbose --features thin
+    - name: Run tests
+      run: cargo test --verbose --features thin

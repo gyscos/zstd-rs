@@ -182,10 +182,8 @@ impl<'a> Decoder<'a> {
     // TODO: remove self?
     /// Read a skippable frame.
     pub fn read_skippable_frame(&self, dest: &mut Vec<u8>, input: &[u8]) -> io::Result<(usize, MagicVariant)> {
-        use zstd_safe::DCtx;
-
         let mut magic_variant = 0;
-        DCtx::read_skippable_frame(&mut OutBuffer::around(dest), &mut magic_variant, input)
+        zstd_safe::read_skippable_frame(dest, &mut magic_variant, input)
             .map(|written| (written, MagicVariant(magic_variant as u8)))
             .map_err(map_error_code)
     }
@@ -193,12 +191,8 @@ impl<'a> Decoder<'a> {
     #[cfg(feature = "experimental")]
     // TODO: remove self?
     /// Check if a frame is skippable.
-    pub fn is_skippable_frame(&self, input: &[u8]) -> io::Result<bool> {
-        use zstd_safe::DCtx;
-
-        DCtx::is_skippable_frame(input)
-            .map(|is_skippable| is_skippable != 0)
-            .map_err(map_error_code)
+    pub fn is_skippable_frame(&self, input: &[u8]) -> bool {
+        zstd_safe::is_skippable_frame(input)
     }
 }
 

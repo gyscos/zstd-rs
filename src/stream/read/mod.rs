@@ -154,7 +154,7 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
             let op = self.reader.operation();
             // FIXME: I feel like we should do that check right after reading the magic number, but
             // ZSTD does it after reading the content size.
-            if !op.is_skippable_frame(&magic_buffer)? {
+            if !op.is_skippable_frame(&magic_buffer) {
                 bytes_to_seek = U32_SIZE * 2;
                 return Err(io::Error::new(io::ErrorKind::Other, "Unsupported frame parameter"));
             }

@@ -134,15 +134,13 @@ where
     /// Write a skippable frame after finishing the previous frame if needed.
     #[cfg(feature = "experimental")]
     pub fn write_skippable_frame(&mut self, buf: &[u8], magic_variant: u32) -> io::Result<()> {
-        use zstd_safe::CCtx;
-
         use crate::map_error_code;
 
         if self.writing_frame {
             self.finish()?; // Since we're about to overwrite the buffer, flush its content to the destination.
         }
 
-        CCtx::write_skippable_frame(&mut OutBuffer::around(&mut self.buffer), buf, magic_variant)
+        zstd_safe::write_skippable_frame(&mut self.buffer, buf, magic_variant)
             .map_err(map_error_code)?;
         self.offset = 0;
         self.write_from_offset()?;

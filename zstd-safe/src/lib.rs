@@ -470,23 +470,6 @@ impl<'a> CCtx<'a> {
         })
     }
 
-    #[cfg(feature = "experimental")]
-    // TODO: use InBuffer?
-    pub fn write_skippable_frame<C: WriteBuf + ?Sized>(output: &mut OutBuffer<'_, C>, input: &[u8], magic_variant: u32) -> SafeResult {
-        let input_len = input.len();
-        unsafe {
-            output.dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_writeSkippableFrame(
-                    buffer,
-                    capacity,
-                    input.as_ptr() as *mut _,
-                    input_len,
-                    magic_variant,
-                ))
-            })
-        }
-    }
-
     /// Performs a step of a streaming compression operation.
     ///
     /// This will read some data from `input` and/or write some data to `output`.
@@ -867,6 +850,45 @@ impl Default for DCtx<'_> {
     }
 }
 
+#[cfg(feature = "experimental")]
+pub fn read_skippable_frame<C: WriteBuf + ?Sized>(dst: &mut C, magic_variant: &mut u32, input: &[u8]) -> SafeResult {
+    let input_len = input.len();
+    unsafe {
+        dst.write_from(|buffer, capacity| {
+            parse_code(zstd_sys::ZSTD_readSkippableFrame(
+                    buffer,
+                    capacity,
+                    magic_variant,
+                    ptr_void(input),
+                    input_len,
+            ))
+        })
+    }
+}
+
+#[cfg(feature = "experimental")]
+pub fn write_skippable_frame<C: WriteBuf + ?Sized>(dst: &mut C, input: &[u8], magic_variant: u32) -> SafeResult {
+    let input_len = input.len();
+    unsafe {
+        dst.write_from(|buffer, capacity| {
+            parse_code(zstd_sys::ZSTD_writeSkippableFrame(
+                    buffer,
+                    capacity,
+                    input.as_ptr() as *mut _,
+                    input_len,
+                    magic_variant,
+            ))
+        })
+    }
+}
+
+#[cfg(feature = "experimental")]
+pub fn is_skippable_frame(input: &[u8]) -> bool {
+    unsafe {
+        zstd_sys::ZSTD_isSkippableFrame(ptr_void(input), input.len()) > 0
+    }
+}
+
 impl<'a> DCtx<'a> {
     /// Try to create a new decompression context.
     ///
@@ -963,29 +985,6 @@ impl<'a> DCtx<'a> {
                     ddict.0.as_ptr(),
                 ))
             })
-        }
-    }
-
-    #[cfg(feature = "experimental")]
-    pub fn read_skippable_frame<C: WriteBuf + ?Sized>(output: &mut OutBuffer<'_, C>, magic_variant: &mut u32, input: &[u8]) -> SafeResult {
-        let input_len = input.len();
-        unsafe {
-            output.dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_readSkippableFrame(
-                    buffer,
-                    capacity,
-                    magic_variant,
-                    input.as_ptr() as *mut _,
-                    input_len,
-                ))
-            })
-        }
-    }
-
-    #[cfg(feature = "experimental")]
-    pub fn is_skippable_frame(input: &[u8]) -> SafeResult {
-        unsafe {
-            parse_code(zstd_sys::ZSTD_isSkippableFrame(input.as_ptr() as *mut _, input.len()) as usize)
         }
     }
 

@@ -358,6 +358,8 @@ mod tests {
         };
 
         let mut target = vec![];
+        assert!(decoder.read_skippable_frame(&mut frame).is_err());
+        assert!(decoder.read_skippable_frame(&mut frame).is_err());
         io::copy(&mut decoder, &mut target).unwrap();
         assert_eq!("compressed frame 1", String::from_utf8(target).unwrap());
 
@@ -371,6 +373,8 @@ mod tests {
         let (size, _) = decoder.read_skippable_frame(&mut frame).unwrap();
         assert_eq!("SKIP", String::from_utf8_lossy(&frame[..size]));
 
+        assert!(decoder.read_skippable_frame(&mut frame).is_err());
+        assert!(decoder.read_skippable_frame(&mut frame).is_err());
         decoder.skip_frame().unwrap();
 
         let inner = decoder.finish();
@@ -391,6 +395,8 @@ mod tests {
         };
 
         let mut target = vec![];
+        assert!(decoder.read_skippable_frame(&mut frame).is_err());
+        assert!(decoder.read_skippable_frame(&mut frame).is_err());
         io::copy(&mut decoder, &mut target).unwrap();
         assert_eq!("compressed frame 3", String::from_utf8(target).unwrap());
     }

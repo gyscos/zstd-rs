@@ -82,47 +82,15 @@ fn consume<R: Read + ?Sized>(this: &mut R, mut bytes_count: usize) -> io::Result
     }
 }
 
-/// Like Read::read_exact(), but seek back to the starting position of the reader in case of an
-/// error.
-#[cfg(feature = "experimental")]
-fn read_exact_or_seek_back<R: Read + Seek + ?Sized>(this: &mut R, mut buf: &mut [u8]) -> io::Result<()> {
-    let mut bytes_read = 0;
-    while !buf.is_empty() {
-        match this.read(buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                bytes_read += n as i64;
-                let tmp = buf;
-                buf = &mut tmp[n..];
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-            Err(e) => {
-                if let Err(error) = this.seek(SeekFrom::Current(-bytes_read)) {
-                    panic!("Error while seeking back to the start: {}", error);
-                }
-                return Err(e)
-            },
-        }
-    }
-    if !buf.is_empty() {
-        if let Err(error) = this.seek(SeekFrom::Current(-bytes_read)) {
-            panic!("Error while seeking back to the start: {}", error);
-        }
-        Err(io::Error::new(io::ErrorKind::UnexpectedEof, "failed to fill whole buffer"))
-    } else {
-        Ok(())
-    }
-}
-
 #[cfg(feature = "experimental")]
 impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
     fn read_skippable_frame_size(&mut self) -> io::Result<usize> {
         let mut magic_buffer = [0u8; U32_SIZE];
-        read_exact_or_seek_back(self.reader.reader_mut(), &mut magic_buffer)?;
+        self.reader.reader_mut().read_exact(&mut magic_buffer)?;
 
         // Read skippable frame size.
         let mut buffer = [0u8; U32_SIZE];
-        read_exact_or_seek_back(self.reader.reader_mut(), &mut buffer)?;
+        self.reader.reader_mut().read_exact(&mut buffer)?;
         let content_size = u32::from_le_bytes(buffer) as usize;
 
         self.seek_back(U32_SIZE * 2);
@@ -139,47 +107,27 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
     /// Attempt to read a skippable frame and write its content to `dest`.
     /// If it cannot read a skippable frame, the reader will be back to its starting position.
     pub fn read_skippable_frame(&mut self, dest: &mut [u8]) -> io::Result<(usize, MagicVariant)> {
-        let mut bytes_to_seek = 0;
+        let magic_buffer = self.reader.peek_4bytes()?;
+        let op = self.reader.operation();
+        if !op.is_skippable_frame(&magic_buffer) {
+            return Err(io::Error::new(io::ErrorKind::Other, "Unsupported frame parameter"));
+        }
+        self.reader.clear_peeked_data();
 
-        let res = (|| {
-            let mut magic_buffer = [0u8; U32_SIZE];
-            read_exact_or_seek_back(self.reader.reader_mut(), &mut magic_buffer)?;
-            let magic_number = u32::from_le_bytes(magic_buffer);
+        let magic_number = u32::from_le_bytes(magic_buffer);
 
-            // Read skippable frame size.
-            let mut buffer = [0u8; U32_SIZE];
-            read_exact_or_seek_back(self.reader.reader_mut(), &mut buffer)?;
-            let content_size = u32::from_le_bytes(buffer) as usize;
+        // Read skippable frame size.
+        let mut buffer = [0u8; U32_SIZE];
+        self.reader.reader_mut().read_exact(&mut buffer)?;
+        let content_size = u32::from_le_bytes(buffer) as usize;
 
-            let op = self.reader.operation();
-            // FIXME: I feel like we should do that check right after reading the magic number, but
-            // ZSTD does it after reading the content size.
-            if !op.is_skippable_frame(&magic_buffer) {
-                bytes_to_seek = U32_SIZE * 2;
-                return Err(io::Error::new(io::ErrorKind::Other, "Unsupported frame parameter"));
-            }
-            if content_size > dest.len() {
-                bytes_to_seek = U32_SIZE * 2;
-                return Err(io::Error::new(io::ErrorKind::Other, "Destination buffer is too small"));
-            }
+        if content_size > dest.len() {
+            return Err(io::Error::new(io::ErrorKind::Other, "Destination buffer is too small"));
+        }
 
-            if content_size > 0 {
-                read_exact_or_seek_back(self.reader.reader_mut(), &mut dest[..content_size])?;
-            }
-
-            Ok((magic_number, content_size))
-        })();
-
-        let (magic_number, content_size) =
-            match res {
-                Ok(data) => data,
-                Err(err) => {
-                    if bytes_to_seek != 0 {
-                        self.seek_back(bytes_to_seek);
-                    }
-                    return Err(err);
-                },
-            };
+        if content_size > 0 {
+            self.reader.reader_mut().read_exact(&mut dest[..content_size])?;
+        }
 
         let magic_variant = magic_number - MAGIC_SKIPPABLE_START;
 
@@ -202,7 +150,13 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
 
         // TODO: should we support legacy format?
         let mut magic_buffer = [0u8; U32_SIZE];
-        self.reader.reader_mut().read_exact(&mut magic_buffer)?;
+        if self.reader.peeking() {
+            magic_buffer = self.reader.peeked_data();
+            self.reader.clear_peeked_data();
+        }
+        else {
+            self.reader.reader_mut().read_exact(&mut magic_buffer)?;
+        }
         let magic_number = u32::from_le_bytes(magic_buffer);
         self.seek_back(U32_SIZE);
         if magic_number & MAGIC_SKIPPABLE_MASK == MAGIC_SKIPPABLE_START {
@@ -240,7 +194,7 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
         use crate::map_error_code;
         const MAX_FRAME_HEADER_SIZE_PREFIX: usize = 5;
         let mut buffer = [0u8; MAX_FRAME_HEADER_SIZE_PREFIX];
-        read_exact_or_seek_back(self.reader.reader_mut(), &mut buffer)?;
+        self.reader.reader_mut().read_exact(&mut buffer)?;
         let size = frame_header_size(&buffer)
             .map_err(map_error_code)?;
         let byte = buffer[MAX_FRAME_HEADER_SIZE_PREFIX - 1];

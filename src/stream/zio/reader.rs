@@ -17,6 +17,9 @@ pub struct Reader<R, D> {
 
     single_frame: bool,
     finished_frame: bool,
+
+    peeking: bool,
+    peeked_data: [u8; 4],
 }
 
 enum State {
@@ -39,6 +42,8 @@ impl<R, D> Reader<R, D> {
             state: State::Reading,
             single_frame: false,
             finished_frame: false,
+            peeking: false,
+            peeked_data: [0; 4],
         }
     }
 
@@ -81,7 +86,37 @@ impl<R, D> Reader<R, D> {
     {
         self.operation.flush(&mut OutBuffer::around(output))
     }
+
+    /// Read some data, but do not consume it.
+    pub fn peek_4bytes(&mut self) -> io::Result<[u8; 4]>
+    where
+        R: BufRead,
+        D: Operation,
+    {
+        if !self.peeking {
+            self.reader.read_exact(&mut self.peeked_data)?;
+            self.peeking = true;
+        }
+
+        Ok(self.peeked_data)
+    }
+
+    /// Clear the peeked data.
+    pub fn clear_peeked_data(&mut self) {
+        self.peeking = false;
+    }
+
+    /// Check if there is currently any peeked data.
+    pub fn peeking(&self) -> bool {
+        self.peeking
+    }
+
+    /// Get the peeked data.
+    pub fn peeked_data(&self) -> [u8; 4] {
+        self.peeked_data
+    }
 }
+
 // Read and retry on Interrupted errors.
 fn fill_buf<R>(reader: &mut R) -> io::Result<&[u8]>
 where
@@ -118,12 +153,17 @@ where
         loop {
             match self.state {
                 State::Reading => {
+                    let is_peeking = self.peeking;
+
                     let (bytes_read, bytes_written) = {
                         // Start with a fresh pool of un-processed data.
                         // This is the only line that can return an interruption error.
                         let input = if first {
                             // eprintln!("First run, no input coming.");
                             b""
+                        } else if self.peeking {
+                            self.clear_peeked_data();
+                            &self.peeked_data
                         } else {
                             fill_buf(&mut self.reader)?
                         };
@@ -170,7 +210,9 @@ where
                         (src.pos(), dst.pos())
                     };
 
-                    self.reader.consume(bytes_read);
+                    if !is_peeking {
+                        self.reader.consume(bytes_read);
+                    }
 
                     if bytes_written > 0 {
                         return Ok(bytes_written);

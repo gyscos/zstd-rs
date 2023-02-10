@@ -2,7 +2,7 @@
 #[cfg(feature = "experimental")]
 use std::cmp::min;
 #[cfg(feature = "experimental")]
-use std::io::{SeekFrom, Seek};
+use std::io::{SeekFrom, Seek, Write};
 use std::io::{self, BufRead, BufReader, Read};
 #[cfg(feature = "experimental")]
 use std::mem::size_of;
@@ -106,7 +106,7 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
 
     /// Attempt to read a skippable frame and write its content to `dest`.
     /// If it cannot read a skippable frame, the reader will be back to its starting position.
-    pub fn read_skippable_frame(&mut self, dest: &mut [u8]) -> io::Result<(usize, MagicVariant)> {
+    pub fn read_skippable_frame<W: Write>(&mut self, dest: &mut W) -> io::Result<(usize, MagicVariant)> {
         let magic_buffer = self.reader.peek_4bytes()?;
         let op = self.reader.operation();
         if !op.is_skippable_frame(&magic_buffer) {
@@ -121,12 +121,8 @@ impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
         self.reader.reader_mut().read_exact(&mut buffer)?;
         let content_size = u32::from_le_bytes(buffer) as usize;
 
-        if content_size > dest.len() {
-            return Err(io::Error::new(io::ErrorKind::Other, "Destination buffer is too small"));
-        }
-
         if content_size > 0 {
-            self.reader.reader_mut().read_exact(&mut dest[..content_size])?;
+            std::io::copy(&mut self.reader.reader_mut().take(content_size as u64), dest)?;
         }
 
         let magic_variant = magic_number - MAGIC_SKIPPABLE_START;

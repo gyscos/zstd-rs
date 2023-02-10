@@ -346,7 +346,7 @@ mod tests {
         // Decompress and skip a frame.
         let mut decoder = Decoder::new(data).unwrap().single_frame();
 
-        let mut frame = vec![0; 20];
+        let mut frame = vec![];
         let (size, _) = decoder.read_skippable_frame(&mut frame).unwrap();
         assert_eq!("test content", String::from_utf8_lossy(&frame[..size]));
 
@@ -370,6 +370,7 @@ mod tests {
                 .single_frame()
         };
 
+        let mut frame = vec![];
         let (size, _) = decoder.read_skippable_frame(&mut frame).unwrap();
         assert_eq!("SKIP", String::from_utf8_lossy(&frame[..size]));
 
@@ -384,6 +385,7 @@ mod tests {
                 .single_frame()
         };
 
+        let mut frame = vec![];
         let (size, _) = decoder.read_skippable_frame(&mut frame).unwrap();
         assert_eq!("end", String::from_utf8_lossy(&frame[..size]));
 
@@ -432,10 +434,11 @@ mod tests {
                 .single_frame()
         };
 
-        let mut frame = vec![0; 20];
+        let mut frame = vec![];
         let (size, _) = decoder.read_skippable_frame(&mut frame).unwrap();
         assert_eq!("SKIP", String::from_utf8_lossy(&frame[..size]));
 
+        let mut frame = vec![];
         let (size, _) = decoder.read_skippable_frame(&mut frame).unwrap();
         assert_eq!("second skip frame", String::from_utf8_lossy(&frame[..size]));
     }

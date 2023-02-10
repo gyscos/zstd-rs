@@ -598,6 +598,10 @@ impl<'a> CCtx<'a> {
             ZSTD_c_experimentalParam13 as ZSTD_c_useBlockSplitter,
             ZSTD_c_experimentalParam14 as ZSTD_c_useRowMatchFinder,
             ZSTD_c_experimentalParam15 as ZSTD_c_deterministicRefPrefix,
+            ZSTD_c_experimentalParam16 as ZSTD_c_prefetchCDictTables,
+            ZSTD_c_experimentalParam17 as ZSTD_c_enableSeqProducerFallback,
+            ZSTD_c_experimentalParam18 as ZSTD_c_maxBlockSize,
+            ZSTD_c_experimentalParam19 as ZSTD_c_searchForExternalRepcodes,
             ZSTD_c_experimentalParam2 as ZSTD_c_format,
             ZSTD_c_experimentalParam3 as ZSTD_c_forceMaxWindow,
             ZSTD_c_experimentalParam4 as ZSTD_c_forceAttachDict,
@@ -620,6 +624,10 @@ impl<'a> CCtx<'a> {
             ForceMaxWindow(force) => (ZSTD_c_forceMaxWindow, force as c_int),
             #[cfg(feature = "experimental")]
             ForceAttachDict(force) => (ZSTD_c_forceAttachDict, force as c_int),
+            #[cfg(feature = "experimental")]
+            LiteralCompressionMode(mode) => {
+                (ZSTD_c_literalCompressionMode, mode as c_int)
+            }
             #[cfg(feature = "experimental")]
             TargetCBlockSize(value) => {
                 (ZSTD_c_targetCBlockSize, value as c_int)
@@ -654,6 +662,20 @@ impl<'a> CCtx<'a> {
             DeterministicRefPrefix(deterministic) => {
                 (ZSTD_c_deterministicRefPrefix, deterministic as c_int)
             }
+            #[cfg(feature = "experimental")]
+            PrefetchCDictTables(prefetch) => {
+                (ZSTD_c_prefetchCDictTables, prefetch as c_int)
+            }
+            #[cfg(feature = "experimental")]
+            EnableSeqProducerFallback(enable) => {
+                (ZSTD_c_enableSeqProducerFallback, enable as c_int)
+            }
+            #[cfg(feature = "experimental")]
+            MaxBlockSize(value) => (ZSTD_c_maxBlockSize, value as c_int),
+            #[cfg(feature = "experimental")]
+            SearchForExternalRepcodes(value) => {
+                (ZSTD_c_searchForExternalRepcodes, value as c_int)
+            }
             CompressionLevel(level) => (ZSTD_c_compressionLevel, level),
             WindowLog(value) => (ZSTD_c_windowLog, value as c_int),
             HashLog(value) => (ZSTD_c_hashLog, value as c_int),
@@ -662,10 +684,6 @@ impl<'a> CCtx<'a> {
             MinMatch(value) => (ZSTD_c_minMatch, value as c_int),
             TargetLength(value) => (ZSTD_c_targetLength, value as c_int),
             Strategy(strategy) => (ZSTD_c_strategy, strategy as c_int),
-            #[cfg(feature = "experimental")]
-            LiteralCompressionMode(mode) => {
-                (ZSTD_c_literalCompressionMode, mode as c_int)
-            }
             EnableLongDistanceMatching(flag) => {
                 (ZSTD_c_enableLongDistanceMatching, flag as c_int)
             }
@@ -2027,6 +2045,22 @@ pub enum CParameter {
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     DeterministicRefPrefix(bool),
 
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    PrefetchCDictTables(ParamSwitch),
+
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    EnableSeqProducerFallback(bool),
+
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    MaxBlockSize(u32),
+
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    SearchForExternalRepcodes(ParamSwitch),
+
     /// Compression level to use.
     ///
     /// Compression levels are global presets for the other compression parameters.
@@ -2170,4 +2204,31 @@ pub fn decompress_bound(data: &[u8]) -> Result<u64, ErrorCode> {
     } else {
         Ok(bound)
     }
+}
+
+/// Given a buffer of size `src_size`, returns the maximum number of sequences that can ge
+/// generated.
+#[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+pub fn sequence_bound(src_size: usize) -> usize {
+    // Safety: Just FFI.
+    unsafe { zstd_sys::ZSTD_sequenceBound(src_size) }
+}
+
+/// Returns the minimum extra space when output and input buffer overlap.
+///
+/// When using in-place decompression, the output buffer must be at least this much bigger (in
+/// bytes) than the input buffer. The extra space must be at the front of the output buffer (the
+/// input buffer must be at the end of the output buffer).
+#[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+pub fn decompression_margin(
+    compressed_data: &[u8],
+) -> Result<usize, ErrorCode> {
+    parse_code(unsafe {
+        zstd_sys::ZSTD_decompressionMargin(
+            ptr_void(compressed_data),
+            compressed_data.len(),
+        )
+    })
 }

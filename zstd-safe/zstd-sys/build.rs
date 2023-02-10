@@ -168,9 +168,7 @@ fn compile_zstd() {
 
         config
             .define("HUF_FORCE_DECOMPRESS_X1", Some("1"))
-            .define("HUF_FORCE_DECOMPRESS_X2", Some("0"))
             .define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT", Some("1"))
-            .define("ZSTD_FORCE_DECOMPRESS_SEQUENCES_LONG", Some("0"))
             .define("ZSTD_NO_INLINE", Some("1"))
             // removes the error messages that are
             // otherwise returned by ZSTD_getErrorName

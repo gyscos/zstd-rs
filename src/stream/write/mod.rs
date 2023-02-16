@@ -168,7 +168,7 @@ impl<W: Write, F: FnMut(io::Result<W>)> Write for AutoFinishEncoder<'_, W, F> {
 impl<W: Write> Encoder<'static, W> {
     /// Creates a new encoder.
     ///
-    /// `level`: compression level (1-21).
+    /// `level`: compression level (1-22).
     ///
     /// A level of `0` uses zstd's default (currently `3`).
     pub fn new(writer: W, level: i32) -> io::Result<Self> {

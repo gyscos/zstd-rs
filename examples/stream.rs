@@ -7,7 +7,7 @@ fn main() {
         None => {
             writeln!(
                 &mut io::stderr(),
-                "Invalid option. Usage: `stream [-d|-1..-21]`"
+                "Invalid option. Usage: `stream [-d|-1..-22]`"
             )
             .unwrap();
         }
@@ -22,7 +22,7 @@ fn main() {
             } else {
                 writeln!(
                     &mut io::stderr(),
-                    "Invalid option. Usage: `stream [-d|-1..-21]`"
+                    "Invalid option. Usage: `stream [-d|-1..-22]`"
                 )
                 .unwrap();
             }

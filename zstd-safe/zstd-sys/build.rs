@@ -128,6 +128,10 @@ fn compile_zstd() {
         config.file("zstd/lib/decompress/huf_decompress_amd64.S");
     }
 
+    // List out the WASM targets that need wasm-shim.
+    // Note that Emscripten already provides its own C standard library so
+    // wasm32-unknown-emscripten should not be included here.
+    // See: https://github.com/gyscos/zstd-rs/pull/209
     let need_wasm_shim = env::var("TARGET").map_or(false, |target| {
         target == "wasm32-unknown-unknown" || target == "wasm32-wasi"
     });

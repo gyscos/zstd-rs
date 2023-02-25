@@ -1710,9 +1710,9 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
     ///
     /// # Panics
     ///
-    /// If `pos >= dst.capacity()`.
+    /// If `pos > dst.capacity()`.
     pub fn around_pos(dst: &'a mut C, pos: usize) -> Self {
-        if pos >= dst.capacity() {
+        if pos > dst.capacity() {
             panic!("Given position outside of the buffer bounds.");
         }
 

@@ -210,19 +210,17 @@ impl<'a, W: Write> Encoder<'a, W> {
     }
 
     /// Returns a wrapper around `self` that will finish the stream on drop.
-    ///
-    /// # Panic
-    ///
-    /// Panics on drop if an error happens when finishing the stream.
     pub fn auto_finish(self) -> AutoFinishEncoder<'a, W> {
-        self.on_finish(Box::new(|result| {
-            result.unwrap();
-        }))
+        AutoFinishEncoder {
+            encoder: Some(self),
+            on_finish: None,
+        }
     }
 
     /// Returns an encoder that will finish the stream on drop.
     ///
-    /// Calls the given callback with the result from `finish()`.
+    /// Calls the given callback with the result from `finish()`. This runs during drop so it's
+    /// important that the provided callback doesn't panic.
     pub fn on_finish<F: FnMut(io::Result<W>)>(
         self,
         f: F,
@@ -361,19 +359,17 @@ impl<'a, W: Write> Decoder<'a, W> {
     }
 
     /// Returns a wrapper around `self` that will flush the stream on drop.
-    ///
-    /// # Panic
-    ///
-    /// Panics on drop if an error happens when flushing the stream.
     pub fn auto_flush(self) -> AutoFlushDecoder<'a, W> {
-        self.on_flush(Box::new(|result| {
-            result.unwrap();
-        }))
+        AutoFlushDecoder {
+            decoder: Some(self),
+            on_flush: None,
+        }
     }
 
     /// Returns a decoder that will flush the stream on drop.
     ///
-    /// Calls the given callback with the result from `flush()`.
+    /// Calls the given callback with the result from `flush()`. This runs during drop so it's
+    /// important that the provided callback doesn't panic.
     pub fn on_flush<F: FnMut(io::Result<()>)>(
         self,
         f: F,

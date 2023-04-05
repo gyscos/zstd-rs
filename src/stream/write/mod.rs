@@ -360,7 +360,10 @@ impl<'a, W: Write> Decoder<'a, W> {
 
     /// Returns a wrapper around `self` that will flush the stream on drop.
     pub fn auto_flush(self) -> AutoFlushDecoder<'a, W> {
-        self.on_flush(Box::new(|_result| {}))
+        AutoFlushDecoder {
+            decoder: Some(self),
+            on_flush: None,
+        }
     }
 
     /// Returns a decoder that will flush the stream on drop.

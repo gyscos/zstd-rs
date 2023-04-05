@@ -211,7 +211,10 @@ impl<'a, W: Write> Encoder<'a, W> {
 
     /// Returns a wrapper around `self` that will finish the stream on drop.
     pub fn auto_finish(self) -> AutoFinishEncoder<'a, W> {
-        self.on_finish(Box::new(|_result| {}))
+        AutoFinishEncoder {
+            encoder: Some(self),
+            on_finish: None,
+        }
     }
 
     /// Returns an encoder that will finish the stream on drop.

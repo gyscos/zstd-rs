@@ -37,8 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 5;
-pub const ZSTD_VERSION_RELEASE: u32 = 4;
-pub const ZSTD_VERSION_NUMBER: u32 = 10504;
+pub const ZSTD_VERSION_RELEASE: u32 = 5;
+pub const ZSTD_VERSION_NUMBER: u32 = 10505;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
@@ -84,7 +84,7 @@ extern "C" {
     pub fn ZSTD_versionString() -> *const ::std::os::raw::c_char;
 }
 extern "C" {
-    #[doc = "  Simple API\n/\n/*! ZSTD_compress() :\n  Compresses `src` content as a single zstd compressed frame into already allocated `dst`.\n  Hint : compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`.\n  @return : compressed size written into `dst` (<= `dstCapacity),\n            or an error code if it fails (which can be tested using ZSTD_isError())."]
+    #[doc = "  Simple API\n/\n/*! ZSTD_compress() :\n  Compresses `src` content as a single zstd compressed frame into already allocated `dst`.\n  NOTE: Providing `dstCapacity >= ZSTD_compressBound(srcSize)` guarantees that zstd will have\n        enough space to successfully compress the data.\n  @return : compressed size written into `dst` (<= `dstCapacity),\n            or an error code if it fails (which can be tested using ZSTD_isError())."]
     pub fn ZSTD_compress(
         dst: *mut ::core::ffi::c_void,
         dstCapacity: usize,
@@ -283,7 +283,7 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
-    #[doc = " ZSTD_compress2() :\n  Behave the same as ZSTD_compressCCtx(), but compression parameters are set using the advanced API.\n  ZSTD_compress2() always starts a new frame.\n  Should cctx hold data from a previously unfinished frame, everything about it is forgotten.\n  - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_set*()\n  - The function is always blocking, returns when compression is completed.\n  Hint : compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`.\n @return : compressed size written into `dst` (<= `dstCapacity),\n           or an error code if it fails (which can be tested using ZSTD_isError())."]
+    #[doc = " ZSTD_compress2() :\n  Behave the same as ZSTD_compressCCtx(), but compression parameters are set using the advanced API.\n  ZSTD_compress2() always starts a new frame.\n  Should cctx hold data from a previously unfinished frame, everything about it is forgotten.\n  - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_set*()\n  - The function is always blocking, returns when compression is completed.\n  NOTE: Providing `dstCapacity >= ZSTD_compressBound(srcSize)` guarantees that zstd will have\n        enough space to successfully compress the data, though it is possible it fails for other reasons.\n @return : compressed size written into `dst` (<= `dstCapacity),\n           or an error code if it fails (which can be tested using ZSTD_isError())."]
     pub fn ZSTD_compress2(
         cctx: *mut ZSTD_CCtx,
         dst: *mut ::core::ffi::c_void,
@@ -539,7 +539,7 @@ extern "C" {
     ) -> ::std::os::raw::c_uint;
 }
 extern "C" {
-    #[doc = " ZSTD_CCtx_loadDictionary() : Requires v1.4.0+\n  Create an internal CDict from `dict` buffer.\n  Decompression will have to use same dictionary.\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Loading a NULL (or 0-size) dictionary invalidates previous dictionary,\n           meaning \"return to no-dictionary mode\".\n  Note 1 : Dictionary is sticky, it will be used for all future compressed frames,\n           until parameters are reset, a new dictionary is loaded, or the dictionary\n           is explicitly invalidated by loading a NULL dictionary.\n  Note 2 : Loading a dictionary involves building tables.\n           It's also a CPU consuming operation, with non-negligible impact on latency.\n           Tables are dependent on compression parameters, and for this reason,\n           compression parameters can no longer be changed after loading a dictionary.\n  Note 3 :`dict` content will be copied internally.\n           Use experimental ZSTD_CCtx_loadDictionary_byReference() to reference content instead.\n           In such a case, dictionary buffer must outlive its users.\n  Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()\n           to precisely select how dictionary content must be interpreted."]
+    #[doc = " ZSTD_CCtx_loadDictionary() : Requires v1.4.0+\n  Create an internal CDict from `dict` buffer.\n  Decompression will have to use same dictionary.\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Loading a NULL (or 0-size) dictionary invalidates previous dictionary,\n           meaning \"return to no-dictionary mode\".\n  Note 1 : Dictionary is sticky, it will be used for all future compressed frames,\n           until parameters are reset, a new dictionary is loaded, or the dictionary\n           is explicitly invalidated by loading a NULL dictionary.\n  Note 2 : Loading a dictionary involves building tables.\n           It's also a CPU consuming operation, with non-negligible impact on latency.\n           Tables are dependent on compression parameters, and for this reason,\n           compression parameters can no longer be changed after loading a dictionary.\n  Note 3 :`dict` content will be copied internally.\n           Use experimental ZSTD_CCtx_loadDictionary_byReference() to reference content instead.\n           In such a case, dictionary buffer must outlive its users.\n  Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()\n           to precisely select how dictionary content must be interpreted.\n  Note 5 : This method does not benefit from LDM (long distance mode).\n           If you want to employ LDM on some large dictionary content,\n           prefer employing ZSTD_CCtx_refPrefix() described below."]
     pub fn ZSTD_CCtx_loadDictionary(
         cctx: *mut ZSTD_CCtx,
         dict: *const ::core::ffi::c_void,
@@ -554,7 +554,7 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
-    #[doc = " ZSTD_CCtx_refPrefix() : Requires v1.4.0+\n  Reference a prefix (single-usage dictionary) for next compressed frame.\n  A prefix is **only used once**. Tables are discarded at end of frame (ZSTD_e_end).\n  Decompression will need same prefix to properly regenerate data.\n  Compressing with a prefix is similar in outcome as performing a diff and compressing it,\n  but performs much faster, especially during decompression (compression speed is tunable with compression level).\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Adding any prefix (including NULL) invalidates any previous prefix or dictionary\n  Note 1 : Prefix buffer is referenced. It **must** outlive compression.\n           Its content must remain unmodified during compression.\n  Note 2 : If the intention is to diff some large src data blob with some prior version of itself,\n           ensure that the window size is large enough to contain the entire source.\n           See ZSTD_c_windowLog.\n  Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters.\n           It's a CPU consuming operation, with non-negligible impact on latency.\n           If there is a need to use the same prefix multiple times, consider loadDictionary instead.\n  Note 4 : By default, the prefix is interpreted as raw content (ZSTD_dct_rawContent).\n           Use experimental ZSTD_CCtx_refPrefix_advanced() to alter dictionary interpretation."]
+    #[doc = " ZSTD_CCtx_refPrefix() : Requires v1.4.0+\n  Reference a prefix (single-usage dictionary) for next compressed frame.\n  A prefix is **only used once**. Tables are discarded at end of frame (ZSTD_e_end).\n  Decompression will need same prefix to properly regenerate data.\n  Compressing with a prefix is similar in outcome as performing a diff and compressing it,\n  but performs much faster, especially during decompression (compression speed is tunable with compression level).\n  This method is compatible with LDM (long distance mode).\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Adding any prefix (including NULL) invalidates any previous prefix or dictionary\n  Note 1 : Prefix buffer is referenced. It **must** outlive compression.\n           Its content must remain unmodified during compression.\n  Note 2 : If the intention is to diff some large src data blob with some prior version of itself,\n           ensure that the window size is large enough to contain the entire source.\n           See ZSTD_c_windowLog.\n  Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters.\n           It's a CPU consuming operation, with non-negligible impact on latency.\n           If there is a need to use the same prefix multiple times, consider loadDictionary instead.\n  Note 4 : By default, the prefix is interpreted as raw content (ZSTD_dct_rawContent).\n           Use experimental ZSTD_CCtx_refPrefix_advanced() to alter dictionary interpretation."]
     pub fn ZSTD_CCtx_refPrefix(
         cctx: *mut ZSTD_CCtx,
         prefix: *const ::core::ffi::c_void,
@@ -728,6 +728,42 @@ extern "C" {
     pub fn ZSTD_frameHeaderSize(
         src: *const ::core::ffi::c_void,
         srcSize: usize,
+    ) -> usize;
+}
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum ZSTD_frameType_e {
+    ZSTD_frame = 0,
+    ZSTD_skippableFrame = 1,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ZSTD_frameHeader {
+    pub frameContentSize: ::std::os::raw::c_ulonglong,
+    pub windowSize: ::std::os::raw::c_ulonglong,
+    pub blockSizeMax: ::std::os::raw::c_uint,
+    pub frameType: ZSTD_frameType_e,
+    pub headerSize: ::std::os::raw::c_uint,
+    pub dictID: ::std::os::raw::c_uint,
+    pub checksumFlag: ::std::os::raw::c_uint,
+    pub _reserved1: ::std::os::raw::c_uint,
+    pub _reserved2: ::std::os::raw::c_uint,
+}
+extern "C" {
+    #[doc = " ZSTD_getFrameHeader() :\n  decode Frame Header, or requires larger `srcSize`.\n @return : 0, `zfhPtr` is correctly filled,\n          >0, `srcSize` is too small, value is wanted `srcSize` amount,\n           or an error code, which can be tested using ZSTD_isError()"]
+    pub fn ZSTD_getFrameHeader(
+        zfhPtr: *mut ZSTD_frameHeader,
+        src: *const ::core::ffi::c_void,
+        srcSize: usize,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_getFrameHeader_advanced() :\n  same as ZSTD_getFrameHeader(),\n  with added capability to select a format (like ZSTD_f_zstd1_magicless)"]
+    pub fn ZSTD_getFrameHeader_advanced(
+        zfhPtr: *mut ZSTD_frameHeader,
+        src: *const ::core::ffi::c_void,
+        srcSize: usize,
+        format: ZSTD_format_e,
     ) -> usize;
 }
 extern "C" {
@@ -1042,10 +1078,24 @@ extern "C" {
     ) -> ZSTD_compressionParameters;
 }
 extern "C" {
-    #[doc = " ZSTD_CCtx_setCParams() :\n  Set all parameters provided within @cparams into the working @cctx.\n  Note : if modifying parameters during compression (MT mode only),\n         note that changes to the .windowLog parameter will be ignored.\n @return 0 on success, or an error code (can be checked with ZSTD_isError())"]
+    #[doc = " ZSTD_CCtx_setCParams() :\n  Set all parameters provided within @p cparams into the working @p cctx.\n  Note : if modifying parameters during compression (MT mode only),\n         note that changes to the .windowLog parameter will be ignored.\n @return 0 on success, or an error code (can be checked with ZSTD_isError()).\n         On failure, no parameters are updated."]
     pub fn ZSTD_CCtx_setCParams(
         cctx: *mut ZSTD_CCtx,
         cparams: ZSTD_compressionParameters,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_setFParams() :\n  Set all parameters provided within @p fparams into the working @p cctx.\n @return 0 on success, or an error code (can be checked with ZSTD_isError())."]
+    pub fn ZSTD_CCtx_setFParams(
+        cctx: *mut ZSTD_CCtx,
+        fparams: ZSTD_frameParameters,
+    ) -> usize;
+}
+extern "C" {
+    #[doc = " ZSTD_CCtx_setParams() :\n  Set all parameters provided within @p params into the working @p cctx.\n @return 0 on success, or an error code (can be checked with ZSTD_isError())."]
+    pub fn ZSTD_CCtx_setParams(
+        cctx: *mut ZSTD_CCtx,
+        params: ZSTD_parameters,
     ) -> usize;
 }
 extern "C" {
@@ -1262,7 +1312,7 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
-    #[doc = " ZSTD_initCStream_advanced() :\n This function is DEPRECATED, and is approximately equivalent to:\n     ZSTD_CCtx_reset(zcs, ZSTD_reset_session_only);\n     // Pseudocode: Set each zstd parameter and leave the rest as-is.\n     for ((param, value) : params) {\n         ZSTD_CCtx_setParameter(zcs, param, value);\n     }\n     ZSTD_CCtx_setPledgedSrcSize(zcs, pledgedSrcSize);\n     ZSTD_CCtx_loadDictionary(zcs, dict, dictSize);\n\n dict is loaded with ZSTD_dct_auto and ZSTD_dlm_byCopy.\n pledgedSrcSize must be correct.\n If srcSize is not known at init time, use value ZSTD_CONTENTSIZE_UNKNOWN.\n This prototype will generate compilation warnings."]
+    #[doc = " ZSTD_initCStream_advanced() :\n This function is DEPRECATED, and is equivalent to:\n     ZSTD_CCtx_reset(zcs, ZSTD_reset_session_only);\n     ZSTD_CCtx_setParams(zcs, params);\n     ZSTD_CCtx_setPledgedSrcSize(zcs, pledgedSrcSize);\n     ZSTD_CCtx_loadDictionary(zcs, dict, dictSize);\n\n dict is loaded with ZSTD_dct_auto and ZSTD_dlm_byCopy.\n pledgedSrcSize must be correct.\n If srcSize is not known at init time, use value ZSTD_CONTENTSIZE_UNKNOWN.\n This prototype will generate compilation warnings."]
     pub fn ZSTD_initCStream_advanced(
         zcs: *mut ZSTD_CStream,
         dict: *const ::core::ffi::c_void,
@@ -1279,7 +1329,7 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
-    #[doc = " ZSTD_initCStream_usingCDict_advanced() :\n   This function is DEPRECATED, and is approximately equivalent to:\n     ZSTD_CCtx_reset(zcs, ZSTD_reset_session_only);\n     // Pseudocode: Set each zstd frame parameter and leave the rest as-is.\n     for ((fParam, value) : fParams) {\n         ZSTD_CCtx_setParameter(zcs, fParam, value);\n     }\n     ZSTD_CCtx_setPledgedSrcSize(zcs, pledgedSrcSize);\n     ZSTD_CCtx_refCDict(zcs, cdict);\n\n same as ZSTD_initCStream_usingCDict(), with control over frame parameters.\n pledgedSrcSize must be correct. If srcSize is not known at init time, use\n value ZSTD_CONTENTSIZE_UNKNOWN.\n This prototype will generate compilation warnings."]
+    #[doc = " ZSTD_initCStream_usingCDict_advanced() :\n   This function is DEPRECATED, and is equivalent to:\n     ZSTD_CCtx_reset(zcs, ZSTD_reset_session_only);\n     ZSTD_CCtx_setFParams(zcs, fParams);\n     ZSTD_CCtx_setPledgedSrcSize(zcs, pledgedSrcSize);\n     ZSTD_CCtx_refCDict(zcs, cdict);\n\n same as ZSTD_initCStream_usingCDict(), with control over frame parameters.\n pledgedSrcSize must be correct. If srcSize is not known at init time, use\n value ZSTD_CONTENTSIZE_UNKNOWN.\n This prototype will generate compilation warnings."]
     pub fn ZSTD_initCStream_usingCDict_advanced(
         zcs: *mut ZSTD_CStream,
         cdict: *const ZSTD_CDict,
@@ -1331,6 +1381,27 @@ extern "C" {
 extern "C" {
     #[doc = " This function is deprecated, and is equivalent to:\n\n     ZSTD_DCtx_reset(zds, ZSTD_reset_session_only);\n\n re-use decompression parameters from previous init; saves dictionary loading"]
     pub fn ZSTD_resetDStream(zds: *mut ZSTD_DStream) -> usize;
+}
+pub type ZSTD_sequenceProducer_F = ::core::option::Option<
+    unsafe extern "C" fn(
+        sequenceProducerState: *mut ::core::ffi::c_void,
+        outSeqs: *mut ZSTD_Sequence,
+        outSeqsCapacity: usize,
+        src: *const ::core::ffi::c_void,
+        srcSize: usize,
+        dict: *const ::core::ffi::c_void,
+        dictSize: usize,
+        compressionLevel: ::std::os::raw::c_int,
+        windowSize: usize,
+    ) -> usize,
+>;
+extern "C" {
+    #[doc = " ZSTD_registerSequenceProducer() :\n Instruct zstd to use a block-level external sequence producer function.\n\n The sequenceProducerState must be initialized by the caller, and the caller is\n responsible for managing its lifetime. This parameter is sticky across\n compressions. It will remain set until the user explicitly resets compression\n parameters.\n\n Sequence producer registration is considered to be an \"advanced parameter\",\n part of the \"advanced API\". This means it will only have an effect on compression\n APIs which respect advanced parameters, such as compress2() and compressStream2().\n Older compression APIs such as compressCCtx(), which predate the introduction of\n \"advanced parameters\", will ignore any external sequence producer setting.\n\n The sequence producer can be \"cleared\" by registering a NULL function pointer. This\n removes all limitations described above in the \"LIMITATIONS\" section of the API docs.\n\n The user is strongly encouraged to read the full API documentation (above) before\n calling this function."]
+    pub fn ZSTD_registerSequenceProducer(
+        cctx: *mut ZSTD_CCtx,
+        sequenceProducerState: *mut ::core::ffi::c_void,
+        sequenceProducer: ZSTD_sequenceProducer_F,
+    );
 }
 extern "C" {
     #[doc = "Buffer-less streaming compression (synchronous mode)\n\nA ZSTD_CCtx object is required to track streaming operations.\nUse ZSTD_createCCtx() / ZSTD_freeCCtx() to manage resource.\nZSTD_CCtx object can be re-used multiple times within successive compression operations.\n\nStart by initializing a context.\nUse ZSTD_compressBegin(), or ZSTD_compressBegin_usingDict() for dictionary compression.\n\nThen, consume your input using ZSTD_compressContinue().\nThere are some important considerations to keep in mind when using this advanced function :\n- ZSTD_compressContinue() has no internal buffer. It uses externally provided buffers only.\n- Interface is synchronous : input is consumed entirely and produces 1+ compressed blocks.\n- Caller must ensure there is enough space in `dst` to store compressed data under worst case scenario.\nWorst case evaluation is provided by ZSTD_compressBound().\nZSTD_compressContinue() doesn't guarantee recover after a failed compression.\n- ZSTD_compressContinue() presumes prior input ***is still accessible and unmodified*** (up to maximum distance size, see WindowLog).\nIt remembers all previous contiguous blocks, plus one separated memory segment (which can itself consists of multiple contiguous blocks)\n- ZSTD_compressContinue() detects that prior input has been overwritten when `src` buffer overlaps.\nIn which case, it will \"discard\" the relevant memory section from its history.\n\nFinish a frame with ZSTD_compressEnd(), which will write the last block(s) and optional checksum.\nIt's possible to use srcSize==0, in which case, it will write a final empty block to end the frame.\nWithout last block mark, frames are considered unfinished (hence corrupted) by compliant decoders.\n\n`ZSTD_CCtx` object can be re-used (ZSTD_compressBegin()) to compress again."]
@@ -1395,44 +1466,8 @@ extern "C" {
         pledgedSrcSize: ::std::os::raw::c_ulonglong,
     ) -> usize;
 }
-#[repr(u32)]
-#[doc = "Buffer-less streaming decompression (synchronous mode)\n\nA ZSTD_DCtx object is required to track streaming operations.\nUse ZSTD_createDCtx() / ZSTD_freeDCtx() to manage it.\nA ZSTD_DCtx object can be re-used multiple times.\n\nFirst typical operation is to retrieve frame parameters, using ZSTD_getFrameHeader().\nFrame header is extracted from the beginning of compressed frame, so providing only the frame's beginning is enough.\nData fragment must be large enough to ensure successful decoding.\n`ZSTD_frameHeaderSize_max` bytes is guaranteed to always be large enough.\nresult  : 0 : successful decoding, the `ZSTD_frameHeader` structure is correctly filled.\n>0 : `srcSize` is too small, please provide at least result bytes on next attempt.\nerrorCode, which can be tested using ZSTD_isError().\n\nIt fills a ZSTD_frameHeader structure with important information to correctly decode the frame,\nsuch as the dictionary ID, content size, or maximum back-reference distance (`windowSize`).\nNote that these values could be wrong, either because of data corruption, or because a 3rd party deliberately spoofs false information.\nAs a consequence, check that values remain within valid application range.\nFor example, do not allocate memory blindly, check that `windowSize` is within expectation.\nEach application can set its own limits, depending on local restrictions.\nFor extended interoperability, it is recommended to support `windowSize` of at least 8 MB.\n\nZSTD_decompressContinue() needs previous data blocks during decompression, up to `windowSize` bytes.\nZSTD_decompressContinue() is very sensitive to contiguity,\nif 2 blocks don't follow each other, make sure that either the compressor breaks contiguity at the same place,\nor that previous contiguous segment is large enough to properly handle maximum back-reference distance.\nThere are multiple ways to guarantee this condition.\n\nThe most memory efficient way is to use a round buffer of sufficient size.\nSufficient size is determined by invoking ZSTD_decodingBufferSize_min(),\nwhich can return an error code if required value is too large for current system (in 32-bits mode).\nIn a round buffer methodology, ZSTD_decompressContinue() decompresses each block next to previous one,\nup to the moment there is not enough room left in the buffer to guarantee decoding another full block,\nwhich maximum size is provided in `ZSTD_frameHeader` structure, field `blockSizeMax`.\nAt which point, decoding can resume from the beginning of the buffer.\nNote that already decoded data stored in the buffer should be flushed before being overwritten.\n\nThere are alternatives possible, for example using two or more buffers of size `windowSize` each, though they consume more memory.\n\nFinally, if you control the compression process, you can also ignore all buffer size rules,\nas long as the encoder and decoder progress in \"lock-step\",\naka use exactly the same buffer sizes, break contiguity at the same place, etc.\n\nOnce buffers are setup, start decompression, with ZSTD_decompressBegin().\nIf decompression requires a dictionary, use ZSTD_decompressBegin_usingDict() or ZSTD_decompressBegin_usingDDict().\n\nThen use ZSTD_nextSrcSizeToDecompress() and ZSTD_decompressContinue() alternatively.\nZSTD_nextSrcSizeToDecompress() tells how many bytes to provide as 'srcSize' to ZSTD_decompressContinue().\nZSTD_decompressContinue() requires this _exact_ amount of bytes, or it will fail.\n\nresult of ZSTD_decompressContinue() is the number of bytes regenerated within 'dst' (necessarily <= dstCapacity).\nIt can be zero : it just means ZSTD_decompressContinue() has decoded some metadata item.\nIt can also be an error code, which can be tested with ZSTD_isError().\n\nA frame is fully decoded when ZSTD_nextSrcSizeToDecompress() returns zero.\nContext can then be reset to start a new decompression.\n\nNote : it's possible to know if next input to present is a header or a block, using ZSTD_nextInputType().\nThis information is not required to properly decode a frame.\n\n== Special case : skippable frames ==\n\nSkippable frames allow integration of user-defined data into a flow of concatenated frames.\nSkippable frames will be ignored (skipped) by decompressor.\nThe format of skippable frames is as follows :\na) Skippable frame ID - 4 Bytes, Little endian format, any value from 0x184D2A50 to 0x184D2A5F\nb) Frame Size - 4 Bytes, Little endian format, unsigned 32-bits\nc) Frame Content - any content (User Data) of length equal to Frame Size\nFor skippable frames ZSTD_getFrameHeader() returns zfhPtr->frameType==ZSTD_skippableFrame.\nFor skippable frames ZSTD_decompressContinue() always returns 0 : it only skips the content."]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum ZSTD_frameType_e {
-    ZSTD_frame = 0,
-    ZSTD_skippableFrame = 1,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct ZSTD_frameHeader {
-    pub frameContentSize: ::std::os::raw::c_ulonglong,
-    pub windowSize: ::std::os::raw::c_ulonglong,
-    pub blockSizeMax: ::std::os::raw::c_uint,
-    pub frameType: ZSTD_frameType_e,
-    pub headerSize: ::std::os::raw::c_uint,
-    pub dictID: ::std::os::raw::c_uint,
-    pub checksumFlag: ::std::os::raw::c_uint,
-    pub _reserved1: ::std::os::raw::c_uint,
-    pub _reserved2: ::std::os::raw::c_uint,
-}
 extern "C" {
-    #[doc = " ZSTD_getFrameHeader() :\n  decode Frame Header, or requires larger `srcSize`.\n @return : 0, `zfhPtr` is correctly filled,\n          >0, `srcSize` is too small, value is wanted `srcSize` amount,\n           or an error code, which can be tested using ZSTD_isError()"]
-    pub fn ZSTD_getFrameHeader(
-        zfhPtr: *mut ZSTD_frameHeader,
-        src: *const ::core::ffi::c_void,
-        srcSize: usize,
-    ) -> usize;
-}
-extern "C" {
-    #[doc = " ZSTD_getFrameHeader_advanced() :\n  same as ZSTD_getFrameHeader(),\n  with added capability to select a format (like ZSTD_f_zstd1_magicless)"]
-    pub fn ZSTD_getFrameHeader_advanced(
-        zfhPtr: *mut ZSTD_frameHeader,
-        src: *const ::core::ffi::c_void,
-        srcSize: usize,
-        format: ZSTD_format_e,
-    ) -> usize;
-}
-extern "C" {
+    #[doc = "Buffer-less streaming decompression (synchronous mode)\n\nA ZSTD_DCtx object is required to track streaming operations.\nUse ZSTD_createDCtx() / ZSTD_freeDCtx() to manage it.\nA ZSTD_DCtx object can be re-used multiple times.\n\nFirst typical operation is to retrieve frame parameters, using ZSTD_getFrameHeader().\nFrame header is extracted from the beginning of compressed frame, so providing only the frame's beginning is enough.\nData fragment must be large enough to ensure successful decoding.\n`ZSTD_frameHeaderSize_max` bytes is guaranteed to always be large enough.\nresult  : 0 : successful decoding, the `ZSTD_frameHeader` structure is correctly filled.\n>0 : `srcSize` is too small, please provide at least result bytes on next attempt.\nerrorCode, which can be tested using ZSTD_isError().\n\nIt fills a ZSTD_frameHeader structure with important information to correctly decode the frame,\nsuch as the dictionary ID, content size, or maximum back-reference distance (`windowSize`).\nNote that these values could be wrong, either because of data corruption, or because a 3rd party deliberately spoofs false information.\nAs a consequence, check that values remain within valid application range.\nFor example, do not allocate memory blindly, check that `windowSize` is within expectation.\nEach application can set its own limits, depending on local restrictions.\nFor extended interoperability, it is recommended to support `windowSize` of at least 8 MB.\n\nZSTD_decompressContinue() needs previous data blocks during decompression, up to `windowSize` bytes.\nZSTD_decompressContinue() is very sensitive to contiguity,\nif 2 blocks don't follow each other, make sure that either the compressor breaks contiguity at the same place,\nor that previous contiguous segment is large enough to properly handle maximum back-reference distance.\nThere are multiple ways to guarantee this condition.\n\nThe most memory efficient way is to use a round buffer of sufficient size.\nSufficient size is determined by invoking ZSTD_decodingBufferSize_min(),\nwhich can return an error code if required value is too large for current system (in 32-bits mode).\nIn a round buffer methodology, ZSTD_decompressContinue() decompresses each block next to previous one,\nup to the moment there is not enough room left in the buffer to guarantee decoding another full block,\nwhich maximum size is provided in `ZSTD_frameHeader` structure, field `blockSizeMax`.\nAt which point, decoding can resume from the beginning of the buffer.\nNote that already decoded data stored in the buffer should be flushed before being overwritten.\n\nThere are alternatives possible, for example using two or more buffers of size `windowSize` each, though they consume more memory.\n\nFinally, if you control the compression process, you can also ignore all buffer size rules,\nas long as the encoder and decoder progress in \"lock-step\",\naka use exactly the same buffer sizes, break contiguity at the same place, etc.\n\nOnce buffers are setup, start decompression, with ZSTD_decompressBegin().\nIf decompression requires a dictionary, use ZSTD_decompressBegin_usingDict() or ZSTD_decompressBegin_usingDDict().\n\nThen use ZSTD_nextSrcSizeToDecompress() and ZSTD_decompressContinue() alternatively.\nZSTD_nextSrcSizeToDecompress() tells how many bytes to provide as 'srcSize' to ZSTD_decompressContinue().\nZSTD_decompressContinue() requires this _exact_ amount of bytes, or it will fail.\n\nresult of ZSTD_decompressContinue() is the number of bytes regenerated within 'dst' (necessarily <= dstCapacity).\nIt can be zero : it just means ZSTD_decompressContinue() has decoded some metadata item.\nIt can also be an error code, which can be tested with ZSTD_isError().\n\nA frame is fully decoded when ZSTD_nextSrcSizeToDecompress() returns zero.\nContext can then be reset to start a new decompression.\n\nNote : it's possible to know if next input to present is a header or a block, using ZSTD_nextInputType().\nThis information is not required to properly decode a frame.\n\n== Special case : skippable frames ==\n\nSkippable frames allow integration of user-defined data into a flow of concatenated frames.\nSkippable frames will be ignored (skipped) by decompressor.\nThe format of skippable frames is as follows :\na) Skippable frame ID - 4 Bytes, Little endian format, any value from 0x184D2A50 to 0x184D2A5F\nb) Frame Size - 4 Bytes, Little endian format, unsigned 32-bits\nc) Frame Content - any content (User Data) of length equal to Frame Size\nFor skippable frames ZSTD_getFrameHeader() returns zfhPtr->frameType==ZSTD_skippableFrame.\nFor skippable frames ZSTD_decompressContinue() always returns 0 : it only skips the content."]
     pub fn ZSTD_decodingBufferSize_min(
         windowSize: ::std::os::raw::c_ulonglong,
         frameContentSize: ::std::os::raw::c_ulonglong,
@@ -1483,7 +1518,7 @@ extern "C" {
     pub fn ZSTD_nextInputType(dctx: *mut ZSTD_DCtx) -> ZSTD_nextInputType_e;
 }
 extern "C" {
-    #[doc = "Block functions produce and decode raw zstd blocks, without frame metadata.\nFrame metadata cost is typically ~12 bytes, which can be non-negligible for very small blocks (< 100 bytes).\nBut users will have to take in charge needed metadata to regenerate data, such as compressed and content sizes.\n\nA few rules to respect :\n- Compressing and decompressing require a context structure\n+ Use ZSTD_createCCtx() and ZSTD_createDCtx()\n- It is necessary to init context before starting\n+ compression : any ZSTD_compressBegin*() variant, including with dictionary\n+ decompression : any ZSTD_decompressBegin*() variant, including with dictionary\n- Block size is limited, it must be <= ZSTD_getBlockSize() <= ZSTD_BLOCKSIZE_MAX == 128 KB\n+ If input is larger than a block size, it's necessary to split input data into multiple blocks\n+ For inputs larger than a single block, consider using regular ZSTD_compress() instead.\nFrame metadata is not that costly, and quickly becomes negligible as source size grows larger than a block.\n- When a block is considered not compressible enough, ZSTD_compressBlock() result will be 0 (zero) !\n===> In which case, nothing is produced into `dst` !\n+ User __must__ test for such outcome and deal directly with uncompressed data\n+ A block cannot be declared incompressible if ZSTD_compressBlock() return value was != 0.\nDoing so would mess up with statistics history, leading to potential data corruption.\n+ ZSTD_decompressBlock() _doesn't accept uncompressed data as input_ !!\n+ In case of multiple successive blocks, should some of them be uncompressed,\ndecoder must be informed of their existence in order to follow proper history.\nUse ZSTD_insertBlock() for such a case."]
+    #[doc = "This API is deprecated in favor of the regular compression API.\nYou can get the frame header down to 2 bytes by setting:\n- ZSTD_c_format = ZSTD_f_zstd1_magicless\n- ZSTD_c_contentSizeFlag = 0\n- ZSTD_c_checksumFlag = 0\n- ZSTD_c_dictIDFlag = 0\n\nThis API is not as well tested as our normal API, so we recommend not using it.\nWe will be removing it in a future version. If the normal API doesn't provide\nthe functionality you need, please open a GitHub issue.\n\nBlock functions produce and decode raw zstd blocks, without frame metadata.\nFrame metadata cost is typically ~12 bytes, which can be non-negligible for very small blocks (< 100 bytes).\nBut users will have to take in charge needed metadata to regenerate data, such as compressed and content sizes.\n\nA few rules to respect :\n- Compressing and decompressing require a context structure\n+ Use ZSTD_createCCtx() and ZSTD_createDCtx()\n- It is necessary to init context before starting\n+ compression : any ZSTD_compressBegin*() variant, including with dictionary\n+ decompression : any ZSTD_decompressBegin*() variant, including with dictionary\n- Block size is limited, it must be <= ZSTD_getBlockSize() <= ZSTD_BLOCKSIZE_MAX == 128 KB\n+ If input is larger than a block size, it's necessary to split input data into multiple blocks\n+ For inputs larger than a single block, consider using regular ZSTD_compress() instead.\nFrame metadata is not that costly, and quickly becomes negligible as source size grows larger than a block.\n- When a block is considered not compressible enough, ZSTD_compressBlock() result will be 0 (zero) !\n===> In which case, nothing is produced into `dst` !\n+ User __must__ test for such outcome and deal directly with uncompressed data\n+ A block cannot be declared incompressible if ZSTD_compressBlock() return value was != 0.\nDoing so would mess up with statistics history, leading to potential data corruption.\n+ ZSTD_decompressBlock() _doesn't accept uncompressed data as input_ !!\n+ In case of multiple successive blocks, should some of them be uncompressed,\ndecoder must be informed of their existence in order to follow proper history.\nUse ZSTD_insertBlock() for such a case."]
     pub fn ZSTD_getBlockSize(cctx: *const ZSTD_CCtx) -> usize;
 }
 extern "C" {
@@ -1510,25 +1545,4 @@ extern "C" {
         blockStart: *const ::core::ffi::c_void,
         blockSize: usize,
     ) -> usize;
-}
-pub type ZSTD_sequenceProducer_F = ::core::option::Option<
-    unsafe extern "C" fn(
-        sequenceProducerState: *mut ::core::ffi::c_void,
-        outSeqs: *mut ZSTD_Sequence,
-        outSeqsCapacity: usize,
-        src: *const ::core::ffi::c_void,
-        srcSize: usize,
-        dict: *const ::core::ffi::c_void,
-        dictSize: usize,
-        compressionLevel: ::std::os::raw::c_int,
-        windowSize: usize,
-    ) -> usize,
->;
-extern "C" {
-    #[doc = " ZSTD_registerSequenceProducer() :\n Instruct zstd to use a block-level external sequence producer function.\n\n The sequenceProducerState must be initialized by the caller, and the caller is\n responsible for managing its lifetime. This parameter is sticky across\n compressions. It will remain set until the user explicitly resets compression\n parameters.\n\n Sequence producer registration is considered to be an \"advanced parameter\",\n part of the \"advanced API\". This means it will only have an effect on compression\n APIs which respect advanced parameters, such as compress2() and compressStream2().\n Older compression APIs such as compressCCtx(), which predate the introduction of\n \"advanced parameters\", will ignore any external sequence producer setting.\n\n The sequence producer can be \"cleared\" by registering a NULL function pointer. This\n removes all limitations described above in the \"LIMITATIONS\" section of the API docs.\n\n The user is strongly encouraged to read the full API documentation (above) before\n calling this function."]
-    pub fn ZSTD_registerSequenceProducer(
-        cctx: *mut ZSTD_CCtx,
-        sequenceProducerState: *mut ::core::ffi::c_void,
-        sequenceProducer: ZSTD_sequenceProducer_F,
-    );
 }

@@ -37,8 +37,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub const ZSTD_VERSION_MAJOR: u32 = 1;
 pub const ZSTD_VERSION_MINOR: u32 = 5;
-pub const ZSTD_VERSION_RELEASE: u32 = 4;
-pub const ZSTD_VERSION_NUMBER: u32 = 10504;
+pub const ZSTD_VERSION_RELEASE: u32 = 5;
+pub const ZSTD_VERSION_NUMBER: u32 = 10505;
 pub const ZSTD_CLEVEL_DEFAULT: u32 = 3;
 pub const ZSTD_MAGICNUMBER: u32 = 4247762216;
 pub const ZSTD_MAGIC_DICTIONARY: u32 = 3962610743;
@@ -57,7 +57,7 @@ extern "C" {
     pub fn ZSTD_versionString() -> *const libc::c_char;
 }
 extern "C" {
-    #[doc = "  Simple API\n/\n/*! ZSTD_compress() :\n  Compresses `src` content as a single zstd compressed frame into already allocated `dst`.\n  Hint : compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`.\n  @return : compressed size written into `dst` (<= `dstCapacity),\n            or an error code if it fails (which can be tested using ZSTD_isError())."]
+    #[doc = "  Simple API\n/\n/*! ZSTD_compress() :\n  Compresses `src` content as a single zstd compressed frame into already allocated `dst`.\n  NOTE: Providing `dstCapacity >= ZSTD_compressBound(srcSize)` guarantees that zstd will have\n        enough space to successfully compress the data.\n  @return : compressed size written into `dst` (<= `dstCapacity),\n            or an error code if it fails (which can be tested using ZSTD_isError())."]
     pub fn ZSTD_compress(
         dst: *mut libc::c_void,
         dstCapacity: usize,
@@ -256,7 +256,7 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
-    #[doc = " ZSTD_compress2() :\n  Behave the same as ZSTD_compressCCtx(), but compression parameters are set using the advanced API.\n  ZSTD_compress2() always starts a new frame.\n  Should cctx hold data from a previously unfinished frame, everything about it is forgotten.\n  - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_set*()\n  - The function is always blocking, returns when compression is completed.\n  Hint : compression runs faster if `dstCapacity` >=  `ZSTD_compressBound(srcSize)`.\n @return : compressed size written into `dst` (<= `dstCapacity),\n           or an error code if it fails (which can be tested using ZSTD_isError())."]
+    #[doc = " ZSTD_compress2() :\n  Behave the same as ZSTD_compressCCtx(), but compression parameters are set using the advanced API.\n  ZSTD_compress2() always starts a new frame.\n  Should cctx hold data from a previously unfinished frame, everything about it is forgotten.\n  - Compression parameters are pushed into CCtx before starting compression, using ZSTD_CCtx_set*()\n  - The function is always blocking, returns when compression is completed.\n  NOTE: Providing `dstCapacity >= ZSTD_compressBound(srcSize)` guarantees that zstd will have\n        enough space to successfully compress the data, though it is possible it fails for other reasons.\n @return : compressed size written into `dst` (<= `dstCapacity),\n           or an error code if it fails (which can be tested using ZSTD_isError())."]
     pub fn ZSTD_compress2(
         cctx: *mut ZSTD_CCtx,
         dst: *mut libc::c_void,
@@ -508,7 +508,7 @@ extern "C" {
     ) -> libc::c_uint;
 }
 extern "C" {
-    #[doc = " ZSTD_CCtx_loadDictionary() : Requires v1.4.0+\n  Create an internal CDict from `dict` buffer.\n  Decompression will have to use same dictionary.\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Loading a NULL (or 0-size) dictionary invalidates previous dictionary,\n           meaning \"return to no-dictionary mode\".\n  Note 1 : Dictionary is sticky, it will be used for all future compressed frames,\n           until parameters are reset, a new dictionary is loaded, or the dictionary\n           is explicitly invalidated by loading a NULL dictionary.\n  Note 2 : Loading a dictionary involves building tables.\n           It's also a CPU consuming operation, with non-negligible impact on latency.\n           Tables are dependent on compression parameters, and for this reason,\n           compression parameters can no longer be changed after loading a dictionary.\n  Note 3 :`dict` content will be copied internally.\n           Use experimental ZSTD_CCtx_loadDictionary_byReference() to reference content instead.\n           In such a case, dictionary buffer must outlive its users.\n  Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()\n           to precisely select how dictionary content must be interpreted."]
+    #[doc = " ZSTD_CCtx_loadDictionary() : Requires v1.4.0+\n  Create an internal CDict from `dict` buffer.\n  Decompression will have to use same dictionary.\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Loading a NULL (or 0-size) dictionary invalidates previous dictionary,\n           meaning \"return to no-dictionary mode\".\n  Note 1 : Dictionary is sticky, it will be used for all future compressed frames,\n           until parameters are reset, a new dictionary is loaded, or the dictionary\n           is explicitly invalidated by loading a NULL dictionary.\n  Note 2 : Loading a dictionary involves building tables.\n           It's also a CPU consuming operation, with non-negligible impact on latency.\n           Tables are dependent on compression parameters, and for this reason,\n           compression parameters can no longer be changed after loading a dictionary.\n  Note 3 :`dict` content will be copied internally.\n           Use experimental ZSTD_CCtx_loadDictionary_byReference() to reference content instead.\n           In such a case, dictionary buffer must outlive its users.\n  Note 4 : Use ZSTD_CCtx_loadDictionary_advanced()\n           to precisely select how dictionary content must be interpreted.\n  Note 5 : This method does not benefit from LDM (long distance mode).\n           If you want to employ LDM on some large dictionary content,\n           prefer employing ZSTD_CCtx_refPrefix() described below."]
     pub fn ZSTD_CCtx_loadDictionary(
         cctx: *mut ZSTD_CCtx,
         dict: *const libc::c_void,
@@ -523,7 +523,7 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
-    #[doc = " ZSTD_CCtx_refPrefix() : Requires v1.4.0+\n  Reference a prefix (single-usage dictionary) for next compressed frame.\n  A prefix is **only used once**. Tables are discarded at end of frame (ZSTD_e_end).\n  Decompression will need same prefix to properly regenerate data.\n  Compressing with a prefix is similar in outcome as performing a diff and compressing it,\n  but performs much faster, especially during decompression (compression speed is tunable with compression level).\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Adding any prefix (including NULL) invalidates any previous prefix or dictionary\n  Note 1 : Prefix buffer is referenced. It **must** outlive compression.\n           Its content must remain unmodified during compression.\n  Note 2 : If the intention is to diff some large src data blob with some prior version of itself,\n           ensure that the window size is large enough to contain the entire source.\n           See ZSTD_c_windowLog.\n  Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters.\n           It's a CPU consuming operation, with non-negligible impact on latency.\n           If there is a need to use the same prefix multiple times, consider loadDictionary instead.\n  Note 4 : By default, the prefix is interpreted as raw content (ZSTD_dct_rawContent).\n           Use experimental ZSTD_CCtx_refPrefix_advanced() to alter dictionary interpretation."]
+    #[doc = " ZSTD_CCtx_refPrefix() : Requires v1.4.0+\n  Reference a prefix (single-usage dictionary) for next compressed frame.\n  A prefix is **only used once**. Tables are discarded at end of frame (ZSTD_e_end).\n  Decompression will need same prefix to properly regenerate data.\n  Compressing with a prefix is similar in outcome as performing a diff and compressing it,\n  but performs much faster, especially during decompression (compression speed is tunable with compression level).\n  This method is compatible with LDM (long distance mode).\n @result : 0, or an error code (which can be tested with ZSTD_isError()).\n  Special: Adding any prefix (including NULL) invalidates any previous prefix or dictionary\n  Note 1 : Prefix buffer is referenced. It **must** outlive compression.\n           Its content must remain unmodified during compression.\n  Note 2 : If the intention is to diff some large src data blob with some prior version of itself,\n           ensure that the window size is large enough to contain the entire source.\n           See ZSTD_c_windowLog.\n  Note 3 : Referencing a prefix involves building tables, which are dependent on compression parameters.\n           It's a CPU consuming operation, with non-negligible impact on latency.\n           If there is a need to use the same prefix multiple times, consider loadDictionary instead.\n  Note 4 : By default, the prefix is interpreted as raw content (ZSTD_dct_rawContent).\n           Use experimental ZSTD_CCtx_refPrefix_advanced() to alter dictionary interpretation."]
     pub fn ZSTD_CCtx_refPrefix(
         cctx: *mut ZSTD_CCtx,
         prefix: *const libc::c_void,

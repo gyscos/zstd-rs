@@ -38,7 +38,7 @@ pub use zstd_sys::ZSTD_strategy as Strategy;
 use std::os::raw::{c_char, c_int, c_ulonglong, c_void};
 
 #[cfg(not(feature = "std"))]
-use libc::{c_char, c_int, c_ulonglong, c_void};
+use core::ffi::{c_char, c_int, c_ulonglong, c_void};
 
 use core::marker::PhantomData;
 use core::num::{NonZeroU32, NonZeroU64};
@@ -819,12 +819,9 @@ unsafe impl<'a> Send for CCtx<'a> {}
 unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
     #[cfg(not(feature = "std"))]
     {
-        // To be safe, we need to compute right now its length
-        let len = libc::strlen(text);
-        // Cast it to a slice
-        let slice = core::slice::from_raw_parts(text as *mut u8, len);
-        // And hope it's still text.
-        str::from_utf8(slice).expect("bad error message from zstd")
+        core::ffi::CStr::from_ptr(text)
+            .to_str()
+            .expect("bad error message from zstd")
     }
 
     #[cfg(feature = "std")]

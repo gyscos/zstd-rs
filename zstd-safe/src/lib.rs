@@ -1721,6 +1721,7 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
 
     /// Returns the current cursor position.
     pub fn pos(&self) -> usize {
+        assert!(self.pos <= self.dst.capacity());
         self.pos
     }
 

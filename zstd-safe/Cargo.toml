@@ -10,7 +10,7 @@ repository = "https://github.com/gyscos/zstd-rs"
 license = "MIT/Apache-2.0"
 readme = "Readme.md"
 edition = "2018"
-rust-version = "1.43" # This can be higher depending on the features (including default features)
+rust-version = "1.64"
 
 [package.metadata.docs.rs]
 features = ["experimental", "arrays", "std", "zdict_builder", "doc-cfg"]

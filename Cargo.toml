@@ -11,7 +11,7 @@ version = "0.12.4"
 exclude = ["assets/*.zst"]
 readme = "Readme.md"
 edition = "2018"
-rust-version = "1.43"  # Some features (including default ones) can raise this value
+rust-version = "1.64"
 
 [package.metadata.docs.rs]
 features = ["experimental", "zstdmt", "zdict_builder", "doc-cfg"]

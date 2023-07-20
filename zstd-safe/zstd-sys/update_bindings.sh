@@ -1,9 +1,7 @@
 #!/bin/sh
 
-# Bump this to 1.64 (released Sep 2022) at some point. 6 months after release?
-RUST_TARGET=1.47
+RUST_TARGET=1.64
 bindgen="bindgen --no-layout-tests --blocklist-type=max_align_t --rustified-enum=.* --use-core --rust-target $RUST_TARGET"
-no_std="--ctypes-prefix libc"
 experimental="-DZSTD_STATIC_LINKING_ONLY -DZDICT_STATIC_LINKING_ONLY"
 
 run_bindgen()
@@ -18,14 +16,11 @@ $(cat zstd/LICENSE)
     $bindgen $@
 }
 
-for NO_STD_ARG in "$no_std" ""; do
     for EXPERIMENTAL_ARG in "$experimental" ""; do
-        if [ -z "$NO_STD_ARG" ]; then STD="_std"; else STD=""; fi
         if [ -z "$EXPERIMENTAL_ARG" ]; then EXPERIMENTAL=""; else EXPERIMENTAL="_experimental"; fi
-        SUFFIX=${STD}${EXPERIMENTAL}
-        filename=src/bindings${STD}${EXPERIMENTAL}.rs
+        SUFFIX=${EXPERIMENTAL}
+        filename=src/bindings${EXPERIMENTAL}.rs
 
-        run_bindgen zstd.h --allowlist-type "ZSTD_.*" --allowlist-function "ZSTD_.*" --allowlist-var "ZSTD_.*" $NO_STD_ARG -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zstd${SUFFIX}.rs
-        run_bindgen zdict.h --blocklist-type wchar_t $NO_STD_ARG -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zdict${SUFFIX}.rs
+        run_bindgen zstd.h --allowlist-type "ZSTD_.*" --allowlist-function "ZSTD_.*" --allowlist-var "ZSTD_.*" -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zstd${SUFFIX}.rs
+        run_bindgen zdict.h --blocklist-type wchar_t -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zdict${SUFFIX}.rs
     done
-done

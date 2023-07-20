@@ -18,7 +18,7 @@ readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "2.0.8+zstd.1.5.5"
 edition = "2018"
-rust-version = "1.43" # But with the bindgen feature, this jumps to 1.53
+rust-version = "1.64"
 
 # Use include instead of exclude, as a (temporary)
 # workaround for https://github.com/rust-lang/cargo/issues/9555
@@ -68,7 +68,7 @@ experimental = [] # Expose experimental ZSTD API
 legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
 non-cargo = [] # Silence cargo-specific build flags
 pkg-config = []
-std = [] # Use std types instead of libc in bindgen
+std = [] # Deprecated: we never use types from std.
 zstdmt = [] # Enable multi-thread support (with pthread)
 thin = [] # Optimize binary by size
 no_asm = [] # Disable ASM files (only on amd64 for decompression)

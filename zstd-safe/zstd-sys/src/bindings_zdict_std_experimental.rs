@@ -44,18 +44,18 @@ extern "C" {
         dictBufferCapacity: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
     ) -> usize;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ZDICT_params_t {
     #[doc = "< optimize for a specific zstd compression level; 0 means default"]
-    pub compressionLevel: ::std::os::raw::c_int,
+    pub compressionLevel: ::core::ffi::c_int,
     #[doc = "< Write log to stderr; 0 = none (default); 1 = errors; 2 = progression; 3 = details; 4 = debug;"]
-    pub notificationLevel: ::std::os::raw::c_uint,
+    pub notificationLevel: ::core::ffi::c_uint,
     #[doc = "< force dictID value; 0 means auto mode (32-bits random value)\n   NOTE: The zstd format reserves some dictionary IDs for future use.\n         You may use them in private settings, but be warned that they\n         may be used by zstd in a public dictionary registry in the future.\n         These dictionary IDs are:\n           - low range  : <= 32767\n           - high range : >= (2^31)"]
-    pub dictID: ::std::os::raw::c_uint,
+    pub dictID: ::core::ffi::c_uint,
 }
 extern "C" {
     #[doc = " ZDICT_finalizeDictionary():\n Given a custom content as a basis for dictionary, and a set of samples,\n finalize dictionary by adding headers and statistics according to the zstd\n dictionary format.\n\n Samples must be stored concatenated in a flat buffer `samplesBuffer`,\n supplied with an array of sizes `samplesSizes`, providing the size of each\n sample in order. The samples are used to construct the statistics, so they\n should be representative of what you will compress with this dictionary.\n\n The compression level can be set in `parameters`. You should pass the\n compression level you expect to use in production. The statistics for each\n compression level differ, so tuning the dictionary for the compression level\n can help quite a bit.\n\n You can set an explicit dictionary ID in `parameters`, or allow us to pick\n a random dictionary ID for you, but we can't guarantee no collisions.\n\n The dstDictBuffer and the dictContent may overlap, and the content will be\n appended to the end of the header. If the header + the content doesn't fit in\n maxDictSize the beginning of the content is truncated to make room, since it\n is presumed that the most profitable content is at the end of the dictionary,\n since that is the cheapest to reference.\n\n `maxDictSize` must be >= max(dictContentSize, ZSTD_DICTSIZE_MIN).\n\n @return: size of dictionary stored into `dstDictBuffer` (<= `maxDictSize`),\n          or an error code, which can be tested by ZDICT_isError().\n Note: ZDICT_finalizeDictionary() will push notifications into stderr if\n       instructed to, using notificationLevel>0.\n NOTE: This function currently may fail in several edge cases including:\n         * Not enough samples\n         * Samples are uncompressible\n         * Samples are all exactly the same"]
@@ -66,7 +66,7 @@ extern "C" {
         dictContentSize: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
         parameters: ZDICT_params_t,
     ) -> usize;
 }
@@ -74,7 +74,7 @@ extern "C" {
     pub fn ZDICT_getDictID(
         dictBuffer: *const ::core::ffi::c_void,
         dictSize: usize,
-    ) -> ::std::os::raw::c_uint;
+    ) -> ::core::ffi::c_uint;
 }
 extern "C" {
     pub fn ZDICT_getDictHeaderSize(
@@ -83,38 +83,36 @@ extern "C" {
     ) -> usize;
 }
 extern "C" {
-    pub fn ZDICT_isError(errorCode: usize) -> ::std::os::raw::c_uint;
+    pub fn ZDICT_isError(errorCode: usize) -> ::core::ffi::c_uint;
 }
 extern "C" {
-    pub fn ZDICT_getErrorName(
-        errorCode: usize,
-    ) -> *const ::std::os::raw::c_char;
+    pub fn ZDICT_getErrorName(errorCode: usize) -> *const ::core::ffi::c_char;
 }
 #[doc = " ZDICT_cover_params_t:\n  k and d are the only required parameters.\n  For others, value 0 means default."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ZDICT_cover_params_t {
-    pub k: ::std::os::raw::c_uint,
-    pub d: ::std::os::raw::c_uint,
-    pub steps: ::std::os::raw::c_uint,
-    pub nbThreads: ::std::os::raw::c_uint,
+    pub k: ::core::ffi::c_uint,
+    pub d: ::core::ffi::c_uint,
+    pub steps: ::core::ffi::c_uint,
+    pub nbThreads: ::core::ffi::c_uint,
     pub splitPoint: f64,
-    pub shrinkDict: ::std::os::raw::c_uint,
-    pub shrinkDictMaxRegression: ::std::os::raw::c_uint,
+    pub shrinkDict: ::core::ffi::c_uint,
+    pub shrinkDictMaxRegression: ::core::ffi::c_uint,
     pub zParams: ZDICT_params_t,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ZDICT_fastCover_params_t {
-    pub k: ::std::os::raw::c_uint,
-    pub d: ::std::os::raw::c_uint,
-    pub f: ::std::os::raw::c_uint,
-    pub steps: ::std::os::raw::c_uint,
-    pub nbThreads: ::std::os::raw::c_uint,
+    pub k: ::core::ffi::c_uint,
+    pub d: ::core::ffi::c_uint,
+    pub f: ::core::ffi::c_uint,
+    pub steps: ::core::ffi::c_uint,
+    pub nbThreads: ::core::ffi::c_uint,
     pub splitPoint: f64,
-    pub accel: ::std::os::raw::c_uint,
-    pub shrinkDict: ::std::os::raw::c_uint,
-    pub shrinkDictMaxRegression: ::std::os::raw::c_uint,
+    pub accel: ::core::ffi::c_uint,
+    pub shrinkDict: ::core::ffi::c_uint,
+    pub shrinkDictMaxRegression: ::core::ffi::c_uint,
     pub zParams: ZDICT_params_t,
 }
 extern "C" {
@@ -124,7 +122,7 @@ extern "C" {
         dictBufferCapacity: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
         parameters: ZDICT_cover_params_t,
     ) -> usize;
 }
@@ -135,7 +133,7 @@ extern "C" {
         dictBufferCapacity: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
         parameters: *mut ZDICT_cover_params_t,
     ) -> usize;
 }
@@ -146,7 +144,7 @@ extern "C" {
         dictBufferCapacity: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
         parameters: ZDICT_fastCover_params_t,
     ) -> usize;
 }
@@ -157,14 +155,14 @@ extern "C" {
         dictBufferCapacity: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
         parameters: *mut ZDICT_fastCover_params_t,
     ) -> usize;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ZDICT_legacy_params_t {
-    pub selectivityLevel: ::std::os::raw::c_uint,
+    pub selectivityLevel: ::core::ffi::c_uint,
     pub zParams: ZDICT_params_t,
 }
 extern "C" {
@@ -174,7 +172,7 @@ extern "C" {
         dictBufferCapacity: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
         parameters: ZDICT_legacy_params_t,
     ) -> usize;
 }
@@ -185,6 +183,6 @@ extern "C" {
         dictBufferCapacity: usize,
         samplesBuffer: *const ::core::ffi::c_void,
         samplesSizes: *const usize,
-        nbSamples: ::std::os::raw::c_uint,
+        nbSamples: ::core::ffi::c_uint,
     ) -> usize;
 }

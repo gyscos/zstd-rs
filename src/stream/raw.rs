@@ -95,12 +95,12 @@ impl Operation for NoOp {
     ) -> io::Result<usize> {
         // Skip the prelude
         let src = &input.src[input.pos..];
-        // Safe because `output.pos() <= output.dst.capacity()`.
+        // Safe because `output.pos() <= output.capacity()`.
         let output_pos = output.pos();
-        let dst = unsafe { output.dst.as_mut_ptr().add(output_pos) };
+        let dst = unsafe { output.as_mut_ptr().add(output_pos) };
 
         // Ignore anything past the end
-        let len = usize::min(src.len(), output.dst.capacity() - output_pos);
+        let len = usize::min(src.len(), output.capacity() - output_pos);
         let src = &src[..len];
 
         // Safe because:
@@ -193,7 +193,7 @@ impl Operation for Decoder<'_> {
         self.run(&mut InBuffer::around(&[]), output)?;
 
         // We don't _know_ how much (decompressed data) there is still in buffer.
-        if output.pos() < output.dst.capacity() {
+        if output.pos() < output.capacity() {
             // We only know when there's none (the output buffer is not full).
             Ok(0)
         } else {

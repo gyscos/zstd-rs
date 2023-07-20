@@ -60,9 +60,6 @@ version = "0.3"
 version = "1.0.45"
 features = ["parallel"]
 
-[dependencies]
-libc = "0.2.45"
-
 [features]
 default = ["legacy", "zdict_builder"]
 

@@ -8,7 +8,7 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     #[cfg(feature = "zdict_builder")]
     let bindings = bindings.header("zdict.h");
     #[cfg(feature = "experimental")]
-    let bindings = bindings.header("zstd_errors.h");
+    let bindings = bindings.clang_arg("-DZSTD_RUST_BINDINGS_EXPERIMENTAL");
     let bindings = bindings
         .blocklist_type("max_align_t")
         .size_t_is_usize(true)

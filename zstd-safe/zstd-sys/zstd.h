@@ -4,14 +4,14 @@
 #include <zstd.h>
 #ifdef ZSTD_RUST_BINDINGS_EXPERIMENTAL
 #include <zstd_errors.h>
-#endif
+#endif  // #ifdef ZSTD_RUST_BINDINGS_EXPERIMENTAL
 
 #else // #ifdef PKG_CONFIG
 
 #include "zstd/lib/zstd.h"
 #ifdef ZSTD_RUST_BINDINGS_EXPERIMENTAL
 #include "zstd/lib/zstd_errors.h"
-#endif
+#endif // #ifdef ZSTD_RUST_BINDINGS_EXPERIMENTAL
 
 #endif // #ifdef PKG_CONFIG
 

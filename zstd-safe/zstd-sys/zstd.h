@@ -2,11 +2,16 @@
 
 /* Just use installed headers */
 #include <zstd.h>
-// Don't use experimental features like zstdmt
+#ifdef ZSTD_RUST_BINDINGS_EXPERIMENTAL
+#include <zstd_errors.h>
+#endif
 
 #else // #ifdef PKG_CONFIG
 
 #include "zstd/lib/zstd.h"
+#ifdef ZSTD_RUST_BINDINGS_EXPERIMENTAL
+#include "zstd/lib/zstd_errors.h"
+#endif
 
 #endif // #ifdef PKG_CONFIG
 

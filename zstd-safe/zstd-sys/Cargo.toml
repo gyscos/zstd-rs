@@ -23,8 +23,10 @@ rust-version = "1.64"
 # Use include instead of exclude, as a (temporary)
 # workaround for https://github.com/rust-lang/cargo/issues/9555
 include = [
-    "/LICENSE",
-    "/*.*",
+    "/LICENSE*",
+    "!/*.sh",
+    "/build.rs",
+    "/*.h",
     "/src/",
     "/wasm-shim/**/*.h",
     "/zstd/LICENSE",

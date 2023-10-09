@@ -29,19 +29,7 @@ pub extern "C" fn rust_zstd_wasm_shim_calloc(
     nmemb: usize,
     size: usize,
 ) -> *mut c_void {
-    // the strategy for rust_zstd_wasm_shim_malloc is used, described there
-
-    let full_alloc_size = size * nmemb + USIZE_SIZE;
-
-    unsafe {
-        let layout = Layout::from_size_align_unchecked(full_alloc_size, USIZE_ALIGN);
-        let ptr = alloc(layout);
-
-        // SAFETY: ptr is usize-aligned and we've allocated sufficient memory
-        ptr.cast::<usize>().write(full_alloc_size);
-
-        ptr.add(USIZE_SIZE).cast()
-    }
+    rust_zstd_wasm_shim_malloc(nmemb * size)
 }
 
 #[no_mangle]

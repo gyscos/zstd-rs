@@ -1,4 +1,4 @@
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{alloc, alloc_zeroed, dealloc, Layout};
 use std::os::raw::{c_int, c_void};
 
 const USIZE_ALIGN: usize = std::mem::align_of::<usize>();
@@ -6,6 +6,20 @@ const USIZE_SIZE: usize = std::mem::size_of::<usize>();
 
 #[no_mangle]
 pub extern "C" fn rust_zstd_wasm_shim_malloc(size: usize) -> *mut c_void {
+    wasm_shim_alloc::<false>(size)
+}
+
+#[no_mangle]
+pub extern "C" fn rust_zstd_wasm_shim_calloc(
+    nmemb: usize,
+    size: usize,
+) -> *mut c_void {
+    // note: calloc expects the allocation to be zeroed
+    wasm_shim_alloc::<true>(nmemb * size)
+}
+
+#[inline]
+fn wasm_shim_alloc<const ZEROED: bool>(size: usize) -> *mut c_void {
     // in order to recover the size upon free, we store the size below the allocation
     // special alignment is never requested via the malloc API, 
     // so it's not stored, and usize-alignment is used
@@ -15,21 +29,18 @@ pub extern "C" fn rust_zstd_wasm_shim_malloc(size: usize) -> *mut c_void {
 
     unsafe {
         let layout = Layout::from_size_align_unchecked(full_alloc_size, USIZE_ALIGN);
-        let ptr = alloc(layout);
+    
+        let ptr = if ZEROED {
+            alloc_zeroed(layout)
+        } else {
+            alloc(layout)
+        };
 
         // SAFETY: ptr is usize-aligned and we've allocated sufficient memory
         ptr.cast::<usize>().write(full_alloc_size);
 
         ptr.add(USIZE_SIZE).cast()
     }
-}
-
-#[no_mangle]
-pub extern "C" fn rust_zstd_wasm_shim_calloc(
-    nmemb: usize,
-    size: usize,
-) -> *mut c_void {
-    rust_zstd_wasm_shim_malloc(nmemb * size)
 }
 
 #[no_mangle]

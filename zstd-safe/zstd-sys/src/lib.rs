@@ -6,6 +6,9 @@
 //!
 //! [zstd]: https://facebook.github.io/zstd/
 
+#[cfg(feature = "std")]
+extern crate std;
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_shim;
 

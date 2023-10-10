@@ -28,13 +28,10 @@ jobs:
       with:
         submodules: recursive
     - name: setup
-      uses: actions-rs/toolchain@v2
+      uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.channel }}-${{ matrix.target }}
-        target: ${{ matrix.target }}
-        override: true
-        profile: minimal
-        default: true
+        targets: ${{ matrix.target }}
 
     - name: Add mingw32 to path for i686-gnu
       run: |

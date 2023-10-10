@@ -1,10 +1,13 @@
 # zstd
 
+[![crates.io](https://img.shields.io/crates/v/zstd.svg)](https://crates.io/crates/zstd)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 [![Build on Linux](https://github.com/gyscos/zstd-rs/actions/workflows/linux.yml/badge.svg)](https://github.com/gyscos/zstd-rs/actions/workflows/linux.yml)
 [![Build on Windows](https://github.com/gyscos/zstd-rs/actions/workflows/windows.yml/badge.svg)](https://github.com/gyscos/zstd-rs/actions/workflows/windows.yml)
 [![Build on macOS](https://github.com/gyscos/zstd-rs/actions/workflows/macos.yml/badge.svg)](https://github.com/gyscos/zstd-rs/actions/workflows/macos.yml)
-[![crates.io](https://img.shields.io/crates/v/zstd.svg)](https://crates.io/crates/zstd)
-[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Build on wasm](https://github.com/gyscos/zstd-rs/actions/workflows/wasm.yml/badge.svg)](https://github.com/gyscos/zstd-rs/actions/workflows/wasm.yml)
+
 
 This library is a rust binding for the [zstd compression library][zstd].
 

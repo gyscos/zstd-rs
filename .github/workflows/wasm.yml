@@ -1,0 +1,27 @@
+name: Wasm
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Wasm target
+      run: rustup target add wasm32-unknown-unknown
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Build
+      run: cargo build --verbose
+    - name: Build with feature thin
+      run: cargo build --verbose --features thin

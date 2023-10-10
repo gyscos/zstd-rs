@@ -15,13 +15,9 @@ This library is a rust binding for the [zstd compression library][zstd].
 
 ## 1 - Add to `cargo.toml`
 
-### Using [cargo-edit]
-
 ```bash
 $ cargo add zstd
 ```
-
-### Manually
 
 ```toml
 # Cargo.toml

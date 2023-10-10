@@ -28,7 +28,7 @@ jobs:
       with:
         submodules: recursive
     - name: setup
-      uses: actions-rs/toolchain@v1
+      uses: actions-rs/toolchain@v2
       with:
         toolchain: ${{ matrix.channel }}-${{ matrix.target }}
         target: ${{ matrix.target }}

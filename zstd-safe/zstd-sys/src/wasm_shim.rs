@@ -5,11 +5,6 @@ const USIZE_ALIGN: usize = core::mem::align_of::<usize>();
 const USIZE_SIZE: usize = core::mem::size_of::<usize>();
 
 #[no_mangle]
-pub extern "C" fn rust_zstd_wasm_shim_clock() -> u64 {
-    std::time::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64
-}
-
-#[no_mangle]
 pub extern "C" fn rust_zstd_wasm_shim_qsort(
     base: *mut c_void,
     n_items: usize,

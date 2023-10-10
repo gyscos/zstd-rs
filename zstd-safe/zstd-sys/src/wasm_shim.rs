@@ -5,8 +5,67 @@ const USIZE_ALIGN: usize = core::mem::align_of::<usize>();
 const USIZE_SIZE: usize = core::mem::size_of::<usize>();
 
 #[no_mangle]
+pub extern "C" fn rust_zstd_wasm_shim_clock() -> u64 {
+    std::time::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64
+}
+
+#[no_mangle]
+pub extern "C" fn rust_zstd_wasm_shim_qsort(
+    base: *mut c_void,
+    n_items: usize,
+    size: usize,
+    compar: extern "C" fn(*const c_void, *const c_void) -> c_int,
+) {
+    unsafe {
+        match size {
+            1 => qsort::<1>(base, n_items, compar),
+            2 => qsort::<2>(base, n_items, compar),
+            4 => qsort::<4>(base, n_items, compar),
+            8 => qsort::<8>(base, n_items, compar),
+            16 => qsort::<16>(base, n_items, compar),
+            _ => panic!("Unsupported qsort item size"),
+        }
+    }
+}
+
+unsafe fn qsort<const N: usize>(
+    base: *mut c_void,
+    n_items: usize,
+    compar: extern "C" fn(*const c_void, *const c_void) -> c_int,
+) {
+    let base: &mut [[u8; N]] =
+        core::slice::from_raw_parts_mut(base as *mut [u8; N], n_items);
+    base.sort_unstable_by(|a, b| {
+        match compar(a.as_ptr() as *const c_void, b.as_ptr() as *const c_void)
+        {
+            ..=-1 => core::cmp::Ordering::Less,
+            0 => core::cmp::Ordering::Equal,
+            1.. => core::cmp::Ordering::Greater,
+        }
+    });
+}
+
+#[no_mangle]
 pub extern "C" fn rust_zstd_wasm_shim_malloc(size: usize) -> *mut c_void {
     wasm_shim_alloc::<false>(size)
+}
+
+#[no_mangle]
+pub extern "C" fn rust_zstd_wasm_shim_memcmp(
+    str1: *const c_void,
+    str2: *const c_void,
+    n: usize,
+) -> i32 {
+    // Safety: function contracts requires str1 and str2 at least `n`-long.
+    unsafe {
+        let str1: &[u8] = core::slice::from_raw_parts(str1 as *const u8, n);
+        let str2: &[u8] = core::slice::from_raw_parts(str2 as *const u8, n);
+        match str1.cmp(str2) {
+            core::cmp::Ordering::Less => -1,
+            core::cmp::Ordering::Equal => 0,
+            core::cmp::Ordering::Greater => 1,
+        }
+    }
 }
 
 #[no_mangle]

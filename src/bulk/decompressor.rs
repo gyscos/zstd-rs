@@ -95,7 +95,7 @@ impl<'a> Decompressor<'a> {
 
     /// Decompress a block of data, and return the result in a `Vec<u8>`.
     ///
-    /// The decompressed data should be less than `capacity` bytes,
+    /// The decompressed data should be at most `capacity` bytes,
     /// or an error will be returned.
     pub fn decompress(
         &mut self,

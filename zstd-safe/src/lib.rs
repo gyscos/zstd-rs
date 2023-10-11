@@ -144,7 +144,7 @@ pub fn max_c_level() -> CompressionLevel {
 /// Wraps the `ZSTD_compress` function.
 ///
 /// This will try to compress `src` entirely and write the result to `dst`, returning the number of
-/// bytes written.
+/// bytes written. If `dst` is too small to hold the compressed content, an error will be returned.
 ///
 /// For streaming operations that don't require to store the entire input/ouput in memory, see
 /// `compress_stream`.
@@ -168,6 +168,13 @@ pub fn compress<C: WriteBuf + ?Sized>(
 }
 
 /// Wraps the `ZSTD_decompress` function.
+///
+/// This is a one-step decompression (not streaming).
+///
+/// You will need to make sure `dst` is large enough to store all the decompressed content, or an
+/// error will be returned.
+///
+/// If decompression was a success, the number of bytes written will be returned.
 pub fn decompress<C: WriteBuf + ?Sized>(
     dst: &mut C,
     src: &[u8],

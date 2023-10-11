@@ -118,7 +118,9 @@ impl Operation for NoOp {
 pub struct Status {
     /// Number of bytes expected for next input.
     ///
-    /// This is just a hint.
+    /// * If `remaining = 0`, then we are at the end of a frame.
+    /// * If `remaining > 0`, then it's just a hint for how much there is still
+    ///   to read.
     pub remaining: usize,
 
     /// Number of bytes read from the input.

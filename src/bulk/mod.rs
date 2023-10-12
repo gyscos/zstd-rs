@@ -49,7 +49,7 @@ pub fn decompress_to_buffer(
 
 /// Decompresses a block of data and returns the decompressed result.
 ///
-/// The decompressed data should be less than `capacity` bytes,
+/// The decompressed data should be at most `capacity` bytes,
 /// or an error will be returned.
 pub fn decompress(data: &[u8], capacity: usize) -> io::Result<Vec<u8>> {
     Decompressor::new()?.decompress(data, capacity)

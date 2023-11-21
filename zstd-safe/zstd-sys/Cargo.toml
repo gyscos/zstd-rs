@@ -18,7 +18,7 @@ readme = "Readme.md"
 repository = "https://github.com/gyscos/zstd-rs"
 version = "2.0.9+zstd.1.5.5"
 edition = "2018"
-rust-version = "1.64"
+rust-version = "1.66.1"
 
 # Use include instead of exclude, as a (temporary)
 # workaround for https://github.com/rust-lang/cargo/issues/9555

@@ -11,7 +11,7 @@ version = "0.13.0"
 exclude = ["assets/*.zst", "/.github"]
 readme = "Readme.md"
 edition = "2018"
-rust-version = "1.66.1"
+rust-version = "1.66"
 
 [package.metadata.docs.rs]
 features = ["experimental", "zstdmt", "zdict_builder", "doc-cfg"]

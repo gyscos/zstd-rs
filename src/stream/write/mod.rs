@@ -190,6 +190,12 @@ impl<W: Write> Encoder<'static, W> {
         let writer = zio::Writer::new(writer, encoder);
         Ok(Encoder { writer })
     }
+
+    /// Write a skippable frame.
+    #[cfg(feature = "experimental")]
+    pub fn write_skippable_frame(&mut self, buf: &[u8], magic_variant: u32) -> io::Result<()> {
+        self.writer.write_skippable_frame(buf, magic_variant)
+    }
 }
 
 impl<'a, W: Write> Encoder<'a, W> {
@@ -255,6 +261,12 @@ impl<'a, W: Write> Encoder<'a, W> {
     ///           `AutoFinishEncoder`.
     pub fn finish(self) -> io::Result<W> {
         self.try_finish().map_err(|(_, err)| err)
+    }
+
+    /// Useful to get back the writer after calling write_skippable_frame. You don't want to call
+    /// finish because this will create yet another frame.
+    pub fn into_inner(self) -> W {
+        self.writer.into_inner().0
     }
 
     /// **Required**: Attempts to finish the stream.

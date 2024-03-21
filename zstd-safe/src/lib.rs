@@ -817,8 +817,9 @@ impl<'a> Drop for CCtx<'a> {
     }
 }
 
-unsafe impl<'a> Send for CCtx<'a> {}
-// CCtx can't be shared across threads, so it does not implement Sync.
+unsafe impl Send for CCtx<'_> {}
+// Non thread-safe methods already take `&mut self`, so it's fine to implement Sync here.
+unsafe impl Sync for CCtx<'_> {}
 
 unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
     core::ffi::CStr::from_ptr(text)
@@ -1217,7 +1218,8 @@ impl Drop for DCtx<'_> {
 }
 
 unsafe impl Send for DCtx<'_> {}
-// DCtx can't be shared across threads, so it does not implement Sync.
+// Non thread-safe methods already take `&mut self`, so it's fine to implement Sync here.
+unsafe impl Sync for DCtx<'_> {}
 
 /// Compression dictionary.
 pub struct CDict<'a>(NonNull<zstd_sys::ZSTD_CDict>, PhantomData<&'a ()>);
@@ -1442,18 +1444,23 @@ pub struct InBuffer<'a> {
     pub pos: usize,
 }
 
-/// Describe a resizeable bytes container like `Vec<u8>`.
+/// Describe a bytes container, like `Vec<u8>`.
 ///
-/// Represents a contiguous segment of memory, a prefix of which is initialized.
+/// Represents a contiguous segment of allocated memory, a prefix of which is initialized.
 ///
-/// It allows starting from an uninitializes chunk of memory and writing to it.
+/// It allows starting from an uninitializes chunk of memory and writing to it, progressively
+/// initializing it. No re-allocation typically occur after the initial creation.
 ///
 /// The main implementors are:
-/// * `Vec<u8>` and similar structures. These can start empty with a non-zero capacity, and they
-///   will be resized to cover the data written.
-///   Any existing data will be overwritten.
+/// * `Vec<u8>` and similar structures. These hold both a length (initialized data) and a capacity
+///   (allocated memory).
+///
+///   Use `Vec::with_capacity` to create an empty `Vec` with non-zero capacity, and the length
+///   field will be updated to cover the data written to it (as long as it fits in the given
+///   capacity).
 /// * `[u8]` and `[u8; N]`. These must start already-initialized, and will not be resized. It will
-///   be up to the caller to only use the part that was written.
+///   be up to the caller to only use the part that was written (as returned by the various writing
+///   operations).
 /// * `std::io::Cursor<T: WriteBuf>`. This will ignore data before the cursor's position, and
 ///   append data after that.
 pub unsafe trait WriteBuf {
@@ -1525,11 +1532,13 @@ where
 
         // Here we assume data _before_ self.position() was already initialized.
         // Egh it's not actually guaranteed by Cursor? So let's guarantee it ourselves.
+        // Since the cursor wraps another `WriteBuf`, we know how much data is initialized there.
         let position = self.position() as usize;
         let initialized = self.get_ref().as_slice().len();
         if let Some(uninitialized) = position.checked_sub(initialized) {
-            // Cursor's solution is to pad with zeroes
-            // From the end of valid data (as_slice().len()) to the position.
+            // Here, the cursor is further than the known-initialized part.
+            // Cursor's solution is to pad with zeroes, so let's do the same.
+            // We'll zero bytes from the end of valid data (as_slice().len()) to the cursor position.
 
             // Safety:
             // * We know `n > 0`

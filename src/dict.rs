@@ -92,10 +92,18 @@ impl<'a> DecoderDictionary<'a> {
     }
 }
 
-/// Train a dictionary from a big continuous chunk of data.
+/// Train a dictionary from a big continuous chunk of data, with all samples
+/// contiguous in memory.
 ///
 /// This is the most efficient way to train a dictionary,
 /// since this is directly fed into `zstd`.
+///
+/// * `sample_data` is the concatenation of all sample data.
+/// * `sample_sizes` is the size of each sample in `sample_data`.
+///     The sum of all `sample_sizes` should equal the length of `sample_data`.
+/// * `max_size` is the maximum size of the dictionary to generate.
+///
+/// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].
 #[cfg(feature = "zdict_builder")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
 pub fn from_continuous(
@@ -128,21 +136,96 @@ pub fn from_continuous(
 /// [`from_continuous`] directly uses the given slice.
 ///
 /// [`from_continuous`]: ./fn.from_continuous.html
+///
+/// * `samples` is a list of individual samples to train on.
+/// * `max_size` is the maximum size of the dictionary to generate.
+///
+/// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].
 #[cfg(feature = "zdict_builder")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
 pub fn from_samples<S: AsRef<[u8]>>(
     samples: &[S],
     max_size: usize,
 ) -> io::Result<Vec<u8>> {
+    // Pre-allocate the entire required size.
+    let total_length: usize =
+        samples.iter().map(|sample| sample.as_ref().len()).sum();
+
+    let mut data = Vec::with_capacity(total_length);
+
     // Copy every sample to a big chunk of memory
-    let data: Vec<_> =
-        samples.iter().flat_map(|s| s.as_ref()).cloned().collect();
+    data.extend(samples.iter().flat_map(|s| s.as_ref()).cloned());
+
     let sizes: Vec<_> = samples.iter().map(|s| s.as_ref().len()).collect();
 
     from_continuous(&data, &sizes, max_size)
 }
 
+/// Train a dictionary from multiple samples.
+///
+/// Unlike [`from_samples`], this does not require having a list of all samples.
+/// It also allows running into an error when iterating through the samples.
+///
+/// They will still be copied to a continuous array and fed to [`from_continuous`].
+///
+/// * `samples` is an iterator of individual samples to train on.
+/// * `max_size` is the maximum size of the dictionary to generate.
+///
+/// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// // Train from a couple of json files.
+/// let dict_buffer = zstd::dict::from_sample_iterator(
+///     ["file_a.json", "file_b.json"]
+///         .into_iter()
+///         .map(|filename| std::fs::File::open(filename)),
+///     10_000,  // 10kB dictionary
+/// ).unwrap();
+/// ```
+///
+/// ```rust,no_run
+/// use std::io::BufRead as _;
+/// // Treat each line from stdin as a separate sample.
+/// let dict_buffer = zstd::dict::from_sample_iterator(
+///     std::io::stdin().lock().lines().map(|line: std::io::Result<String>| {
+///         // Transform each line into a `Cursor<Vec<u8>>` so they implement Read.
+///         line.map(String::into_bytes)
+///             .map(std::io::Cursor::new)
+///     }),
+///     10_000,  // 10kB dictionary
+/// ).unwrap();
+/// ```
+#[cfg(feature = "zdict_builder")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
+pub fn from_sample_iterator<I, R>(
+    samples: I,
+    max_size: usize,
+) -> io::Result<Vec<u8>>
+where
+    I: IntoIterator<Item = io::Result<R>>,
+    R: Read,
+{
+    let mut data = Vec::new();
+    let mut sizes = Vec::new();
+
+    for sample in samples {
+        let mut sample = sample?;
+        let len = sample.read_to_end(&mut data)?;
+        sizes.push(len);
+    }
+
+    from_continuous(&data, &sizes, max_size)
+}
+
 /// Train a dict from a list of files.
+///
+/// * `filenames` is an iterator of files to load. Each file will be treated as an individual
+///     sample.
+/// * `max_size` is the maximum size of the dictionary to generate.
+///
+/// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].
 #[cfg(feature = "zdict_builder")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zdict_builder")))]
 pub fn from_files<I, P>(filenames: I, max_size: usize) -> io::Result<Vec<u8>>
@@ -150,18 +233,12 @@ where
     P: AsRef<std::path::Path>,
     I: IntoIterator<Item = P>,
 {
-    use std::fs;
-
-    let mut buffer = Vec::new();
-    let mut sizes = Vec::new();
-
-    for filename in filenames {
-        let mut file = fs::File::open(filename)?;
-        let len = file.read_to_end(&mut buffer)?;
-        sizes.push(len);
-    }
-
-    from_continuous(&buffer, &sizes, max_size)
+    from_sample_iterator(
+        filenames
+            .into_iter()
+            .map(|filename| std::fs::File::open(filename)),
+        max_size,
+    )
 }
 
 #[cfg(test)]

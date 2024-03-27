@@ -5,7 +5,7 @@ set -o pipefail
 cd zstd
 CURRENT=$(git describe --tags)
 git fetch -q
-TAG=$(git tag -l | grep '^v' | sort | tail -n 1)
+TAG=$(git tag -l | grep '^v1' | sort | tail -n 1)
 
 if [ $CURRENT != $TAG ]
 then

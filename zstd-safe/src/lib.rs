@@ -610,7 +610,6 @@ impl<'a> CCtx<'a> {
             ZSTD_c_experimentalParam3 as ZSTD_c_forceMaxWindow,
             ZSTD_c_experimentalParam4 as ZSTD_c_forceAttachDict,
             ZSTD_c_experimentalParam5 as ZSTD_c_literalCompressionMode,
-            ZSTD_c_experimentalParam6 as ZSTD_c_targetCBlockSize,
             ZSTD_c_experimentalParam7 as ZSTD_c_srcSizeHint,
             ZSTD_c_experimentalParam8 as ZSTD_c_enableDedicatedDictSearch,
             ZSTD_c_experimentalParam9 as ZSTD_c_stableInBuffer,
@@ -631,10 +630,6 @@ impl<'a> CCtx<'a> {
             #[cfg(feature = "experimental")]
             LiteralCompressionMode(mode) => {
                 (ZSTD_c_literalCompressionMode, mode as c_int)
-            }
-            #[cfg(feature = "experimental")]
-            TargetCBlockSize(value) => {
-                (ZSTD_c_targetCBlockSize, value as c_int)
             }
             #[cfg(feature = "experimental")]
             SrcSizeHint(value) => (ZSTD_c_srcSizeHint, value as c_int),
@@ -679,6 +674,9 @@ impl<'a> CCtx<'a> {
             #[cfg(feature = "experimental")]
             SearchForExternalRepcodes(value) => {
                 (ZSTD_c_searchForExternalRepcodes, value as c_int)
+            }
+            TargetCBlockSize(value) => {
+                (ZSTD_c_targetCBlockSize, value as c_int)
             }
             CompressionLevel(level) => (ZSTD_c_compressionLevel, level),
             WindowLog(value) => (ZSTD_c_windowLog, value as c_int),
@@ -1997,6 +1995,7 @@ pub enum ParamSwitch {
 
 /// A compression parameter.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CParameter {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
@@ -2017,10 +2016,6 @@ pub enum CParameter {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     LiteralCompressionMode(ParamSwitch),
-
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    TargetCBlockSize(u32),
 
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
@@ -2073,6 +2068,14 @@ pub enum CParameter {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     SearchForExternalRepcodes(ParamSwitch),
+
+    /// Target CBlock size.
+    ///
+    /// Tries to make compressed blocks fit in this size (not a guarantee, just a target).
+    /// Useful to reduce end-to-end latency in low-bandwidth environments.
+    ///
+    /// No target when the value is 0.
+    TargetCBlockSize(u32),
 
     /// Compression level to use.
     ///
@@ -2146,6 +2149,8 @@ pub enum CParameter {
 }
 
 /// A decompression parameter.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DParameter {
     WindowLogMax(u32),
 

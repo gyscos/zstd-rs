@@ -145,6 +145,22 @@ macro_rules! encoder_parameters {
             )
         }
 
+        /// Sets the target size for compressed blocks.
+        ///
+        /// A lower block size may result in slightly lower speed (~2%) and compression ratio
+        /// (~0.1%), but may decrease end-to-end latency in low-bandwidth environments (time to
+        /// first decompressed byte).
+        ///
+        /// No value, or a value of zero, results in no contraint for the block sizes.
+        pub fn set_target_cblock_size(
+            &mut self,
+            target_size: Option<u32>,
+        ) -> io::Result<()> {
+            self.set_parameter(zstd_safe::CParameter::TargetCBlockSize(
+                target_size.unwrap_or(0),
+            ))
+        }
+
         /// Sets the maximum back-reference distance.
         ///
         /// The actual maximum distance is going to be `2^log_distance`.

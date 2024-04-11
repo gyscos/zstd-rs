@@ -167,6 +167,20 @@ impl<'a> Decoder<'a> {
         Ok(Decoder { context })
     }
 
+    /// Creates a new decoder, using a ref prefix
+    pub fn with_ref_prefix<'b>(
+        ref_prefix: &'b [u8],
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
+        let mut context = zstd_safe::DCtx::create();
+        context
+            .ref_prefix(ref_prefix)
+            .map_err(map_error_code)?;
+        Ok(Decoder { context })
+    }
+
     /// Sets a decompression parameter for this decoder.
     pub fn set_parameter(&mut self, parameter: DParameter) -> io::Result<()> {
         self.context
@@ -266,6 +280,27 @@ impl<'a> Encoder<'a> {
         context
             .ref_cdict(dictionary.as_cdict())
             .map_err(map_error_code)?;
+        Ok(Encoder { context })
+    }
+
+    /// Creates a new encoder initialized with the given ref prefix.
+    pub fn with_ref_prefix<'b>(
+        level: i32,
+        ref_prefix: &'b [u8]
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
+        let mut context = zstd_safe::CCtx::create();
+
+        context
+            .set_parameter(CParameter::CompressionLevel(level))
+            .map_err(map_error_code)?;
+
+        context
+            .ref_prefix(ref_prefix)
+            .map_err(map_error_code)?;
+
         Ok(Encoder { context })
     }
 

@@ -209,6 +209,20 @@ impl<'a, W: Write> Encoder<'a, W> {
         Ok(Encoder { writer })
     }
 
+    /// Creates a new encoder, using a ref prefix
+    pub fn with_ref_prefix<'b>(
+        writer: W,
+        level: i32,
+        ref_prefix: &'b [u8],
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
+        let encoder = raw::Encoder::with_ref_prefix(level, ref_prefix)?;
+        let writer = zio::Writer::new(writer, encoder);
+        Ok(Encoder { writer })
+    }
+
     /// Returns a wrapper around `self` that will finish the stream on drop.
     pub fn auto_finish(self) -> AutoFinishEncoder<'a, W> {
         AutoFinishEncoder {

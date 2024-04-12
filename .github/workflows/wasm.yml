@@ -22,6 +22,6 @@ jobs:
         submodules: recursive
 
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --target wasm32-unknown-unknown
     - name: Build with feature thin
-      run: cargo build --verbose --features thin
+      run: cargo build --verbose --features thin --target wasm32-unknown-unknown

@@ -143,7 +143,6 @@ fn compile_zstd() {
         cargo_print(&"rerun-if-changed=wasm-shim/string.h");
 
         config.include("wasm-shim/");
-        config.define("XXH_STATIC_ASSERT", Some("0"));
     }
 
     // Some extra parameters

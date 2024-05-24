@@ -71,6 +71,22 @@ impl<'a, R: BufRead> Decoder<'a, R> {
         Ok(Decoder { reader })
     }
 
+    /// Creates a new decoder, using a ref prefix.
+    ///
+    /// The prefix must be the same as the one used during compression.
+    pub fn with_ref_prefix<'b>(
+        reader: R,
+        ref_prefix: &'b [u8]
+    ) -> io::Result<Self>
+    where
+        'b: 'a,
+    {
+        let decoder = raw::Decoder::with_ref_prefix(ref_prefix)?;
+        let reader = zio::Reader::new(reader, decoder);
+
+        Ok(Decoder { reader })
+    }
+
     /// Recommendation for the size of the output buffer.
     pub fn recommended_output_size() -> usize {
         zstd_safe::DCtx::out_size()

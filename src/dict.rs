@@ -2,7 +2,7 @@
 //!
 //! A dictionary can help improve the compression of small files.
 //! The dictionary must be present during decompression,
-//! but can be shared accross multiple "similar" files.
+//! but can be shared across multiple "similar" files.
 //!
 //! Creating a dictionary using the `zstd` C library,
 //! using the `zstd` command-line interface, using this library,
@@ -129,7 +129,7 @@ pub fn from_continuous(
 
 /// Train a dictionary from multiple samples.
 ///
-/// The samples will internaly be copied to a single continuous buffer,
+/// The samples will internally be copied to a single continuous buffer,
 /// so make sure you have enough memory available.
 ///
 /// If you need to stretch your system's limits,

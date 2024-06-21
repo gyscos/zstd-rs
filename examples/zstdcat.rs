@@ -14,7 +14,7 @@ fn main() {
     // takes a single (repeatable and optional) argument.
     let args = Args::parse();
 
-    // If nothign was given, act as if `-` was there.
+    // If nothing was given, act as if `-` was there.
     if args.file.is_empty() {
         decompress_file("-").unwrap();
     } else {

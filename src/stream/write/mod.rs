@@ -289,7 +289,7 @@ impl<'a, W: Write> Encoder<'a, W> {
         }
     }
 
-    /// Attemps to finish the stream.
+    /// Attempts to finish the stream.
     ///
     /// You *need* to finish the stream when you're done writing, either with
     /// this method or with [`finish(self)`](#method.finish).

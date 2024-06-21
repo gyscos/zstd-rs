@@ -146,7 +146,7 @@ pub fn max_c_level() -> CompressionLevel {
 /// This will try to compress `src` entirely and write the result to `dst`, returning the number of
 /// bytes written. If `dst` is too small to hold the compressed content, an error will be returned.
 ///
-/// For streaming operations that don't require to store the entire input/ouput in memory, see
+/// For streaming operations that don't require to store the entire input/output in memory, see
 /// `compress_stream`.
 pub fn compress<C: WriteBuf + ?Sized>(
     dst: &mut C,
@@ -2005,7 +2005,7 @@ pub fn get_dict_id_from_dict(dict: &[u8]) -> Option<NonZeroU32> {
 ///
 /// Returns `None` if the dictionary ID could not be decoded. This may happen if:
 /// * The frame was not encoded with a dictionary.
-/// * The frame intentionally did not include dicionary ID.
+/// * The frame intentionally did not include dictionary ID.
 /// * The dictionary was non-conformant.
 /// * `src` is too small and does not include the frame header.
 /// * `src` is not a valid zstd frame prefix.

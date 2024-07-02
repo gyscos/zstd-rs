@@ -12,12 +12,12 @@ mod tests;
 ///
 /// This allows to read a stream of compressed data
 /// (good for files or heavy network stream).
-pub struct Decoder<'a, R: BufRead> {
+pub struct Decoder<'a, R> {
     reader: zio::Reader<R, raw::Decoder<'a>>,
 }
 
 /// An encoder that compress input data from another `Read`.
-pub struct Encoder<'a, R: BufRead> {
+pub struct Encoder<'a, R> {
     reader: zio::Reader<R, raw::Encoder<'a>>,
 }
 

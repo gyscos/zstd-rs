@@ -179,17 +179,15 @@ impl<'a> Decoder<'a> {
     }
 
     /// Creates a new decoder, using a ref prefix
-    pub fn with_ref_prefix<'b>(
-        ref_prefix: &'b [u8],
-    ) -> io::Result<Self>
+    pub fn with_ref_prefix<'b>(ref_prefix: &'b [u8]) -> io::Result<Self>
     where
         'b: 'a,
     {
         let mut context = zstd_safe::DCtx::create();
-        context
-            .ref_prefix(ref_prefix)
-            .map_err(map_error_code)?;
-        Ok(Decoder { context })
+        context.ref_prefix(ref_prefix).map_err(map_error_code)?;
+        Ok(Decoder {
+            context: MaybeOwnedDCtx::Owned(context),
+        })
     }
 
     /// Sets a decompression parameter for this decoder.
@@ -318,7 +316,7 @@ impl<'a> Encoder<'a> {
     /// Creates a new encoder initialized with the given ref prefix.
     pub fn with_ref_prefix<'b>(
         level: i32,
-        ref_prefix: &'b [u8]
+        ref_prefix: &'b [u8],
     ) -> io::Result<Self>
     where
         'b: 'a,
@@ -329,11 +327,11 @@ impl<'a> Encoder<'a> {
             .set_parameter(CParameter::CompressionLevel(level))
             .map_err(map_error_code)?;
 
-        context
-            .ref_prefix(ref_prefix)
-            .map_err(map_error_code)?;
+        context.ref_prefix(ref_prefix).map_err(map_error_code)?;
 
-        Ok(Encoder { context })
+        Ok(Encoder {
+            context: MaybeOwnedCCtx::Owned(context),
+        })
     }
 
     /// Sets a compression parameter for this encoder.

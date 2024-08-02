@@ -2,7 +2,7 @@
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 name = "zstd-safe"
 build = "build.rs"
-version = "7.2.0"
+version = "7.2.1"
 description = "Safe low-level bindings for the zstd compression library."
 keywords = ["zstd", "zstandard", "compression"]
 categories = ["api-bindings", "compression"]

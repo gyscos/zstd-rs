@@ -59,8 +59,7 @@ features = ["runtime", "which-rustfmt"]
 version = "0.3"
 
 [build-dependencies.cc]
-version = "1.0.45"
-features = ["parallel"]
+version = "1.0.86"
 
 [features]
 default = ["legacy", "zdict_builder"]

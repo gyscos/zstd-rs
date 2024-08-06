@@ -1,12 +1,28 @@
 //! Implement pull-based [`Read`] trait for both compressing and decompressing.
+#[cfg(feature = "experimental")]
+use std::cmp::min;
+#[cfg(feature = "experimental")]
+use std::io::{SeekFrom, Seek, Write};
 use std::io::{self, BufRead, BufReader, Read};
+#[cfg(feature = "experimental")]
+use std::mem::size_of;
 
 use crate::dict::{DecoderDictionary, EncoderDictionary};
 use crate::stream::{raw, zio};
 use zstd_safe;
 
+#[cfg(feature = "experimental")]
+use zstd_safe::{frame_header_size, MAGIC_SKIPPABLE_MASK, MAGIC_SKIPPABLE_START, SKIPPABLEHEADERSIZE};
+#[cfg(feature = "experimental")]
+use super::raw::MagicVariant;
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "experimental")]
+const U24_SIZE: usize = size_of::<u16>() + size_of::<u8>();
+#[cfg(feature = "experimental")]
+const U32_SIZE: usize = size_of::<u32>();
 
 /// A decoder that decompress input data from another `Read`.
 ///
@@ -45,6 +61,152 @@ impl<R: BufRead> Decoder<'static, R> {
         Ok(Decoder { reader })
     }
 }
+
+/// Read and discard `bytes_count` bytes in the reader.
+#[cfg(feature = "experimental")]
+fn consume<R: Read + ?Sized>(this: &mut R, mut bytes_count: usize) -> io::Result<()> {
+    let mut buf = [0; 100];
+    while bytes_count > 0 {
+        let end = min(buf.len(), bytes_count);
+        match this.read(&mut buf[..end]) {
+            Ok(0) => break,
+            Ok(n) => bytes_count -= n,
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {},
+            Err(e) => return Err(e),
+        }
+    }
+    if bytes_count > 0 {
+        Err(io::Error::new(io::ErrorKind::UnexpectedEof, "failed to fill whole buffer"))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "experimental")]
+impl<'a, R: Read + Seek> Decoder<'a, BufReader<R>> {
+    fn read_skippable_frame_size(&mut self) -> io::Result<usize> {
+        let mut magic_buffer = [0u8; U32_SIZE];
+        self.reader.reader_mut().read_exact(&mut magic_buffer)?;
+
+        // Read skippable frame size.
+        let mut buffer = [0u8; U32_SIZE];
+        self.reader.reader_mut().read_exact(&mut buffer)?;
+        let content_size = u32::from_le_bytes(buffer) as usize;
+
+        self.seek_back(U32_SIZE * 2);
+
+        Ok(content_size + SKIPPABLEHEADERSIZE as usize)
+    }
+
+    fn seek_back(&mut self, bytes_count: usize) {
+        if let Err(error) = self.reader.reader_mut().seek(SeekFrom::Current(-(bytes_count as i64))) {
+            panic!("Error while seeking back to the start: {}", error);
+        }
+    }
+
+    /// Attempt to read a skippable frame and write its content to `dest`.
+    /// If it cannot read a skippable frame, the reader will be back to its starting position.
+    pub fn read_skippable_frame<W: Write>(&mut self, dest: &mut W) -> io::Result<(usize, MagicVariant)> {
+        let magic_buffer = self.reader.peek_4bytes()?;
+        let op = self.reader.operation();
+        if !op.is_skippable_frame(&magic_buffer) {
+            return Err(io::Error::new(io::ErrorKind::Other, "Unsupported frame parameter"));
+        }
+        self.reader.clear_peeked_data();
+
+        let magic_number = u32::from_le_bytes(magic_buffer);
+
+        // Read skippable frame size.
+        let mut buffer = [0u8; U32_SIZE];
+        self.reader.reader_mut().read_exact(&mut buffer)?;
+        let content_size = u32::from_le_bytes(buffer) as usize;
+
+        if content_size > 0 {
+            std::io::copy(&mut self.reader.reader_mut().take(content_size as u64), dest)?;
+        }
+
+        let magic_variant = magic_number - MAGIC_SKIPPABLE_START;
+
+        Ok((content_size, MagicVariant(magic_variant as u8)))
+    }
+
+    fn get_block_size(&mut self) -> io::Result<(usize, bool)> {
+        let mut buffer = [0u8; U24_SIZE];
+        self.reader.reader_mut().read_exact(&mut buffer)?;
+        let buffer = [buffer[0], buffer[1], buffer[2], 0];
+        let block_header = u32::from_le_bytes(buffer);
+        let compressed_size = block_header >> 3;
+        let last_block = block_header & 1;
+        self.seek_back(U24_SIZE);
+        Ok((compressed_size as usize, last_block != 0))
+    }
+
+    fn find_frame_compressed_size(&mut self) -> io::Result<usize> {
+        const ZSTD_BLOCK_HEADER_SIZE: usize = 3;
+
+        // TODO: should we support legacy format?
+        let mut magic_buffer = [0u8; U32_SIZE];
+        if self.reader.peeking() {
+            magic_buffer = self.reader.peeked_data();
+            self.reader.clear_peeked_data();
+        }
+        else {
+            self.reader.reader_mut().read_exact(&mut magic_buffer)?;
+        }
+        let magic_number = u32::from_le_bytes(magic_buffer);
+        self.seek_back(U32_SIZE);
+        if magic_number & MAGIC_SKIPPABLE_MASK == MAGIC_SKIPPABLE_START {
+            self.read_skippable_frame_size()
+        }
+        else {
+            let mut bytes_read = 0;
+            // Extract frame header.
+            let (header_size, checksum_flag) = self.frame_header_size()?;
+            bytes_read += header_size;
+            consume(self.reader.reader_mut(), header_size)?;
+
+            // Iterator over each block.
+            loop {
+                let (compressed_size, last_block) = self.get_block_size()?;
+                let block_size = ZSTD_BLOCK_HEADER_SIZE + compressed_size;
+                consume(self.reader.reader_mut(), block_size)?;
+                bytes_read += block_size;
+                if last_block {
+                    break;
+                }
+            }
+
+            self.seek_back(bytes_read);
+
+            if checksum_flag {
+                bytes_read += 4;
+            }
+
+            Ok(bytes_read)
+        }
+    }
+
+    fn frame_header_size(&mut self) -> io::Result<(usize, bool)> {
+        use crate::map_error_code;
+        const MAX_FRAME_HEADER_SIZE_PREFIX: usize = 5;
+        let mut buffer = [0u8; MAX_FRAME_HEADER_SIZE_PREFIX];
+        self.reader.reader_mut().read_exact(&mut buffer)?;
+        let size = frame_header_size(&buffer)
+            .map_err(map_error_code)?;
+        let byte = buffer[MAX_FRAME_HEADER_SIZE_PREFIX - 1];
+        let checksum_flag = (byte >> 2) & 1;
+        self.seek_back(MAX_FRAME_HEADER_SIZE_PREFIX);
+        Ok((size, checksum_flag != 0))
+    }
+
+    /// Skip over a frame, without decompressing it.
+    pub fn skip_frame(&mut self) -> io::Result<()> {
+        let size = self.find_frame_compressed_size()?;
+        consume(self.reader.reader_mut(), size)?;
+        Ok(())
+    }
+}
+
 impl<'a, R: BufRead> Decoder<'a, R> {
     /// Creates a new decoder which employs the provided context for deserialization.
     pub fn with_context(

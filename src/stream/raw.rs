@@ -130,6 +130,9 @@ pub struct Status {
     pub bytes_written: usize,
 }
 
+/// The magic variant encoded in a skippable frame.
+pub struct MagicVariant(pub u8);
+
 /// An in-memory decoder for streams of data.
 pub struct Decoder<'a> {
     context: MaybeOwnedDCtx<'a>,
@@ -198,6 +201,23 @@ impl<'a> Decoder<'a> {
         }
         .map_err(map_error_code)?;
         Ok(())
+    }
+
+    #[cfg(feature = "experimental")]
+    // TODO: remove self?
+    /// Read a skippable frame.
+    pub fn read_skippable_frame(&self, dest: &mut Vec<u8>, input: &[u8]) -> io::Result<(usize, MagicVariant)> {
+        let mut magic_variant = 0;
+        zstd_safe::read_skippable_frame(dest, &mut magic_variant, input)
+            .map(|written| (written, MagicVariant(magic_variant as u8)))
+            .map_err(map_error_code)
+    }
+
+    #[cfg(feature = "experimental")]
+    // TODO: remove self?
+    /// Check if a frame is skippable.
+    pub fn is_skippable_frame(&self, input: &[u8]) -> bool {
+        zstd_safe::is_skippable_frame(input)
     }
 }
 

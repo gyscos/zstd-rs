@@ -881,6 +881,45 @@ impl Default for DCtx<'_> {
     }
 }
 
+#[cfg(feature = "experimental")]
+pub fn read_skippable_frame<C: WriteBuf + ?Sized>(dst: &mut C, magic_variant: &mut u32, input: &[u8]) -> SafeResult {
+    let input_len = input.len();
+    unsafe {
+        dst.write_from(|buffer, capacity| {
+            parse_code(zstd_sys::ZSTD_readSkippableFrame(
+                    buffer,
+                    capacity,
+                    magic_variant,
+                    ptr_void(input),
+                    input_len,
+            ))
+        })
+    }
+}
+
+#[cfg(feature = "experimental")]
+pub fn write_skippable_frame<C: WriteBuf + ?Sized>(dst: &mut C, input: &[u8], magic_variant: u32) -> SafeResult {
+    let input_len = input.len();
+    unsafe {
+        dst.write_from(|buffer, capacity| {
+            parse_code(zstd_sys::ZSTD_writeSkippableFrame(
+                    buffer,
+                    capacity,
+                    input.as_ptr() as *mut _,
+                    input_len,
+                    magic_variant,
+            ))
+        })
+    }
+}
+
+#[cfg(feature = "experimental")]
+pub fn is_skippable_frame(input: &[u8]) -> bool {
+    unsafe {
+        zstd_sys::ZSTD_isSkippableFrame(ptr_void(input), input.len()) > 0
+    }
+}
+
 impl<'a> DCtx<'a> {
     /// Try to create a new decompression context.
     ///
@@ -980,6 +1019,8 @@ impl<'a> DCtx<'a> {
         }
     }
 
+    /// Wraps the `ZSTD_initCStream()` function.
+    ///
     /// Initializes an existing `DStream` for decompression.
     ///
     /// This is equivalent to calling:
@@ -1951,6 +1992,14 @@ pub type DStream<'a> = DCtx<'a>;
 pub fn find_frame_compressed_size(src: &[u8]) -> SafeResult {
     let code = unsafe {
         zstd_sys::ZSTD_findFrameCompressedSize(ptr_void(src), src.len())
+    };
+    parse_code(code)
+}
+
+#[cfg(feature = "experimental")]
+pub fn frame_header_size(src: &[u8]) -> SafeResult {
+    let code = unsafe {
+        zstd_sys::ZSTD_frameHeaderSize(ptr_void(src), src.len())
     };
     parse_code(code)
 }

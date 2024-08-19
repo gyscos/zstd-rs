@@ -174,6 +174,12 @@ where
     D: Operation,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.finished {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "encoder is finished",
+            ));
+        }
         // Keep trying until _something_ has been consumed.
         // As soon as some input has been taken, we cannot afford
         // to take any chance: if an error occurs, the user couldn't know

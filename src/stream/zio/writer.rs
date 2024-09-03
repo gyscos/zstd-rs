@@ -11,16 +11,30 @@ use crate::stream::raw::{InBuffer, Operation, OutBuffer};
 /// It can be used with either compression or decompression, and forwards the
 /// output to a wrapped `Write`.
 pub struct Writer<W, D> {
-    writer: W,
+    /// Either an encoder or a decoder.
     operation: D,
 
+    /// Where we send the output of the operation.
+    writer: W,
+
+    /// Offset into the buffer
+    ///
+    /// Only things after this matter. Things before have already been sent to the writer.
     offset: usize,
+
+    /// Output buffer
+    ///
+    /// Where the operation writes, before it gets flushed to the writer
     buffer: Vec<u8>,
 
     // When `true`, indicates that nothing should be added to the buffer.
     // All that's left if to empty the buffer.
     finished: bool,
 
+    /// When `true`, the operation just finished a frame.
+    ///
+    /// Only happens when decompressing.
+    /// The context needs to be re-initialized to process the next frame.
     finished_frame: bool,
 }
 
@@ -33,13 +47,31 @@ where
     ///
     /// All output from the given operation will be forwarded to `writer`.
     pub fn new(writer: W, operation: D) -> Self {
+        // 32KB buffer? That's what flate2 uses
+        Self::with_output_buffer(
+            Vec::with_capacity(32 * 1024),
+            writer,
+            operation,
+        )
+    }
+
+    /// Creates a new `Writer` using the given output buffer.
+    ///
+    /// The output buffer _must_ have pre-allocated capacity (its capacity will not be changed after).
+    ///
+    /// Usually you would use `Vec::with_capacity(desired_buffer_size)`.
+    pub fn with_output_buffer(
+        output_buffer: Vec<u8>,
+        writer: W,
+        operation: D,
+    ) -> Self {
         Writer {
             writer,
             operation,
 
             offset: 0,
             // 32KB buffer? That's what flate2 uses
-            buffer: Vec::with_capacity(32 * 1024),
+            buffer: output_buffer,
 
             finished: false,
             finished_frame: false,

@@ -322,6 +322,25 @@ mod tests {
     }
 
     #[test]
+    fn test_compress_with_capacity() {
+        use crate::stream::raw::Encoder;
+
+        let input = b"AbcdefghAbcdefgh.";
+
+        // Test writer
+        let mut output = Vec::new();
+        {
+            let mut writer =
+                Writer::new_with_capacity(&mut output, Encoder::new(1).unwrap(), 64);
+            assert_eq!(writer.buffer().capacity() == 64);
+            writer.write_all(input).unwrap();
+            writer.finish().unwrap();
+        }
+        let decoded = crate::decode_all(&output[..]).unwrap();
+        assert_eq!(&decoded, input);
+    }
+
+    #[test]
     fn test_decompress() {
         use crate::stream::raw::Decoder;
 
@@ -336,6 +355,24 @@ mod tests {
             writer.finish().unwrap();
         }
         // println!("Output: {:?}", output);
+        assert_eq!(&output, input);
+    }
+
+    #[test]
+    fn test_decompress_with_capacity() {
+        use crate::stream::raw::Decoder;
+
+        let input = b"AbcdefghAbcdefgh.";
+        let compressed = crate::encode_all(&input[..], 1).unwrap();
+
+        // Test writer
+        let mut output = Vec::new();
+        {
+            let mut writer = Writer::new(&mut output, Decoder::new().unwrap(), 64);
+            assert_eq!(writer.buffer().capacity() == 64);
+            writer.write_all(&compressed).unwrap();
+            writer.finish().unwrap();
+        }
         assert_eq!(&output, input);
     }
 }

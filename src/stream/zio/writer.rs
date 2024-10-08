@@ -43,13 +43,20 @@ where
     W: Write,
     D: Operation,
 {
-    /// Creates a new `Writer`.
+    /// Creates a new `Writer` with a fixed buffer capacity of 32KB
     ///
     /// All output from the given operation will be forwarded to `writer`.
     pub fn new(writer: W, operation: D) -> Self {
         // 32KB buffer? That's what flate2 uses
+        new_with_capacity(W, D, 32 * 1024)
+    }
+
+    /// Creates a new `Writer` with user defined capacity.
+    ///
+    /// All output from the given operation will be forwarded to `writer`.
+    pub fn new_with_capacity(writer: W, operation: D, capacity: usize) -> Self {
         Self::with_output_buffer(
-            Vec::with_capacity(32 * 1024),
+            Vec::with_capacity(capacity),
             writer,
             operation,
         )

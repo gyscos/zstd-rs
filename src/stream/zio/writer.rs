@@ -43,13 +43,20 @@ where
     W: Write,
     D: Operation,
 {
-    /// Creates a new `Writer`.
+    /// Creates a new `Writer` with a fixed buffer capacity of 32KB
     ///
     /// All output from the given operation will be forwarded to `writer`.
     pub fn new(writer: W, operation: D) -> Self {
         // 32KB buffer? That's what flate2 uses
+        new_with_capacity(W, D, 32 * 1024)
+    }
+
+    /// Creates a new `Writer` with user defined capacity.
+    ///
+    /// All output from the given operation will be forwarded to `writer`.
+    pub fn new_with_capacity(writer: W, operation: D, capacity: usize) -> Self {
         Self::with_output_buffer(
-            Vec::with_capacity(32 * 1024),
+            Vec::with_capacity(capacity),
             writer,
             operation,
         )
@@ -315,6 +322,25 @@ mod tests {
     }
 
     #[test]
+    fn test_compress_with_capacity() {
+        use crate::stream::raw::Encoder;
+
+        let input = b"AbcdefghAbcdefgh.";
+
+        // Test writer
+        let mut output = Vec::new();
+        {
+            let mut writer =
+                Writer::new_with_capacity(&mut output, Encoder::new(1).unwrap(), 64);
+            assert_eq!(writer.buffer().capacity() == 64);
+            writer.write_all(input).unwrap();
+            writer.finish().unwrap();
+        }
+        let decoded = crate::decode_all(&output[..]).unwrap();
+        assert_eq!(&decoded, input);
+    }
+
+    #[test]
     fn test_decompress() {
         use crate::stream::raw::Decoder;
 
@@ -329,6 +355,24 @@ mod tests {
             writer.finish().unwrap();
         }
         // println!("Output: {:?}", output);
+        assert_eq!(&output, input);
+    }
+
+    #[test]
+    fn test_decompress_with_capacity() {
+        use crate::stream::raw::Decoder;
+
+        let input = b"AbcdefghAbcdefgh.";
+        let compressed = crate::encode_all(&input[..], 1).unwrap();
+
+        // Test writer
+        let mut output = Vec::new();
+        {
+            let mut writer = Writer::new(&mut output, Decoder::new().unwrap(), 64);
+            assert_eq!(writer.buffer().capacity() == 64);
+            writer.write_all(&compressed).unwrap();
+            writer.finish().unwrap();
+        }
         assert_eq!(&output, input);
     }
 }

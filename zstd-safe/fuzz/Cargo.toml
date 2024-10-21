@@ -1,0 +1,28 @@
+[package]
+name = "zstd-safe-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[package.metadata.docs.rs]
+features = ["std"]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+zstd-sys = { path = "../zstd-sys", version = "2.0.10", default-features = false }
+
+[features]
+std = ["zstd-sys/std"]
+
+[dependencies.zstd-safe]
+path = ".."
+
+[[bin]]
+name = "zstd_fuzzer"
+path = "fuzz_targets/zstd_fuzzer.rs"
+test = false
+doc = false
+bench = false

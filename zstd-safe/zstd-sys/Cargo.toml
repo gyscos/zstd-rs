@@ -70,6 +70,7 @@ experimental = [] # Expose experimental ZSTD API
 legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)
 non-cargo = [] # Silence cargo-specific build flags
 pkg-config = [] # Use pkg-config to build the zstd C library.
+vendored = [] # Always use vendored source code of zstd C library.
 std = [] # Deprecated: we never use types from std.
 zstdmt = [] # Enable multi-thread support (with pthread)
 thin = [] # Optimize binary by size

@@ -257,7 +257,8 @@ fn main() {
     }
 
     // println!("cargo:rustc-link-lib=zstd");
-    let (defs, headerpaths) = if cfg!(feature = "pkg-config")
+    let (defs, headerpaths) = if (cfg!(feature = "pkg-config")
+        && !cfg!(feature = "vendored"))
         || env::var_os("ZSTD_SYS_USE_PKG_CONFIG").is_some()
     {
         pkg_config()

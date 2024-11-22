@@ -24,3 +24,8 @@ $(cat zstd/LICENSE)
         run_bindgen zstd.h --allowlist-type "ZSTD_.*" --allowlist-function "ZSTD_.*" --allowlist-var "ZSTD_.*" -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zstd${SUFFIX}.rs
         run_bindgen zdict.h --blocklist-type wchar_t -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zdict${SUFFIX}.rs
     done
+
+    # - ZSTD_seekable_initFile is blocked because it expects the c FILE type, rust files can directly be passed to init_advanced()
+    run_bindgen zstd_seekable.h --allowlist-file ".*zstd_seekable.h$" --no-recursive-allowlist \
+      --blocklist-function ZSTD_seekable_initFile \
+      -- -Izstd/lib > src/bindings_zstd_seekable.rs

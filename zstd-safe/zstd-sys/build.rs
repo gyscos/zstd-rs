@@ -7,6 +7,9 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     let bindings = bindgen::Builder::default().header("zstd.h");
     #[cfg(feature = "zdict_builder")]
     let bindings = bindings.header("zdict.h");
+    #[cfg(feature = "seekable")]
+    let bindings =
+        bindings.header("zstd_seekable.h");
     let bindings = bindings
         .blocklist_type("max_align_t")
         .size_t_is_usize(true)
@@ -27,6 +30,11 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
 
     #[cfg(not(feature = "std"))]
     let bindings = bindings.ctypes_prefix("libc");
+
+    #[cfg(feature = "seekable")]
+    let bindings = bindings
+        .blocklist_function("ZSTD_seekable_initFile")
+        .blocklist_var("ZSTD_seekTableFooterSize");
 
     let bindings = bindings.generate().expect("Unable to generate bindings");
 
@@ -94,6 +102,8 @@ fn compile_zstd() {
         "zstd/lib/common",
         "zstd/lib/compress",
         "zstd/lib/decompress",
+        #[cfg(feature = "seekable")]
+        "zstd/contrib/seekable_format",
         #[cfg(feature = "zdict_builder")]
         "zstd/lib/dictBuilder",
         #[cfg(feature = "legacy")]
@@ -135,7 +145,8 @@ fn compile_zstd() {
     // See: https://github.com/gyscos/zstd-rs/pull/209
     let need_wasm_shim = !cfg!(feature = "no_wasm_shim")
         && env::var("TARGET").map_or(false, |target| {
-            target == "wasm32-unknown-unknown" || target.starts_with("wasm32-wasi")
+            target == "wasm32-unknown-unknown"
+                || target.starts_with("wasm32-wasi")
         });
 
     if need_wasm_shim {

@@ -56,7 +56,7 @@ default-features = false
 features = ["runtime", "which-rustfmt"]
 
 [build-dependencies.pkg-config]
-version = "0.3"
+version = "0.3.28"
 
 [build-dependencies.cc]
 version = "1.0.45"

@@ -48,13 +48,17 @@ where
     /// All output from the given operation will be forwarded to `writer`.
     pub fn new(writer: W, operation: D) -> Self {
         // 32KB buffer? That's what flate2 uses
-        new_with_capacity(W, D, 32 * 1024)
+        Self::new_with_capacity(writer, operation, 32 * 1024)
     }
 
     /// Creates a new `Writer` with user defined capacity.
     ///
     /// All output from the given operation will be forwarded to `writer`.
-    pub fn new_with_capacity(writer: W, operation: D, capacity: usize) -> Self {
+    pub fn new_with_capacity(
+        writer: W,
+        operation: D,
+        capacity: usize,
+    ) -> Self {
         Self::with_output_buffer(
             Vec::with_capacity(capacity),
             writer,
@@ -330,9 +334,12 @@ mod tests {
         // Test writer
         let mut output = Vec::new();
         {
-            let mut writer =
-                Writer::new_with_capacity(&mut output, Encoder::new(1).unwrap(), 64);
-            assert_eq!(writer.buffer().capacity() == 64);
+            let mut writer = Writer::new_with_capacity(
+                &mut output,
+                Encoder::new(1).unwrap(),
+                64,
+            );
+            assert_eq!(writer.buffer.capacity(), 64);
             writer.write_all(input).unwrap();
             writer.finish().unwrap();
         }
@@ -368,8 +375,12 @@ mod tests {
         // Test writer
         let mut output = Vec::new();
         {
-            let mut writer = Writer::new(&mut output, Decoder::new().unwrap(), 64);
-            assert_eq!(writer.buffer().capacity() == 64);
+            let mut writer = Writer::new_with_capacity(
+                &mut output,
+                Decoder::new().unwrap(),
+                64,
+            );
+            assert_eq!(writer.buffer.capacity(), 64);
             writer.write_all(&compressed).unwrap();
             writer.finish().unwrap();
         }

@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::{env, fmt, fs};
+use std::{env, fmt, fs, io};
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
@@ -236,6 +236,23 @@ fn compile_zstd() {
     cargo_print(&format_args!("root={}", dst.display()));
 }
 
+fn copy_dir_all(
+    src: impl AsRef<Path>,
+    dst: impl AsRef<Path>,
+) -> io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
 /// Print a line for cargo.
 ///
 /// If non-cargo is set, do not print anything.
@@ -247,6 +264,9 @@ fn cargo_print(content: &dyn fmt::Display) {
 
 fn main() {
     cargo_print(&"rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
+    cargo_print(&"rerun-if-env-changed=ZSTD_SYS_VENDORED");
+    cargo_print(&"rerun-if-env-changed=ZSTD_SYS_VENDORED_INCLUDE");
+    cargo_print(&"rerun-if-env-changed=ZSTD_SYS_VENDORED_LIBS");
 
     let target_arch =
         std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
@@ -256,8 +276,29 @@ fn main() {
         cargo_print(&"rustc-cfg=feature=\"std\"");
     }
 
-    // println!("cargo:rustc-link-lib=zstd");
-    let (defs, headerpaths) = if cfg!(feature = "pkg-config")
+    let (defs, headerpaths) = if cfg!(feature = "vendored")
+        || env::var_os("ZSTD_SYS_VENDORED").is_some()
+    {
+        let dst = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+        let lib_dir = dst.join("lib");
+        fs::create_dir_all(&lib_dir).unwrap();
+        let zstd_libs: Vec<PathBuf> = env::var("ZSTD_SYS_VENDORED_LIBS")
+            .unwrap()
+            .split(" ")
+            .map(PathBuf::from)
+            .collect();
+        for lib in zstd_libs {
+            fs::copy(&lib, lib_dir.join(lib.file_name().unwrap())).unwrap();
+        }
+        cargo_print(&"rustc-link-lib=static=zstd");
+        cargo_print(&format_args!("rustc-link-search={}", lib_dir.display()));
+        let include_dir = dst.join("include");
+        if let Some(zstd_include) = env::var_os("ZSTD_SYS_VENDORED_INCLUDE") {
+            copy_dir_all(zstd_include, &include_dir).unwrap();
+        }
+        cargo_print(&format_args!("root={}", dst.display()));
+        (vec![], vec![include_dir])
+    } else if cfg!(feature = "pkg-config")
         || env::var_os("ZSTD_SYS_USE_PKG_CONFIG").is_some()
     {
         pkg_config()

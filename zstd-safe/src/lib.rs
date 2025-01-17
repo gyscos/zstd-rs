@@ -27,6 +27,9 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "seekable")]
+pub mod seekable;
+
 // Re-export zstd-sys
 pub use zstd_sys;
 
@@ -47,6 +50,9 @@ include!("constants.rs");
 
 #[cfg(feature = "experimental")]
 include!("constants_experimental.rs");
+
+#[cfg(feature = "seekable")]
+include!("constants_seekable.rs");
 
 /// Represents the compression level used by zstd.
 pub type CompressionLevel = i32;

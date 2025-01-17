@@ -76,8 +76,12 @@ thin = [] # Optimize binary by size
 no_asm = [] # Disable ASM files (only on amd64 for decompression)
 zdict_builder = [] # Enable dictionary building (dictionary _using_ is always supported).
 no_wasm_shim = [] # Disable wasm shims (in case your wasm toolchain includes a C stdlib).
+seekable = [] # Enable support of the seekable format
 
 # These two are for cross-language LTO.
 # Will only work if `clang` is used to build the C library.
 fat-lto = [] # Enable fat-lto, will override thin-lto if specified
 thin-lto = [] # Enable thin-lto, will fallback to fat-lto if not supported
+
+[lints.rust]
+non_upper_case_globals = "allow"

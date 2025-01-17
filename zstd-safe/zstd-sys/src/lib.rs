@@ -36,3 +36,9 @@ include!("bindings_zstd_experimental.rs");
     not(feature = "bindgen")
 ))]
 include!("bindings_zdict_experimental.rs");
+
+#[cfg(all(
+    feature = "seekable",
+    not(feature = "bindgen")
+))]
+include!("bindings_zstd_seekable.rs");

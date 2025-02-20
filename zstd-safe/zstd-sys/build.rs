@@ -8,8 +8,7 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     #[cfg(feature = "zdict_builder")]
     let bindings = bindings.header("zdict.h");
     #[cfg(feature = "seekable")]
-    let bindings =
-        bindings.header("zstd_seekable.h");
+    let bindings = bindings.header("zstd_seekable.h");
     let bindings = bindings
         .blocklist_type("max_align_t")
         .size_t_is_usize(true)
@@ -224,7 +223,7 @@ fn compile_zstd() {
      * 7+: events at every position (*very* verbose)
      */
     #[cfg(feature = "debug")]
-    if !is_wasm {
+    if !need_wasm_shim {
         config.define("DEBUGLEVEL", Some("5"));
     }
 

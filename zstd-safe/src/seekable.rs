@@ -455,6 +455,9 @@ pub struct AdvancedSeekable<'a, F> {
     src: *mut F,
 }
 
+unsafe impl<F> Send for AdvancedSeekable<'_, F> where F: Send {}
+unsafe impl<F> Sync for AdvancedSeekable<'_, F> where F: Sync {}
+
 #[cfg(feature = "std")]
 impl<'a, F> core::ops::Deref for AdvancedSeekable<'a, F> {
     type Target = Seekable<'a>;

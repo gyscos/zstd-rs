@@ -75,7 +75,6 @@ pub const ZSTD_LDM_HASHRATELOG_MIN: u32 = 0;
 pub const ZSTD_TARGETCBLOCKSIZE_MIN: u32 = 1340;
 pub const ZSTD_TARGETCBLOCKSIZE_MAX: u32 = 131072;
 pub const ZSTD_SRCSIZEHINT_MIN: u32 = 0;
-pub const ZSTD_SRCSIZEHINT_MAX: u32 = 2147483647;
 pub const ZSTD_BLOCKSPLITTER_LEVEL_MAX: u32 = 6;
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

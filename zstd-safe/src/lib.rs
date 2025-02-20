@@ -2084,9 +2084,9 @@ pub enum DictAttachPref {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ParamSwitch {
-    Auto = zstd_sys::ZSTD_paramSwitch_e::ZSTD_ps_auto as u32,
-    Enable = zstd_sys::ZSTD_paramSwitch_e::ZSTD_ps_enable as u32,
-    Disable = zstd_sys::ZSTD_paramSwitch_e::ZSTD_ps_disable as u32,
+    Auto = zstd_sys::ZSTD_ParamSwitch_e::ZSTD_ps_auto as u32,
+    Enable = zstd_sys::ZSTD_ParamSwitch_e::ZSTD_ps_enable as u32,
+    Disable = zstd_sys::ZSTD_ParamSwitch_e::ZSTD_ps_disable as u32,
 }
 
 /// A compression parameter.

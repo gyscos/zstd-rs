@@ -27,3 +27,12 @@ jobs:
       run: cargo build --verbose --features thin
     - name: Run tests
       run: cargo test --verbose --features thin
+
+    - name: Build zstd-safe with feature seekable
+      run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features seekable
+    - name: Run zstd-safe tests with feature seekable
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features seekable
+    - name: Build zstd-safe with features std and seekable
+      run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable
+    - name: Run zstd-safe tests with features std and seekable
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable

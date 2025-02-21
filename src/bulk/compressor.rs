@@ -154,6 +154,24 @@ impl<'a> Compressor<'a> {
         Ok(())
     }
 
+    /// Sets the expected size of the input.
+    ///
+    /// This affects the compression effectiveness.
+    ///
+    /// It is an error to give an incorrect size (an error will be returned when closing the
+    /// stream if the size does not match what was pledged).
+    ///
+    /// Giving a `None` size means the size is unknown (this is the default).
+    pub fn set_pledged_src_size(
+        &mut self,
+        size: Option<u64>,
+    ) -> io::Result<()> {
+        self.context
+            .set_pledged_src_size(size)
+            .map_err(map_error_code)?;
+        Ok(())
+    }
+
     crate::encoder_parameters!();
 }
 

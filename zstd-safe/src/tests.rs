@@ -209,6 +209,11 @@ fn test_seekable_seek_table() {
 
     let seekable_archive = new_seekable_archive(INPUT);
     let mut seekable = Seekable::create();
+
+    // Assert that creating a SeekTable from an uninitialized seekable errors.
+    // This led to segfaults with zstd versions prior v1.5.7
+    assert!(SeekTable::try_from_seekable(&seekable).is_err());
+
     seekable
         .init_buff(&seekable_archive)
         .map_err(zstd_safe::get_error_name)
@@ -216,7 +221,7 @@ fn test_seekable_seek_table() {
 
     // Try to create a seek table from the seekable
     let seek_table =
-        unsafe { SeekTable::try_from_seekable(&seekable).unwrap() };
+        { SeekTable::try_from_seekable(&seekable).unwrap() };
 
     // Seekable and seek table should return the same results
     assert_eq!(seekable.num_frames(), seek_table.num_frames());

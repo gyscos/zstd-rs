@@ -599,17 +599,11 @@ unsafe impl Send for SeekTable {}
 unsafe impl Sync for SeekTable {}
 
 impl SeekTable {
-    // `ZSTD_seekTable_create_fromSeekable` causes a segmentation fault when called with an
-    // uninitialized Seekable. This function is safe once the issue is resolved and released
-    // upstream.
-    // See https://github.com/facebook/zstd/issues/4200 and https://github.com/facebook/zstd/pull/4201
     /// Try to create a `SeekTable` from a `Seekable`.
     ///
     /// Memory constrained use cases that manage multiple archives benefit from retaining
     /// multiple archive seek tables without retaining a `Seekable` instance for each.
-    ///
-    /// May cause a segmentation fault when called wih an uninitialized `Seekable`.
-    pub unsafe fn try_from_seekable<'a>(
+    pub fn try_from_seekable<'a>(
         value: &Seekable<'a>,
     ) -> Result<Self, SeekTableCreateError> {
         // Safety: Just FFI

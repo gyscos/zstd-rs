@@ -34,6 +34,8 @@ include = [
     "/zstd/lib/**/*.c",
     "/zstd/lib/**/*.h",
     "/zstd/lib/**/*.S",
+    "/zstd/contrib/seekable_format/*.c",
+    "/zstd/contrib/seekable_format/*.h",
 ]
 # exclude = [
 #     "zstd",

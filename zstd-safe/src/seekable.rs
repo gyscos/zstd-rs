@@ -455,7 +455,9 @@ pub struct AdvancedSeekable<'a, F> {
     src: *mut F,
 }
 
+#[cfg(feature = "std")]
 unsafe impl<F> Send for AdvancedSeekable<'_, F> where F: Send {}
+#[cfg(feature = "std")]
 unsafe impl<F> Sync for AdvancedSeekable<'_, F> where F: Sync {}
 
 #[cfg(feature = "std")]

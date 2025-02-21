@@ -4,14 +4,25 @@ use std::{env, fmt, fs};
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
+    use bindgen::RustTarget;
+
     let bindings = bindgen::Builder::default().header("zstd.h");
+
     #[cfg(feature = "zdict_builder")]
     let bindings = bindings.header("zdict.h");
+
     #[cfg(feature = "seekable")]
     let bindings = bindings.header("zstd_seekable.h");
+
     let bindings = bindings
+        .layout_tests(false)
         .blocklist_type("max_align_t")
         .size_t_is_usize(true)
+        .rust_target(
+            RustTarget::stable(64, 0)
+                .ok()
+                .expect("Could not get 1.64.0 version"),
+        )
         .use_core()
         .rustified_enum(".*")
         .clang_args(
@@ -27,13 +38,8 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
         .clang_arg("-DZDICT_STATIC_LINKING_ONLY")
         .clang_arg("-DZSTD_RUST_BINDINGS_EXPERIMENTAL");
 
-    #[cfg(not(feature = "std"))]
-    let bindings = bindings.ctypes_prefix("libc");
-
     #[cfg(feature = "seekable")]
-    let bindings = bindings
-        .blocklist_function("ZSTD_seekable_initFile")
-        .blocklist_var("ZSTD_seekTableFooterSize");
+    let bindings = bindings.blocklist_function("ZSTD_seekable_initFile");
 
     let bindings = bindings.generate().expect("Unable to generate bindings");
 

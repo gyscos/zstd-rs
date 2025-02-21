@@ -18,11 +18,20 @@ $(cat zstd/LICENSE)
 
     for EXPERIMENTAL_ARG in "$experimental" ""; do
         if [ -z "$EXPERIMENTAL_ARG" ]; then EXPERIMENTAL=""; else EXPERIMENTAL="_experimental"; fi
-        SUFFIX=${EXPERIMENTAL}
-        filename=src/bindings${EXPERIMENTAL}.rs
 
-        run_bindgen zstd.h --allowlist-type "ZSTD_.*" --allowlist-function "ZSTD_.*" --allowlist-var "ZSTD_.*" -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zstd${SUFFIX}.rs
-        run_bindgen zdict.h --blocklist-type wchar_t -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zdict${SUFFIX}.rs
+        SUFFIX=${EXPERIMENTAL}
+
+        run_bindgen zstd.h \
+            --allowlist-type "ZSTD_.*" \
+            --allowlist-function "ZSTD_.*" \
+            --allowlist-var "ZSTD_.*" \
+            -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zstd${SUFFIX}.rs
+
+        run_bindgen zdict.h \
+            --allowlist-type "ZDICT_.*" \
+            --allowlist-function "ZDICT_.*" \
+            --allowlist-var "ZDICT_.*" \
+            -- -Izstd/lib $EXPERIMENTAL_ARG > src/bindings_zdict${SUFFIX}.rs
     done
 
     # - ZSTD_seekable_initFile is blocked because it expects the c FILE type, rust files can directly be passed to init_advanced()

@@ -842,6 +842,16 @@ impl<'a> CCtx<'a> {
             )
         })
     }
+
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(
+        feature = "doc-cfg",
+        doc(cfg(feature = "experimental"))
+    )]
+    pub fn get_frame_progression(&self) -> zstd_sys::ZSTD_frameProgression {
+        // Safety: Just FFI
+        unsafe { zstd_sys::ZSTD_getFrameProgression(self.0.as_ptr()) }
+    }
 }
 
 impl<'a> Drop for CCtx<'a> {

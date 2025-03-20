@@ -36,6 +36,11 @@ pub use zstd_sys;
 /// How to compress data.
 pub use zstd_sys::ZSTD_strategy as Strategy;
 
+/// Frame progression state.
+#[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+pub use zstd_sys::ZSTD_frameProgression as FrameProgression;
+
 /// Reset directive.
 // pub use zstd_sys::ZSTD_ResetDirective as ResetDirective;
 use core::ffi::{c_char, c_int, c_ulonglong, c_void};
@@ -841,6 +846,13 @@ impl<'a> CCtx<'a> {
                 core::ptr::null_mut(),
             )
         })
+    }
+
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    pub fn get_frame_progression(&self) -> FrameProgression {
+        // Safety: Just FFI
+        unsafe { zstd_sys::ZSTD_getFrameProgression(self.0.as_ptr()) }
     }
 }
 

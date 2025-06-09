@@ -53,7 +53,7 @@ doctest = false  # Documentation is for C code, good luck testing that.
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.71"
+version = "0.72"
 default-features = false
 features = ["runtime", "which-rustfmt"]
 

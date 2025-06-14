@@ -55,7 +55,7 @@ doctest = false  # Documentation is for C code, good luck testing that.
 optional = true
 version = "0.72"
 default-features = false
-features = ["runtime", "which-rustfmt"]
+features = ["runtime"]
 
 [build-dependencies.pkg-config]
 version = "0.3.28"

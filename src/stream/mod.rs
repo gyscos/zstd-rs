@@ -151,7 +151,7 @@ macro_rules! encoder_parameters {
         /// (~0.1%), but may decrease end-to-end latency in low-bandwidth environments (time to
         /// first decompressed byte).
         ///
-        /// No value, or a value of zero, results in no contraint for the block sizes.
+        /// No value, or a value of zero, results in no constraint for the block sizes.
         pub fn set_target_cblock_size(
             &mut self,
             target_size: Option<u32>,

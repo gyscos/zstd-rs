@@ -1557,7 +1557,7 @@ pub struct InBuffer<'a> {
 /// It allows starting from an uninitializes chunk of memory and writing to it, progressively
 /// initializing it. No re-allocation typically occur after the initial creation.
 ///
-/// The main implementors are:
+/// The main implementers are:
 /// * `Vec<u8>` and similar structures. These hold both a length (initialized data) and a capacity
 ///   (allocated memory).
 ///

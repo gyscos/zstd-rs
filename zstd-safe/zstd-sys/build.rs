@@ -210,7 +210,9 @@ fn compile_zstd() {
     // Hide symbols from resulting library,
     // so we can be used with another zstd-linking lib.
     // See https://github.com/gyscos/zstd-rs/issues/58
-    config.flag("-fvisibility=hidden");
+    if ! cfg!(target_env = "msvc") {
+        config.flag("-fvisibility=hidden");
+    }
     config.define("XXH_PRIVATE_API", Some(""));
     config.define("ZSTDLIB_VISIBILITY", Some(""));
     #[cfg(feature = "zdict_builder")]

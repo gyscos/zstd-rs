@@ -29,7 +29,7 @@ partial-io = "0.5"
 walkdir = "2.2"
 
 [features]
-default = ["legacy", "arrays", "zdict_builder"]
+default = ["legacy", "arrays", "zdict_builder", "bindgen-runtime"]
 
 bindgen = ["zstd-safe/bindgen"]
 debug = ["zstd-safe/debug"]
@@ -48,6 +48,10 @@ zdict_builder = ["zstd-safe/zdict_builder"]
 # Will only work if `clang` is used to build the C library.
 fat-lto = ["zstd-safe/fat-lto"]
 thin-lto = ["zstd-safe/thin-lto"]
+
+# bindgen non-addititive features
+bindgen-runtime = ["zstd-sys/bindgen-runtime"]
+bindgen-static = ["zstd-sys/bindgen-static"]
 
 [[example]]
 name = "train"

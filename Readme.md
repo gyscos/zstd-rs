@@ -84,7 +84,7 @@ This library includes a pre-generated `bindings.rs` file.
 You can also generate new bindings at build-time, using the `bindgen` feature:
 
 ```
-cargo build --features bindgen
+cargo build --features bindgen,bindgen-runtime
 ```
 
 # TODO

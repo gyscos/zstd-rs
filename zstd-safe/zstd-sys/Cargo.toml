@@ -55,7 +55,6 @@ doctest = false  # Documentation is for C code, good luck testing that.
 optional = true
 version = "0.72"
 default-features = false
-features = ["runtime"]
 
 [build-dependencies.pkg-config]
 version = "0.3.28"
@@ -65,7 +64,7 @@ version = "1.0.45"
 features = ["parallel"]
 
 [features]
-default = ["legacy", "zdict_builder", "bindgen"]
+default = ["legacy", "zdict_builder", "bindgen", "bindgen-runtime"]
 
 debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API
@@ -84,6 +83,10 @@ seekable = [] # Enable support of the seekable format
 # Will only work if `clang` is used to build the C library.
 fat-lto = [] # Enable fat-lto, will override thin-lto if specified
 thin-lto = [] # Enable thin-lto, will fallback to fat-lto if not supported
+
+# bindgen non-addititive features
+bindgen-runtime = ["bindgen/runtime"]
+bindgen-static = ["bindgen/static"]
 
 [lints.rust]
 non_upper_case_globals = "allow"

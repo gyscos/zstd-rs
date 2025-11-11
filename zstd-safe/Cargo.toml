@@ -41,5 +41,9 @@ seekable = ["zstd-sys/seekable"]
 fat-lto = ["zstd-sys/fat-lto"]
 thin-lto = ["zstd-sys/thin-lto"]
 
+# bindgen non-addititive features
+bindgen-runtime = ["zstd-sys/bindgen-runtime"]
+bindgen-static = ["zstd-sys/bindgen-static"]
+
 [lints.rust]
 non_upper_case_globals = "allow"

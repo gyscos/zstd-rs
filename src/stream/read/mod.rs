@@ -122,7 +122,9 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     ///
     /// Calling `finish()` is not *required* after reading a stream -
     /// just use it if you need to get the `Read` back.
-    pub fn finish(self) -> R {
+    pub fn finish(mut self) -> R {
+        // Ensure the input buffers have been flushed by reading to a zero-length buffer.
+        let _ = self.reader.read(&mut [0; 0]);
         self.reader.into_inner()
     }
 

@@ -17,7 +17,7 @@ jobs:
     steps:
     - name: Wasm target
       run: rustup target add wasm32-unknown-unknown
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 

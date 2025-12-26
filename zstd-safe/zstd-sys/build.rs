@@ -364,7 +364,10 @@ fn compile_zstd() {
             &mut config,
             &["-march=rv64gcv", "-march=rv64gc"],
         );
-        config.flag_if_supported("-O3");
+        let profile = env::var("PROFILE").unwrap_or_default();
+        if profile == "release" {
+            config.flag_if_supported("-O3");
+        }
     }
 
     if cfg!(feature = "fat-lto") {

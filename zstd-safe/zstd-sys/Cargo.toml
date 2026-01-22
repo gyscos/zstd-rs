@@ -11,7 +11,7 @@ keywords = [
     "zstandard",
     "compression",
 ]
-license = "MIT/Apache-2.0"
+license = "(MIT OR Apache-2.0) AND BSD-3-Clause"
 links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"

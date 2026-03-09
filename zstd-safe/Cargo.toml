@@ -20,9 +20,10 @@ features = ["experimental", "arrays", "std", "zdict_builder", "doc-cfg"]
 zstd-sys = { path = "zstd-sys", version = "2.0.15", default-features = false }
 
 [features]
-default = ["legacy", "arrays", "zdict_builder"]
+default = ["legacy", "arrays", "zdict_builder", "cc"]
 
 bindgen = ["zstd-sys/bindgen"]
+cc = ["zstd-sys/cc"]
 debug = ["zstd-sys/debug"]
 experimental = ["zstd-sys/experimental"]
 legacy = ["zstd-sys/legacy"]
@@ -32,6 +33,7 @@ std = ["zstd-sys/std"] # Implements WriteBuf for std types like Cursor and Vec.
 zstdmt = ["zstd-sys/zstdmt"]
 thin = ["zstd-sys/thin"]
 arrays = []
+cmake = ["zstd-sys/cmake"]
 no_asm = ["zstd-sys/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-sys/zdict_builder"]

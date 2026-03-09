@@ -29,9 +29,10 @@ partial-io = "0.5"
 walkdir = "2.2"
 
 [features]
-default = ["legacy", "arrays", "zdict_builder"]
+default = ["legacy", "arrays", "zdict_builder", "cc"]
 
 bindgen = ["zstd-safe/bindgen"]
+cc = ["zstd-safe/cc"]
 debug = ["zstd-safe/debug"]
 legacy = ["zstd-safe/legacy"]
 pkg-config = ["zstd-safe/pkg-config"]
@@ -41,6 +42,7 @@ zstdmt = ["zstd-safe/zstdmt"]
 experimental = ["zstd-safe/experimental"]
 thin = ["zstd-safe/thin"]
 arrays = ["zstd-safe/arrays"]
+cmake = ["zstd-safe/cmake"]
 no_asm = ["zstd-safe/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-safe/zdict_builder"]

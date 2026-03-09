@@ -1,6 +1,80 @@
+#[cfg(all(feature = "cc", not(feature = "cmake")))]
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{env, fmt, fs};
+
+#[cfg(feature = "cmake")]
+fn compile_zstd_cmake() {
+    let mut config = cmake::Config::new("zstd/build/cmake");
+
+    // Build only the static library
+    config.define("ZSTD_BUILD_SHARED", "OFF");
+    config.define("ZSTD_BUILD_STATIC", "ON");
+    config.define("ZSTD_BUILD_PROGRAMS", "OFF");
+    config.define("ZSTD_BUILD_TESTS", "OFF");
+    config.define("ZSTD_BUILD_CONTRIB", "OFF");
+
+    // Legacy support
+    if cfg!(feature = "legacy") {
+        config.define("ZSTD_LEGACY_SUPPORT", "ON");
+    } else {
+        config.define("ZSTD_LEGACY_SUPPORT", "OFF");
+    }
+
+    // Multi-threading support
+    if cfg!(feature = "zstdmt") {
+        config.define("ZSTD_MULTITHREAD_SUPPORT", "ON");
+    } else {
+        config.define("ZSTD_MULTITHREAD_SUPPORT", "OFF");
+    }
+
+    // Dictionary builder
+    if cfg!(feature = "zdict_builder") {
+        config.define("ZSTD_BUILD_DICTBUILDER", "ON");
+    } else {
+        config.define("ZSTD_BUILD_DICTBUILDER", "OFF");
+    }
+
+    // Hide symbols so we can coexist with another zstd-linking lib
+    config.define("ZSTDLIB_VISIBLE", "hidden");
+    config.define("ZSTDERRORLIB_VISIBLE", "hidden");
+    config.define("ZDICTLIB_VISIBLE", "hidden");
+
+    let dst = config.build();
+
+    // Tell cargo where to find the built library.
+    // CMake may place it in lib/ or lib64/ depending on the platform.
+    let lib_dir = if dst.join("lib64").join("libzstd.a").exists()
+        || dst.join("lib64").join("zstd_static.lib").exists()
+    {
+        dst.join("lib64")
+    } else {
+        dst.join("lib")
+    };
+    cargo_print(&format_args!(
+        "rustc-link-search=native={}",
+        lib_dir.display()
+    ));
+
+    // On MSVC, the static library is named zstd_static
+    if cfg!(target_env = "msvc") {
+        cargo_print(&"rustc-link-lib=static=zstd_static");
+    } else {
+        cargo_print(&"rustc-link-lib=static=zstd");
+    }
+
+    // Copy headers for downstream consumers
+    let src = env::current_dir().unwrap().join("zstd").join("lib");
+    let include = dst.join("include");
+    fs::create_dir_all(&include).unwrap();
+    fs::copy(src.join("zstd.h"), include.join("zstd.h")).unwrap();
+    fs::copy(src.join("zstd_errors.h"), include.join("zstd_errors.h"))
+        .unwrap();
+    #[cfg(feature = "zdict_builder")]
+    fs::copy(src.join("zdict.h"), include.join("zdict.h")).unwrap();
+    cargo_print(&format_args!("root={}", dst.display()));
+    cargo_print(&format_args!("include={}", include.display()));
+}
 
 #[cfg(feature = "bindgen")]
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
@@ -61,33 +135,34 @@ fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
     (vec!["PKG_CONFIG"], library.include_paths)
 }
 
-#[cfg(not(feature = "legacy"))]
+#[cfg(all(feature = "cc", not(feature = "legacy"), not(feature = "cmake")))]
 fn set_legacy(_config: &mut cc::Build) {}
 
-#[cfg(feature = "legacy")]
+#[cfg(all(feature = "cc", feature = "legacy", not(feature = "cmake")))]
 fn set_legacy(config: &mut cc::Build) {
     config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
     config.include("zstd/lib/legacy");
 }
 
-#[cfg(feature = "zstdmt")]
+#[cfg(all(feature = "cc", feature = "zstdmt", not(feature = "cmake")))]
 fn set_pthread(config: &mut cc::Build) {
     config.flag("-pthread");
 }
 
-#[cfg(not(feature = "zstdmt"))]
+#[cfg(all(feature = "cc", not(feature = "zstdmt"), not(feature = "cmake")))]
 fn set_pthread(_config: &mut cc::Build) {}
 
-#[cfg(feature = "zstdmt")]
+#[cfg(all(feature = "cc", feature = "zstdmt", not(feature = "cmake")))]
 fn enable_threading(config: &mut cc::Build) {
     config.define("ZSTD_MULTITHREAD", Some(""));
 }
 
-#[cfg(not(feature = "zstdmt"))]
+#[cfg(all(feature = "cc", not(feature = "zstdmt"), not(feature = "cmake")))]
 fn enable_threading(_config: &mut cc::Build) {}
 
 /// This function would find the first flag in `flags` that is supported
 /// and add that to `config`.
+#[cfg(all(feature = "cc", not(feature = "cmake")))]
 #[allow(dead_code)]
 fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
     let option = flags
@@ -99,6 +174,7 @@ fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
     }
 }
 
+#[cfg(all(feature = "cc", not(feature = "cmake")))]
 fn compile_zstd() {
     let mut config = cc::Build::new();
 
@@ -303,7 +379,18 @@ fn main() {
                 .expect("Manifest dir is always set by cargo"),
         );
 
-        compile_zstd();
+        #[cfg(feature = "cmake")]
+        {
+            compile_zstd_cmake();
+        }
+        #[cfg(all(feature = "cc", not(feature = "cmake")))]
+        {
+            compile_zstd();
+        }
+        #[cfg(not(any(feature = "cmake", feature = "cc")))]
+        {
+            panic!("Either the `cmake` or `cc` feature must be enabled to compile zstd from source.");
+        }
         (vec![], vec![manifest_dir.join("zstd/lib")])
     };
 

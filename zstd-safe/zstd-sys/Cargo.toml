@@ -34,8 +34,14 @@ include = [
     "/zstd/lib/**/*.c",
     "/zstd/lib/**/*.h",
     "/zstd/lib/**/*.S",
+    "/zstd/lib/libzstd.pc.in",
     "/zstd/contrib/seekable_format/*.c",
     "/zstd/contrib/seekable_format/*.h",
+    "/zstd/build/cmake/CMakeLists.txt",
+    "/zstd/build/cmake/zstdConfig.cmake.in",
+    "/zstd/build/cmake/CMakeModules/*.cmake",
+    "/zstd/build/cmake/lib/CMakeLists.txt",
+    "/zstd/build/cmake/lib/*.in",
 ]
 # exclude = [
 #     "zstd",
@@ -63,10 +69,17 @@ version = "0.3.28"
 [build-dependencies.cc]
 version = "1.0.45"
 features = ["parallel"]
+optional = true
+
+[build-dependencies.cmake]
+version = "0.1"
+optional = true
 
 [features]
-default = ["legacy", "zdict_builder"]
+default = ["legacy", "zdict_builder", "cc"]
 
+cc = ["dep:cc"] # Use cc crate to build zstd (default)
+cmake = ["dep:cmake"] # Use CMake to build zstd (improves cross-compilation support)
 debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API
 legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)

@@ -5,7 +5,7 @@ const USIZE_ALIGN: usize = core::mem::align_of::<usize>();
 const USIZE_SIZE: usize = core::mem::size_of::<usize>();
 
 #[no_mangle]
-pub extern "C" fn rust_zstd_wasm_shim_qsort(
+pub unsafe extern "C" fn rust_zstd_wasm_shim_qsort(
     base: *mut c_void,
     n_items: usize,
     size: usize,
@@ -46,7 +46,7 @@ pub extern "C" fn rust_zstd_wasm_shim_malloc(size: usize) -> *mut c_void {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_zstd_wasm_shim_memcmp(
+pub unsafe extern "C" fn rust_zstd_wasm_shim_memcmp(
     str1: *const c_void,
     str2: *const c_void,
     n: usize,

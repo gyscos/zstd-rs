@@ -65,7 +65,7 @@ version = "1.0.45"
 features = ["parallel"]
 
 [features]
-default = ["legacy", "zdict_builder", "bindgen"]
+default = ["legacy", "zdict_builder"]
 
 debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API

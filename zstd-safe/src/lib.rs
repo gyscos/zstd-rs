@@ -779,9 +779,15 @@ impl<'a> CCtx<'a> {
     }
 
     /// Wraps the `ZSTD_compressBlock()` function.
+    ///
+    /// # Safety
+    ///
+    /// `src` becomes this context's history window, so it must stay allocated and unmodified until
+    /// the next call to `compress_block` on this context (or until this context is dropped), as the
+    /// following block is compressed against it.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    pub fn compress_block<C: WriteBuf + ?Sized>(
+    pub unsafe fn compress_block<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
         src: &[u8],
@@ -1208,9 +1214,15 @@ impl<'a> DCtx<'a> {
     }
 
     /// Wraps the `ZSTD_decompressBlock()` function.
+    ///
+    /// # Safety
+    ///
+    /// The bytes written to `dst` become this context's history window, so `dst` must stay
+    /// allocated and unmodified until the next call to `decompress_block` or `insert_block` on this
+    /// context (or until this context is dropped), as the following block is decoded against it.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    pub fn decompress_block<C: WriteBuf + ?Sized>(
+    pub unsafe fn decompress_block<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
         src: &[u8],
@@ -1229,9 +1241,15 @@ impl<'a> DCtx<'a> {
     }
 
     /// Wraps the `ZSTD_insertBlock()` function.
+    ///
+    /// # Safety
+    ///
+    /// `block` becomes this context's history window, so it must stay allocated and unmodified
+    /// until the next call to `decompress_block` or `insert_block` on this context (or until this
+    /// context is dropped), as the following block is decoded against it.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    pub fn insert_block(&mut self, block: &[u8]) -> usize {
+    pub unsafe fn insert_block(&mut self, block: &[u8]) -> usize {
         unsafe {
             zstd_sys::ZSTD_insertBlock(
                 self.0.as_ptr(),

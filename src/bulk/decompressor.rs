@@ -101,8 +101,32 @@ impl<'a> Decompressor<'a> {
         data: &[u8],
         capacity: usize,
     ) -> io::Result<Vec<u8>> {
-        let capacity =
-            Self::upper_bound(data).unwrap_or(capacity).min(capacity);
+        // When every frame records its size, we know exactly how much this
+        // produces, so a smaller capacity cannot work. Say so with both
+        // numbers rather than letting zstd report a bare "destination buffer
+        // is too small" after trying.
+        //
+        // It has to be the exact figure: `upper_bound` may hand back an
+        // over-estimate for a frame that records nothing, and refusing on
+        // that would reject input which decompresses perfectly well.
+        let exact = total_decompressed_size(data);
+
+        let capacity = match exact {
+            Some(needed) if needed > capacity as u64 => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "Destination buffer is too small: {} bytes needed, \
+                         {} given",
+                        needed, capacity
+                    ),
+                ))
+            }
+            // Known to fit, since it is not greater than `capacity`.
+            Some(needed) => needed as usize,
+            None => Self::upper_bound(data).unwrap_or(capacity).min(capacity),
+        };
+
         let mut buffer = Vec::with_capacity(capacity);
         self.decompress_to_buffer(data, &mut buffer)?;
         Ok(buffer)

@@ -157,3 +157,34 @@ fn test_upper_bound_with_a_skippable_frame() {
     assert_eq!(super::Decompressor::upper_bound(&data), Some(TEXT.len()));
     assert_eq!(decompress(&data, TEXT.len()).unwrap().len(), TEXT.len());
 }
+
+#[test]
+fn test_decompress_capacity_below_the_known_size() {
+    let compressed = compress(TEXT.as_bytes(), 1).unwrap();
+
+    // The frame records its size, so this is known to be impossible before
+    // zstd is asked to try, and the error names both numbers.
+    let error = decompress(&compressed, TEXT.len() / 2).unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains(&TEXT.len().to_string()), "{}", message);
+    assert!(
+        message.contains(&(TEXT.len() / 2).to_string()),
+        "{}",
+        message
+    );
+}
+
+#[test]
+fn test_decompress_capacity_between_actual_and_bound() {
+    // A frame that records nothing: only an over-estimate is available, and
+    // refusing on that would reject this, which decompresses perfectly well.
+    let compressed = crate::encode_all(TEXT.as_bytes(), 1).unwrap();
+    assert_eq!(
+        zstd_safe::get_frame_content_size(&compressed).unwrap(),
+        None
+    );
+
+    let generous = TEXT.len() * 2;
+    assert_eq!(decompress(&compressed, generous).unwrap().len(), TEXT.len());
+}

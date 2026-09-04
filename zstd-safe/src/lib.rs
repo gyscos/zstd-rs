@@ -1629,22 +1629,36 @@ pub unsafe trait WriteBuf {
 
 #[cfg(feature = "std")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
+/// The position of a `Cursor`, as an index into the buffer it wraps.
+///
+/// `Cursor` stores the position as a `u64` and lets it be set anywhere, so on a
+/// target where `usize` is narrower it can name an offset no buffer can hold.
+/// Saturating leaves such a position out of range, where the bounds checks
+/// below reject it; casting would wrap it around into a valid-looking offset
+/// and quietly read or write the wrong part of the buffer.
+#[cfg(feature = "std")]
+fn cursor_position<T>(cursor: &std::io::Cursor<T>) -> usize {
+    use core::convert::TryFrom;
+
+    usize::try_from(cursor.position()).unwrap_or(usize::MAX)
+}
+
 unsafe impl<T> WriteBuf for std::io::Cursor<T>
 where
     T: WriteBuf,
 {
     fn as_slice(&self) -> &[u8] {
-        &self.get_ref().as_slice()[self.position() as usize..]
+        &self.get_ref().as_slice()[cursor_position(self)..]
     }
 
     fn capacity(&self) -> usize {
         self.get_ref()
             .capacity()
-            .saturating_sub(self.position() as usize)
+            .saturating_sub(cursor_position(self))
     }
 
     fn as_mut_ptr(&mut self) -> *mut u8 {
-        let start = self.position() as usize;
+        let start = cursor_position(self);
         assert!(start <= self.get_ref().capacity());
         // Safety: start is still in the same memory allocation
         unsafe { self.get_mut().as_mut_ptr().add(start) }
@@ -1659,7 +1673,11 @@ where
         // Here we assume data _before_ self.position() was already initialized.
         // Egh it's not actually guaranteed by Cursor? So let's guarantee it ourselves.
         // Since the cursor wraps another `WriteBuf`, we know how much data is initialized there.
-        let position = self.position() as usize;
+        let position = cursor_position(self);
+        // The caller wrote `n > 0` bytes starting at `position`, so `position`
+        // is inside the buffer. Checking it before the zero-fill below keeps a
+        // position that could not be converted from running off the end.
+        assert!(position <= self.get_ref().capacity());
         let initialized = self.get_ref().as_slice().len();
         if let Some(uninitialized) = position.checked_sub(initialized) {
             // Here, the cursor is further than the known-initialized part.
@@ -1681,7 +1699,7 @@ where
             };
         }
 
-        let start = self.position() as usize;
+        let start = position;
         assert!(start + n <= self.get_ref().capacity());
         self.get_mut().filled_until(start + n);
     }

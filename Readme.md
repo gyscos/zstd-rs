@@ -87,6 +87,10 @@ The following change how the C library is obtained or built:
 | `vendored` | | Always build the bundled source, even when `pkg-config` is also enabled. Useful to force a static build from a dependent crate. |
 | `cmake` | | Build the C library with zstd's own CMake files instead of the `cc` crate, which handles cross-compilation better. Needs `cmake`. |
 
+The [zstd-sys readme] also covers the build-time environment variables, and
+what to do if the linker complains about a hidden zstd symbol being
+"referenced by DSO".
+
 # Compile it yourself
 
 `zstd` is included as a submodule. To get everything during your clone, use:
@@ -133,3 +137,4 @@ This implementation is largely inspired by bozaro's [lz4-rs].
 [doc]: https://docs.rs/zstd
 [stream]: examples/stream.rs
 [submodule]: https://git-scm.com/book/en/v2/Git-Tools-Submodules
+[zstd-sys readme]: zstd-safe/zstd-sys/Readme.md#symbol-visibility

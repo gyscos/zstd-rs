@@ -42,11 +42,13 @@ fn compile_zstd_cmake() {
     // the public API macros; the visibility preset is what hides everything
     // else (internal helpers, and the vendored xxhash), matching what the cc
     // backend gets from -fvisibility=hidden.
-    config.define("ZSTDLIB_VISIBLE", "hidden");
-    config.define("ZSTDERRORLIB_VISIBLE", "hidden");
-    config.define("ZDICTLIB_VISIBLE", "hidden");
-    config.define("CMAKE_C_VISIBILITY_PRESET", "hidden");
-    config.define("CMAKE_VISIBILITY_INLINES_HIDDEN", "ON");
+    if hide_symbols() {
+        config.define("ZSTDLIB_VISIBLE", "hidden");
+        config.define("ZSTDERRORLIB_VISIBLE", "hidden");
+        config.define("ZDICTLIB_VISIBLE", "hidden");
+        config.define("CMAKE_C_VISIBILITY_PRESET", "hidden");
+        config.define("CMAKE_VISIBILITY_INLINES_HIDDEN", "ON");
+    }
 
     // Feature flags the cc backend applies as plain preprocessor defines.
     if cfg!(feature = "debug") {
@@ -89,7 +91,7 @@ fn compile_zstd_cmake() {
             .warnings(false)
             .cargo_metadata(!cfg!(feature = "non-cargo"));
 
-        if !target_is_msvc() {
+        if hide_symbols() && !target_is_msvc() {
             seekable.flag("-fvisibility=hidden");
         }
 
@@ -366,7 +368,7 @@ fn compile_zstd() {
     // Hide symbols from resulting library,
     // so we can be used with another zstd-linking lib.
     // See https://github.com/gyscos/zstd-rs/issues/58
-    if !target_is_msvc() {
+    if hide_symbols() && !target_is_msvc() {
         config.flag("-fvisibility=hidden");
     }
     config.define("XXH_PRIVATE_API", Some(""));
@@ -420,6 +422,19 @@ fn target_is_msvc() -> bool {
     env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default() == "msvc"
 }
 
+/// Should the C library's symbols be hidden?
+///
+/// Hiding them lets us coexist with another libzstd in the same process
+/// (https://github.com/gyscos/zstd-rs/issues/58). But it also means a system
+/// library that needs libzstd cannot resolve against our copy, which can fail
+/// the final link on platforms where such a library ends up in the same binary
+/// (https://github.com/gyscos/zstd-rs/issues/363). Setting
+/// ZSTD_SYS_NO_HIDE_SYMBOLS exports them instead - at the cost of that other
+/// library then using our zstd rather than the system one.
+fn hide_symbols() -> bool {
+    env::var_os("ZSTD_SYS_NO_HIDE_SYMBOLS").is_none()
+}
+
 /// Print a line for cargo.
 ///
 /// If non-cargo is set, do not print anything.
@@ -431,6 +446,7 @@ fn cargo_print(content: &dyn fmt::Display) {
 
 fn main() {
     cargo_print(&"rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
+    cargo_print(&"rerun-if-env-changed=ZSTD_SYS_NO_HIDE_SYMBOLS");
 
     let target_arch =
         std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();

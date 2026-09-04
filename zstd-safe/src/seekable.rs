@@ -586,8 +586,10 @@ unsafe extern "C" fn advanced_seek<S: std::io::Seek>(
     let seeker: &mut S = std::mem::transmute(opaque);
     let pos = match origin {
         SEEK_SET => {
-            let Ok(offset) = u64::try_from(offset) else {
-                return -1;
+            // `let .. else` would read better, but it needs Rust 1.65.
+            let offset = match u64::try_from(offset) {
+                Ok(offset) => offset,
+                Err(_) => return -1,
             };
             SeekFrom::Start(offset)
         }

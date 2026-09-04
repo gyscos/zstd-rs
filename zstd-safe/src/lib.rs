@@ -642,11 +642,10 @@ impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_CCtx_reset()` function.
     pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
         // Safety: Just FFI
-        let resets_session = reset.resets_session();
         let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_reset(self.0.as_ptr(), reset.as_sys())
         });
-        if res.is_ok() && resets_session {
+        if res.is_ok() && reset.resets_session() {
             self.2.clear();
         }
         res
@@ -1126,11 +1125,10 @@ impl<'a> DCtx<'a> {
     ///
     /// Wraps the `ZSTD_DCtx_reset()` function.
     pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
-        let resets_session = reset.resets_session();
         let res = parse_code(unsafe {
             zstd_sys::ZSTD_DCtx_reset(self.0.as_ptr(), reset.as_sys())
         });
-        if res.is_ok() && resets_session {
+        if res.is_ok() && reset.resets_session() {
             self.2.clear();
         }
         res
@@ -2162,6 +2160,7 @@ pub fn get_dict_id_from_frame(src: &[u8]) -> Option<NonZeroU32> {
 }
 
 /// What kind of context reset should be applied.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ResetDirective {
     /// Only the session will be reset.
     ///
@@ -2191,7 +2190,7 @@ impl ResetDirective {
     /// Only a session reset brings a context back from the undefined state an
     /// error can leave it in - `Parameters` alone is refused while a session is
     /// open.
-    fn resets_session(&self) -> bool {
+    fn resets_session(self) -> bool {
         matches!(
             self,
             ResetDirective::SessionOnly | ResetDirective::SessionAndParameters

@@ -73,7 +73,7 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &DecoderDictionary<'b>,
+        dictionary: &'a DecoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
@@ -184,7 +184,7 @@ impl<'a, R: BufRead> Encoder<'a, R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &EncoderDictionary<'b>,
+        dictionary: &'a EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,

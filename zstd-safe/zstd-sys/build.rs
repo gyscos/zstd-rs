@@ -138,7 +138,19 @@ fn compile_zstd() {
 
     // Either include ASM files, or disable ASM entirely.
     // Also disable it on windows, apparently it doesn't do well with these .S files at the moment.
-    if cfg!(feature = "no_asm") || std::env::var("CARGO_CFG_WINDOWS").is_ok() {
+    // Disable it on wasm as well: the only assembly zstd ships is
+    // x86-64-specific (huf_decompress_amd64.S, gated upstream on __x86_64__
+    // in portability_macros.h), so on wasm it could only ever produce an
+    // empty object — and wasm toolchains frequently cannot assemble .S
+    // input at all, which makes the default features unbuildable there for
+    // no benefit.
+    let target_arch =
+        std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let is_wasm = target_arch == "wasm32" || target_arch == "wasm64";
+    if cfg!(feature = "no_asm")
+        || std::env::var("CARGO_CFG_WINDOWS").is_ok()
+        || is_wasm
+    {
         config.define("ZSTD_DISABLE_ASM", Some(""));
     } else {
         config.file("zstd/lib/decompress/huf_decompress_amd64.S");

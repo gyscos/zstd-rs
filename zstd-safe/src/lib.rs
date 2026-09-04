@@ -438,7 +438,7 @@ impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_CCtx_refCDict()` function.
     ///
     /// Dictionary must outlive the context.
-    pub fn ref_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
+    pub fn ref_cdict<'b>(&mut self, cdict: &'a CDict<'b>) -> SafeResult
     where
         'b: 'a,
     {
@@ -1100,7 +1100,9 @@ impl<'a> DCtx<'a> {
     /// It will apply to all frames decompressed by this context (until a new dictionary is set).
     ///
     /// Wraps the `ZSTD_DCtx_refDDict()` function.
-    pub fn ref_ddict<'b>(&mut self, ddict: &DDict<'b>) -> SafeResult
+    ///
+    /// Dictionary must outlive the context.
+    pub fn ref_ddict<'b>(&mut self, ddict: &'a DDict<'b>) -> SafeResult
     where
         'b: 'a,
     {

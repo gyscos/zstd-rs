@@ -1,3 +1,7 @@
+// clap's derive expands to `OnceLock`, stable in 1.70, above this crate's
+// declared MSRV. Examples are dev-only, so consumers are unaffected.
+#![allow(clippy::incompatible_msrv)]
+
 use clap::Parser;
 use humansize::{format_size, DECIMAL};
 use std::io::Read;
@@ -49,11 +53,8 @@ fn main() {
 
     // Print tsv headers
     println!(
-        "{}\t{}\t{}\t{}",
-        "Compression level",
-        "Compression ratio",
-        "Compression speed",
-        "Decompression speed"
+        "Compression level\tCompression ratio\tCompression speed\t\
+         Decompression speed"
     );
 
     for level in args.begin..args.end {

@@ -54,13 +54,15 @@ fn test_partial_write_finish() {
     assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
 }
 
-fn setup_partial_write(input_data: &[u8]) -> Encoder<PartialWrite<Vec<u8>>> {
+fn setup_partial_write(
+    input_data: &[u8],
+) -> Encoder<'_, PartialWrite<Vec<u8>>> {
     let buf =
         PartialWrite::new(Vec::new(), iter::repeat(PartialOp::Limited(1)));
     let mut z = Encoder::new(buf, 1).unwrap();
 
     // Fill in enough data to make sure the buffer gets written out.
-    z.write(input_data).unwrap();
+    z.write_all(input_data).unwrap();
 
     {
         let inner = &mut z.writer;

@@ -64,14 +64,14 @@ impl SeekableCStream {
     ///
     /// Call this to initialize a `SeekableCStream` object for a new compression operation.
     /// - `max_frame_size` indicates the size at which to automatically start a new seekable
-    /// frame. `max_frame_size == 0` implies the default maximum size. Smaller frame sizes allow
-    /// faster decompression of small segments, since retrieving a single byte requires
-    /// decompression of the full frame where the byte belongs. In general, size the frames
-    /// to roughly correspond to the access granularity (when it's known). But small sizes
-    /// also reduce compression ratio. Avoid really tiny frame sizes (< 1 KB), that would
-    /// hurt compression ratio considerably.
+    ///   frame. `max_frame_size == 0` implies the default maximum size. Smaller frame sizes allow
+    ///   faster decompression of small segments, since retrieving a single byte requires
+    ///   decompression of the full frame where the byte belongs. In general, size the frames
+    ///   to roughly correspond to the access granularity (when it's known). But small sizes
+    ///   also reduce compression ratio. Avoid really tiny frame sizes (< 1 KB), that would
+    ///   hurt compression ratio considerably.
     /// - `checksum_flag` indicates whether or not the seek table should include frame
-    /// checksums on the uncompressed data for verification.
+    ///   checksums on the uncompressed data for verification.
     ///
     /// Returns a size hint for input to provide for compression, or an error code.
     pub fn init(
@@ -534,7 +534,7 @@ impl<'a> Seekable<'a> {
     where
         F: std::io::Read + std::io::Seek,
     {
-        let opaque = std::boxed::Box::into_raw(src) as *mut F;
+        let opaque = std::boxed::Box::into_raw(src);
         let custom_file = zstd_sys::ZSTD_seekable_customFile {
             opaque: opaque as *mut core::ffi::c_void,
             read: Some(advanced_read::<F>),
@@ -583,7 +583,7 @@ unsafe extern "C" fn advanced_seek<S: std::io::Seek>(
     const SEEK_END: i32 = 2;
 
     // Safety: The trait boundaries in `init_advanced()` ensure that `opaque` points to an S
-    let seeker: &mut S = std::mem::transmute(opaque);
+    let seeker: &mut S = &mut *opaque.cast::<S>();
     let pos = match origin {
         SEEK_SET => {
             // `let .. else` would read better, but it needs Rust 1.65.
@@ -616,10 +616,10 @@ unsafe extern "C" fn advanced_read<R: std::io::Read>(
     n: usize,
 ) -> ::core::ffi::c_int {
     // Safety: The trait boundaries in `init_advanced()` ensure that `opaque` points to a R
-    let reader: &mut R = std::mem::transmute(opaque);
+    let reader: &mut R = &mut *opaque.cast::<R>();
     // Safety: zstd ensures the buffer is allocated and safe to use
-    let mut buf = std::slice::from_raw_parts_mut(buffer as *mut u8, n);
-    if reader.read_exact(&mut buf).is_err() {
+    let buf = std::slice::from_raw_parts_mut(buffer as *mut u8, n);
+    if reader.read_exact(buf).is_err() {
         return -1;
     }
 

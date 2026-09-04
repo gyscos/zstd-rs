@@ -1251,7 +1251,7 @@ impl<'a> DCtx<'a> {
     ///
     /// * `Ok(0)` if the current frame just finished decompressing successfully.
     /// * `Ok(hint)` with a hint for the "ideal" amount of input data to provide in the next call.
-    ///     Can be safely ignored.
+    ///   Can be safely ignored.
     ///
     /// Wraps the `ZSTD_decompressStream()` function.
     pub fn decompress_stream<C: WriteBuf + ?Sized>(
@@ -1677,6 +1677,18 @@ pub struct InBuffer<'a> {
 ///   operations).
 /// * `std::io::Cursor<T: WriteBuf>`. This will ignore data before the cursor's position, and
 ///   append data after that.
+///
+/// # Safety
+///
+/// An implementation has to keep three promises, because the zstd functions
+/// this is handed to write straight through the pointer:
+///
+/// * `as_mut_ptr()` points at a buffer that is valid to write `capacity()`
+///   bytes to.
+/// * `as_slice()` covers only initialized bytes - never any of the capacity
+///   that has not been written yet.
+/// * `filled_until(n)` is what marks the first `n` bytes as initialized, so
+///   after it returns, `as_slice()` must cover them.
 pub unsafe trait WriteBuf {
     /// Returns the valid data part of this container. Should only cover initialized data.
     fn as_slice(&self) -> &[u8];
@@ -1689,20 +1701,22 @@ pub unsafe trait WriteBuf {
 
     /// Indicates that the first `n` bytes of the container have been written.
     ///
-    /// Safety: this should only be called if the `n` first bytes of this buffer have actually been
-    /// initialized.
+    /// # Safety
+    ///
+    /// The first `n` bytes of this buffer must actually have been initialized.
     unsafe fn filled_until(&mut self, n: usize);
 
     /// Call the given closure using the pointer and capacity from `self`.
     ///
-    /// Assumes the given function returns a parseable code, which if valid, represents how many
-    /// bytes were written to `self`.
+    /// The closure returns a parseable code which, if valid, is how many bytes
+    /// it wrote to `self`.
     ///
-    /// The given closure must treat its first argument as pointing to potentially uninitialized
-    /// memory, and should not read from it.
+    /// # Safety
     ///
-    /// In addition, it must have written at least `n` bytes contiguously from this pointer, where
-    /// `n` is the returned value.
+    /// The closure must treat its first argument as pointing to potentially
+    /// uninitialized memory, and must not read from it. It must have written
+    /// at least `n` bytes contiguously from that pointer, where `n` is the
+    /// value it returns.
     unsafe fn write_from<F>(&mut self, f: F) -> SafeResult
     where
         F: FnOnce(*mut c_void, usize) -> SafeResult,
@@ -1795,7 +1809,7 @@ where
 
 #[cfg(feature = "std")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
-unsafe impl<'a> WriteBuf for &'a mut std::vec::Vec<u8> {
+unsafe impl WriteBuf for &mut std::vec::Vec<u8> {
     fn as_slice(&self) -> &[u8] {
         std::vec::Vec::as_slice(self)
     }
@@ -1841,7 +1855,7 @@ unsafe impl<const N: usize> WriteBuf for [u8; N] {
     }
 
     fn as_mut_ptr(&mut self) -> *mut u8 {
-        (&mut self[..]).as_mut_ptr()
+        self[..].as_mut_ptr()
     }
 
     unsafe fn filled_until(&mut self, _n: usize) {

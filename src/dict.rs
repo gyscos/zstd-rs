@@ -100,7 +100,7 @@ impl<'a> DecoderDictionary<'a> {
 ///
 /// * `sample_data` is the concatenation of all sample data.
 /// * `sample_sizes` is the size of each sample in `sample_data`.
-///     The sum of all `sample_sizes` should equal the length of `sample_data`.
+///   The sum of all `sample_sizes` should equal the length of `sample_data`.
 /// * `max_size` is the maximum size of the dictionary to generate.
 ///
 /// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].
@@ -222,7 +222,7 @@ where
 /// Train a dict from a list of files.
 ///
 /// * `filenames` is an iterator of files to load. Each file will be treated as an individual
-///     sample.
+///   sample.
 /// * `max_size` is the maximum size of the dictionary to generate.
 ///
 /// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].

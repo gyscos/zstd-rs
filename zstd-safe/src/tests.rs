@@ -169,7 +169,7 @@ fn test_upper_bound() {
     let compressed = &buffer[..written];
 
     assert_eq!(
-        zstd_safe::decompress_bound(&compressed),
+        zstd_safe::decompress_bound(compressed),
         Ok(INPUT.len() as u64)
     );
 }
@@ -222,8 +222,7 @@ fn test_seekable_seek_table() {
         .unwrap();
 
     // Try to create a seek table from the seekable
-    let seek_table =
-        { SeekTable::try_from_seekable(&seekable).unwrap() };
+    let seek_table = { SeekTable::try_from_seekable(&seekable).unwrap() };
 
     // Seekable and seek table should return the same results
     assert_eq!(seekable.num_frames(), seek_table.num_frames());
@@ -356,7 +355,8 @@ fn test_context_poisoned_by_an_error() {
         dctx.decompress_stream(&mut output, &mut input).unwrap_err()
     };
 
-    let mut compressed = Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
     zstd_safe::compress(&mut compressed, INPUT, 3)
         .map_err(zstd_safe::get_error_name)
         .unwrap();
@@ -366,9 +366,7 @@ fn test_context_poisoned_by_an_error() {
     let second = {
         let mut input = InBuffer::around(&compressed[..]);
         let mut output = OutBuffer::around(&mut buffer[..]);
-        let err = dctx
-            .decompress_stream(&mut output, &mut input)
-            .unwrap_err();
+        let err = dctx.decompress_stream(&mut output, &mut input).unwrap_err();
         assert_eq!(input.pos(), 0, "the poisoned context consumed input");
         assert_eq!(output.pos(), 0, "the poisoned context produced output");
         err

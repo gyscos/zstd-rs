@@ -8,7 +8,7 @@ fn test_error_handling() {
     let mut decoder = Decoder::new(&invalid_input[..]).unwrap();
     let output = decoder.read_to_end(&mut Vec::new());
 
-    assert_eq!(output.is_err(), true);
+    assert!(output.is_err());
 }
 
 #[test]

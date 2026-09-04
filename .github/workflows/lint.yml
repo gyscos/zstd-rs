@@ -1,0 +1,36 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        submodules: recursive
+    - name: Install clippy and rustfmt
+      run: rustup component add clippy rustfmt
+
+    - name: Formatting
+      run: |
+        cargo fmt --check
+        cargo fmt --check --manifest-path zstd-safe/Cargo.toml
+
+    - name: Clippy
+      run: cargo clippy --all-targets -- -D warnings
+    - name: Clippy with features
+      run: cargo clippy --all-targets --features experimental,zstdmt -- -D warnings
+    - name: Clippy zstd-safe
+      run: |
+        cargo clippy --manifest-path zstd-safe/Cargo.toml --all-targets \
+          --features std,experimental,seekable,zdict_builder -- -D warnings

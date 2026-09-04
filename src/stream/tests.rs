@@ -334,7 +334,10 @@ fn test_compress_from_file() {
 
     let frame = super::compress_from_file("assets/example.txt", 3).unwrap();
 
-    assert_eq!(super::decompressed_size(&frame), Some(expected.len() as u64));
+    assert_eq!(
+        super::decompressed_size(&frame),
+        Some(expected.len() as u64)
+    );
     assert_eq!(super::decode_all(&frame[..]).unwrap(), expected);
 }
 

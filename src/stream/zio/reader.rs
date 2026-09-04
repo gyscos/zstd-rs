@@ -77,6 +77,67 @@ impl<R, D> Reader<R, D> {
         self.operation.flush(&mut OutBuffer::around(output))
     }
 }
+
+impl<R, D> Reader<R, D>
+where
+    R: BufRead,
+    D: Operation,
+{
+    /// Consume the rest of the current frame from the underlying reader.
+    ///
+    /// Once all the decoded data has been read, zstd may still not have
+    /// consumed the tail of the frame: it can produce the last of the output
+    /// before reading the frame epilogue. The underlying reader is then left
+    /// pointing somewhere inside the frame rather than just after it.
+    ///
+    /// This feeds zstd the input it still needs, with no room for output, so
+    /// the reader ends up positioned exactly at the end of the frame.
+    ///
+    /// It stops there: it will not start decoding whatever follows, so a
+    /// stream of concatenated frames keeps its remaining frames, and trailing
+    /// non-zstd data is left untouched.
+    ///
+    /// This is a no-op if the current frame is already complete, so it will
+    /// not read from the underlying reader in that case.
+    pub fn finish_frame(&mut self) -> io::Result<()> {
+        // Only pull on the reader if zstd is actually waiting for the rest of
+        // a frame. Otherwise this could block on a stream - a socket, say -
+        // that has nothing more to give.
+        if self.finished_frame || !matches!(self.state, State::Reading) {
+            return Ok(());
+        }
+
+        loop {
+            let bytes_read = {
+                let input = fill_buf(&mut self.reader)?;
+                if input.is_empty() {
+                    return Ok(());
+                }
+
+                let mut src = InBuffer::around(input);
+                // No output space: zstd will only consume the input backing
+                // the output it has already handed us, and stops at the end of
+                // the frame rather than starting the next one.
+                let mut dst = OutBuffer::around(&mut [][..]);
+
+                let hint = self.operation.run(&mut src, &mut dst)?;
+                if hint == 0 {
+                    self.finished_frame = true;
+                }
+
+                src.pos()
+            };
+
+            self.reader.consume(bytes_read);
+
+            // Either we reached the end of the frame, or we cannot make any
+            // more progress without somewhere to put the output.
+            if self.finished_frame || bytes_read == 0 {
+                return Ok(());
+            }
+        }
+    }
+}
 // Read and retry on Interrupted errors.
 fn fill_buf<R>(reader: &mut R) -> io::Result<&[u8]>
 where

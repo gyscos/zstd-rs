@@ -89,7 +89,7 @@ fn compile_zstd_cmake() {
             .warnings(false)
             .cargo_metadata(!cfg!(feature = "non-cargo"));
 
-        if env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default() != "msvc" {
+        if !target_is_msvc() {
             seekable.flag("-fvisibility=hidden");
         }
 
@@ -366,7 +366,7 @@ fn compile_zstd() {
     // Hide symbols from resulting library,
     // so we can be used with another zstd-linking lib.
     // See https://github.com/gyscos/zstd-rs/issues/58
-    if ! cfg!(target_env = "msvc") {
+    if !target_is_msvc() {
         config.flag("-fvisibility=hidden");
     }
     config.define("XXH_PRIVATE_API", Some(""));
@@ -408,6 +408,16 @@ fn compile_zstd() {
     #[cfg(feature = "zdict_builder")]
     fs::copy(src.join("zdict.h"), include.join("zdict.h")).unwrap();
     cargo_print(&format_args!("root={}", dst.display()));
+}
+
+/// Is the *target* toolchain MSVC?
+///
+/// `cfg!(target_env = ..)` would answer for the host: build scripts are
+/// compiled for the machine running them. That gets the answer wrong whenever
+/// the two differ - a windows-gnu host building for a windows-msvc target ends
+/// up handing gcc-style flags to `cl.exe`, which warns on every file.
+fn target_is_msvc() -> bool {
+    env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default() == "msvc"
 }
 
 /// Print a line for cargo.

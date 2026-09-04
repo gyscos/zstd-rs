@@ -65,7 +65,9 @@ pub fn compression_level_range(
 }
 
 #[doc(no_inline)]
-pub use crate::stream::{decode_all, encode_all, Decoder, Encoder};
+pub use crate::stream::{
+    decode_all, decompressed_size, encode_all, Decoder, Encoder,
+};
 
 /// Returns the error message as io::Error based on error_code.
 fn map_error_code(code: usize) -> io::Error {

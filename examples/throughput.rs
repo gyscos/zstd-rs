@@ -1,9 +1,5 @@
-//! Measures the throughput of the different ways this crate can compress and
-//! decompress the same data.
-//!
-//! The C library is the reference point: `zstd -b3 <file>` benchmarks the same
-//! level in memory, so its numbers are directly comparable to the ones printed
-//! here.
+//! The same work, done naively and done well, so you can see where the time
+//! goes - and measure it on your own data.
 //!
 //! ```sh
 //! cargo run --release --example throughput -- <file>
@@ -11,21 +7,24 @@
 //! ```
 //!
 //! Build with `--release`. A debug build measures this crate's wrappers rather
-//! than zstd, and will be several times slower for reasons that have nothing
-//! to do with how you call it.
+//! than zstd, and is several times slower for reasons that have nothing to do
+//! with how you call it.
 //!
-//! Things this tends to show, on top of whatever your own data does:
+//! The C library is the reference point: `zstd -b3 <file>` benchmarks the same
+//! level in memory, and its numbers are directly comparable to these.
 //!
-//! * Sizing the output buffer is the one that matters. The convenience
-//!   functions that return a `Vec` start from an empty one and grow it as they
-//!   go, which on decompression can cost about half the throughput - all of it
-//!   in reallocation, none of it in zstd.
-//! * The `Read`/`Write` wrappers are not the problem. Once the destination is
-//!   sized, `Encoder` matches the one-shot `bulk` API for compression and comes
-//!   within about ten percent of it for decompression, whether they are driven
-//!   by `io::copy`, a single `write_all`, or `read_to_end`.
-//! * `zstdmt` with several workers is a large win on big inputs and a loss on
-//!   small ones - there has to be enough data to fill the workers.
+//! The short version of what this tends to show:
+//!
+//! * Decompressing into a buffer of the right size is worth about a factor of
+//!   two. The size is usually in the frame header, and `decode_all` now reads
+//!   it for you - but a frame written by a streaming compressor does not carry
+//!   one, so it cannot be sized for.
+//! * For data already in memory, the one-shot `bulk` API beats the streaming
+//!   one, and by a lot when the items are small.
+//! * Threads are a large win when compressing something big, and a loss when
+//!   compressing something small.
+//! * The `Read`/`Write` wrappers themselves are not the problem: given a sized
+//!   destination they land within about ten percent of `bulk`.
 
 use clap::Parser;
 use std::io::{Read, Write};
@@ -34,7 +33,7 @@ use std::time::Instant;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// File whose contents to compress.
+    /// File whose contents to use as the sample data.
     file: std::path::PathBuf,
 
     /// Compression level to measure.
@@ -45,23 +44,33 @@ struct Args {
     #[arg(short, long, default_value_t = 10)]
     iterations: usize,
 
-    /// Number of worker threads to measure. Needs the `zstdmt` feature.
+    /// Worker threads to measure. Needs the `zstdmt` feature.
     #[arg(short, long, default_value_t = 8)]
     workers: u32,
 }
 
-/// Runs `f` a few times and prints the throughput over `bytes` of input.
-fn bench<F: FnMut()>(name: &str, bytes: usize, iterations: usize, mut f: F) {
+/// Times `f` over `bytes` of input and reports the throughput.
+fn measure<F: FnMut()>(
+    label: &str,
+    bytes: usize,
+    iterations: usize,
+    mut f: F,
+) -> f64 {
     f(); // Warm up caches and any lazy allocation.
 
     let start = Instant::now();
     for _ in 0..iterations {
         f();
     }
-    let seconds = start.elapsed().as_secs_f64();
 
-    let throughput = (bytes * iterations) as f64 / seconds / 1e6;
-    println!("{:<52}{:>9.1} MB/s", name, throughput);
+    let throughput =
+        (bytes * iterations) as f64 / start.elapsed().as_secs_f64() / 1e6;
+    println!("  {:<50}{:>9.1} MB/s", label, throughput);
+    throughput
+}
+
+fn speedup(naive: f64, better: f64) {
+    println!("  {:<50}{:>9.2}x\n", "", better / naive);
 }
 
 fn main() {
@@ -69,12 +78,13 @@ fn main() {
 
     if cfg!(debug_assertions) {
         eprintln!(
-            "warning: this is a debug build, the numbers below are not meaningful.\n\
-             Re-run with --release.\n"
+            "warning: this is a debug build, the numbers below are not \
+             meaningful. Re-run with --release.\n"
         );
     }
 
-    let data = std::fs::read(&args.file).expect("could not read the input file");
+    let data =
+        std::fs::read(&args.file).expect("could not read the input file");
     let level = args.level;
     let iterations = args.iterations;
     let bound = zstd::zstd_safe::compress_bound(data.len());
@@ -85,45 +95,106 @@ fn main() {
         level,
         iterations
     );
-    println!("compare against the C library with: zstd -b{} {}\n", level, args.file.display());
+    println!(
+        "the C library, for comparison:  zstd -b{} {}\n",
+        level,
+        args.file.display()
+    );
 
-    println!("-- compression --");
+    // ---------------------------------------------------------------------
+    println!("# Compressing a buffer you already hold");
+    println!("Streaming a slice you already have in memory pays for buffering");
+    println!("it does not need, and the frame it writes cannot record its");
+    println!("decompressed size - which costs whoever reads it, later.\n");
 
-    bench("encode_all (grows a Vec)", data.len(), iterations, || {
+    let naive = measure("encode_all", data.len(), iterations, || {
         zstd::encode_all(&data[..], level).unwrap();
     });
-
-    bench("copy_encode into a sized Vec", data.len(), iterations, || {
-        let mut out = Vec::with_capacity(bound);
-        zstd::stream::copy_encode(&data[..], &mut out, level).unwrap();
-    });
-
-    bench("Encoder + one write_all", data.len(), iterations, || {
-        let mut out = Vec::with_capacity(bound);
-        let mut encoder = zstd::Encoder::new(&mut out, level).unwrap();
-        encoder.write_all(&data).unwrap();
-        encoder.finish().unwrap();
-    });
-
-    bench("read::Encoder + read_to_end into a sized Vec", data.len(), iterations, || {
-        let mut out = Vec::with_capacity(bound);
-        let mut encoder =
-            zstd::stream::read::Encoder::new(&data[..], level).unwrap();
-        encoder.read_to_end(&mut out).unwrap();
-    });
-
-    bench("bulk::compress (new context per call)", data.len(), iterations, || {
+    let better = measure("bulk::compress", data.len(), iterations, || {
         zstd::bulk::compress(&data, level).unwrap();
     });
+    speedup(naive, better);
 
+    // ---------------------------------------------------------------------
+    println!("# Decompressing a frame");
+    println!("Whether the output can be sized up front depends on the frame:");
+    println!("bulk::compress and the zstd CLI record the decompressed size,");
+    println!("a streaming compressor cannot.\n");
+
+    let sized = zstd::bulk::compress(&data, level).unwrap();
+    let unsized_ = zstd::encode_all(&data[..], level).unwrap();
+    println!(
+        "  (from bulk::compress, header says {:?})",
+        zstd::decompressed_size(&sized)
+    );
+    println!(
+        "  (from encode_all,     header says {:?})",
+        zstd::decompressed_size(&unsized_)
+    );
+
+    let naive = measure("decode_all, size not in the frame", data.len(), iterations, || {
+        zstd::decode_all(&unsized_[..]).unwrap();
+    });
+    let better = measure("decode_all, size in the frame", data.len(), iterations, || {
+        zstd::decode_all(&sized[..]).unwrap();
+    });
+    speedup(naive, better);
+
+    println!("Sizing the buffer yourself gets the same thing, and a re-used");
+    println!("context saves the last few percent.\n");
+
+    measure("Decoder + read_to_end into a sized Vec", data.len(), iterations, || {
+        let mut out = Vec::with_capacity(data.len());
+        zstd::Decoder::new(&sized[..]).unwrap().read_to_end(&mut out).unwrap();
+    });
+    measure("write::Decoder + one write_all", data.len(), iterations, || {
+        let mut out = Vec::with_capacity(data.len());
+        let mut decoder = zstd::stream::write::Decoder::new(&mut out).unwrap();
+        decoder.write_all(&sized).unwrap();
+        decoder.flush().unwrap();
+    });
     {
-        let mut compressor = zstd::bulk::Compressor::new(level).unwrap();
-        let mut out = Vec::with_capacity(bound);
-        bench("bulk::Compressor, re-used, into a sized Vec", data.len(), iterations, || {
+        let mut decompressor = zstd::bulk::Decompressor::new().unwrap();
+        let mut out = Vec::with_capacity(data.len());
+        measure("bulk::Decompressor, re-used", data.len(), iterations, || {
             out.clear();
-            compressor.compress_to_buffer(&data, &mut out).unwrap();
+            decompressor.decompress_to_buffer(&sized, &mut out).unwrap();
         });
     }
+    println!();
+
+    // ---------------------------------------------------------------------
+    println!("# Many small items");
+    println!("Per-item streaming setup dominates once the items are small.\n");
+
+    let items: Vec<&[u8]> = data.chunks(4096).collect();
+    let total: usize = items.iter().map(|i| i.len()).sum();
+
+    let naive = measure("encode_all per item", total, iterations, || {
+        for item in &items {
+            zstd::encode_all(*item, level).unwrap();
+        }
+    });
+    let better = {
+        let mut compressor = zstd::bulk::Compressor::new(level).unwrap();
+        let mut out = Vec::with_capacity(bound);
+        measure("re-used bulk::Compressor per item", total, iterations, || {
+            for item in &items {
+                out.clear();
+                compressor.compress_to_buffer(item, &mut out).unwrap();
+            }
+        })
+    };
+    speedup(naive, better);
+
+    // ---------------------------------------------------------------------
+    println!("# Compressing something large");
+    println!("Workers need enough data to be worth their coordination: this is");
+    println!("a win on a large input and a loss on a small one. Try it on both.\n");
+
+    let naive = measure("one thread", data.len(), iterations, || {
+        zstd::bulk::compress(&data, level).unwrap();
+    });
 
     #[cfg(feature = "zstdmt")]
     {
@@ -132,56 +203,16 @@ fn main() {
             .set_parameter(zstd::zstd_safe::CParameter::NbWorkers(args.workers))
             .unwrap();
         let mut out = Vec::with_capacity(bound);
-        let name = format!("... with {} workers (zstdmt)", args.workers);
-        bench(&name, data.len(), iterations, || {
+        let label = format!("{} workers", args.workers);
+        let better = measure(&label, data.len(), iterations, || {
             out.clear();
             compressor.compress_to_buffer(&data, &mut out).unwrap();
         });
+        speedup(naive, better);
     }
     #[cfg(not(feature = "zstdmt"))]
-    println!("(build with --features zstdmt to measure worker threads)");
-
-    println!("\n-- decompression --");
-
-    let compressed = zstd::bulk::compress(&data, level).unwrap();
-    println!(
-        "(compressed to {} bytes, ratio {:.2})",
-        compressed.len(),
-        data.len() as f64 / compressed.len() as f64
-    );
-
-    bench("decode_all (grows a Vec)", data.len(), iterations, || {
-        zstd::decode_all(&compressed[..]).unwrap();
-    });
-
-    bench("copy_decode into a sized Vec", data.len(), iterations, || {
-        let mut out = Vec::with_capacity(data.len());
-        zstd::stream::copy_decode(&compressed[..], &mut out).unwrap();
-    });
-
-    bench("Decoder + read_to_end into a sized Vec", data.len(), iterations, || {
-        let mut out = Vec::with_capacity(data.len());
-        let mut decoder = zstd::Decoder::new(&compressed[..]).unwrap();
-        decoder.read_to_end(&mut out).unwrap();
-    });
-
-    bench("write::Decoder + one write_all", data.len(), iterations, || {
-        let mut out = Vec::with_capacity(data.len());
-        let mut decoder = zstd::stream::write::Decoder::new(&mut out).unwrap();
-        decoder.write_all(&compressed).unwrap();
-        decoder.flush().unwrap();
-    });
-
-    bench("bulk::decompress (new context per call)", data.len(), iterations, || {
-        zstd::bulk::decompress(&compressed, data.len()).unwrap();
-    });
-
     {
-        let mut decompressor = zstd::bulk::Decompressor::new().unwrap();
-        let mut out = Vec::with_capacity(data.len());
-        bench("bulk::Decompressor, re-used, into a sized Vec", data.len(), iterations, || {
-            out.clear();
-            decompressor.decompress_to_buffer(&compressed, &mut out).unwrap();
-        });
+        let _ = naive;
+        println!("  (build with --features zstdmt to measure this)");
     }
 }

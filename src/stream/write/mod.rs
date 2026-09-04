@@ -212,6 +212,19 @@ impl<'a, W: Write> Encoder<'a, W> {
         Self::with_encoder(writer, encoder)
     }
 
+    /// Creates an encoder that owns the provided context.
+    ///
+    /// Useful when the context was built by the caller (for example with a
+    /// custom allocator) and the encoder is returned/moved by value, so a
+    /// borrowed context (`with_context`) cannot outlive it.
+    pub fn with_owned_context(
+        writer: W,
+        context: zstd_safe::CCtx<'a>,
+    ) -> Self {
+        let encoder = raw::Encoder::with_owned_context(context);
+        Self::with_encoder(writer, encoder)
+    }
+
     /// Creates a new encoder, using an existing prepared `EncoderDictionary`.
     ///
     /// (Provides better compression ratio for small files,

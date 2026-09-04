@@ -68,6 +68,23 @@ impl<'a, R: BufRead> Decoder<'a, R> {
         }
     }
 
+    /// Creates a new decoder that owns the provided context.
+    ///
+    /// Useful when the context was built by the caller (for example with a
+    /// custom allocator) and the decoder is returned/moved by value, so a
+    /// borrowed context (`with_context`) cannot outlive it.
+    pub fn with_owned_context(
+        reader: R,
+        context: zstd_safe::DCtx<'a>,
+    ) -> Self {
+        Self {
+            reader: zio::Reader::new(
+                reader,
+                raw::Decoder::with_owned_context(context),
+            ),
+        }
+    }
+
     /// Sets this `Decoder` to stop after the first frame.
     ///
     /// By default, it keeps concatenating frames until EOF is reached.

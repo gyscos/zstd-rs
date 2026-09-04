@@ -27,6 +27,9 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "experimental")]
+mod rust_allocator;
+
 #[cfg(feature = "seekable")]
 pub mod seekable;
 
@@ -288,6 +291,26 @@ impl<'a> CCtx<'a> {
     pub fn create() -> Self {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
+    }
+
+    /// Tries to create a new context whose internal allocations go through
+    /// Rust's global allocator instead of the C runtime's `malloc`.
+    ///
+    /// Returns `None` if zstd returns a NULL pointer - may happen if
+    /// allocation fails.
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    pub fn try_create_with_global_allocator() -> Option<Self> {
+        // Safety: Just FFI. The customMem callbacks uphold the malloc/free
+        // contract (see `rust_allocator`).
+        Some(CCtx(
+            NonNull::new(unsafe {
+                zstd_sys::ZSTD_createCCtx_advanced(
+                    crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
+                )
+            })?,
+            PhantomData,
+        ))
     }
 
     /// Wraps the `ZSTD_compressCCtx()` function
@@ -989,6 +1012,25 @@ impl<'a> DCtx<'a> {
     pub fn create() -> Self {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
+    }
+
+    /// Tries to create a new decompression context whose internal allocations
+    /// go through Rust's global allocator instead of the C runtime's `malloc`.
+    ///
+    /// Returns `None` if the operation failed
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    pub fn try_create_with_global_allocator() -> Option<Self> {
+        // Safety: Just FFI. The customMem callbacks uphold the malloc/free
+        // contract (see `rust_allocator`).
+        Some(DCtx(
+            NonNull::new(unsafe {
+                zstd_sys::ZSTD_createDCtx_advanced(
+                    crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
+                )
+            })?,
+            PhantomData,
+        ))
     }
 
     /// Fully decompress the given frame.

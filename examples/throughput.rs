@@ -23,9 +23,9 @@
 //! The short version of what this tends to show:
 //!
 //! * Decompressing into a buffer of the right size is worth about a factor of
-//!   two. The size is usually in the frame header, and `decode_all` now reads
-//!   it for you - but a frame written by a streaming compressor does not carry
-//!   one, so it cannot be sized for.
+//!   two. The size is usually in the frame header, and `decode_all` reads it
+//!   for you - but only a compressor that knew the length can have put it
+//!   there, so how you compressed decides how fast the other end can go.
 //! * For data already in memory, the one-shot `bulk` API beats the streaming
 //!   one, and by a lot when the items are small.
 //! * Threads are a large win when compressing something big, and a loss when
@@ -111,8 +111,8 @@ fn main() {
     // ---------------------------------------------------------------------
     println!("# Compressing a buffer you already hold");
     println!("Streaming a slice you already have in memory pays for buffering");
-    println!("it does not need, and the frame it writes cannot record its");
-    println!("decompressed size - which costs whoever reads it, later.\n");
+    println!("it does not need, and encode_all is never told the length, so the");
+    println!("frame cannot record it - which costs whoever reads it, later.\n");
 
     let naive = measure("encode_all", data.len(), iterations, || {
         zstd::encode_all(&data[..], level).unwrap();
@@ -124,19 +124,26 @@ fn main() {
 
     // ---------------------------------------------------------------------
     println!("# Decompressing a frame");
-    println!("Whether the output can be sized up front depends on the frame:");
-    println!("bulk::compress and the zstd CLI record the decompressed size,");
-    println!("a streaming compressor cannot.\n");
+    println!("Whether the output can be sized up front is decided when the");
+    println!("frame is written, by whether the compressor was told how much");
+    println!("was coming. It is not a streaming-versus-one-shot thing: given");
+    println!("the length, a streaming compressor records it too.\n");
 
     let sized = zstd::bulk::compress(&data, level).unwrap();
     let unsized_ = zstd::encode_all(&data[..], level).unwrap();
+    let streamed_sized =
+        zstd::compress_with_size(&data[..], level, data.len() as u64).unwrap();
     println!(
-        "  (from bulk::compress, header says {:?})",
+        "  (bulk::compress      header says {:?})",
         zstd::decompressed_size(&sized)
     );
     println!(
-        "  (from encode_all,     header says {:?})",
+        "  (encode_all          header says {:?})",
         zstd::decompressed_size(&unsized_)
+    );
+    println!(
+        "  (compress_with_size  header says {:?})",
+        zstd::decompressed_size(&streamed_sized)
     );
 
     let naive = measure("decode_all, size not in the frame", data.len(), iterations, || {
@@ -146,6 +153,18 @@ fn main() {
         zstd::decode_all(&sized[..]).unwrap();
     });
     speedup(naive, better);
+    println!("Expect this ratio to look small here and larger in a real");
+    println!("program: repeating in a loop lets the allocator hand the same");
+    println!("block back every time, which is the cost being avoided. Measured");
+    println!("on its own in a fresh process it is closer to 1.8x.\n");
+
+    println!("The same frame, but written by the streaming compressor after");
+    println!("being told the length - compress_from_file does this for a file.\n");
+
+    measure("decode_all, streamed frame that recorded it", data.len(), iterations, || {
+        zstd::decode_all(&streamed_sized[..]).unwrap();
+    });
+    println!();
 
     println!("Sizing the buffer yourself gets the same thing, and a re-used");
     println!("context saves the last few percent.\n");

@@ -460,6 +460,11 @@ unsafe impl<F> Send for AdvancedSeekable<'_, F> where F: Send {}
 #[cfg(feature = "std")]
 unsafe impl<F> Sync for AdvancedSeekable<'_, F> where F: Sync {}
 
+/// Only `Deref` is implemented, deliberately: handing out a `&mut Seekable`
+/// would let safe code `mem::swap()` the inner context out of here, leaving the
+/// swapped-out context holding a pointer to a `src` that this struct still owns
+/// and frees on drop. See https://github.com/gyscos/zstd-rs/issues/366.
+/// The `&mut self` methods are re-exposed above instead.
 #[cfg(feature = "std")]
 impl<'a, F> core::ops::Deref for AdvancedSeekable<'a, F> {
     type Target = Seekable<'a>;
@@ -470,9 +475,27 @@ impl<'a, F> core::ops::Deref for AdvancedSeekable<'a, F> {
 }
 
 #[cfg(feature = "std")]
-impl<'a, F> core::ops::DerefMut for AdvancedSeekable<'a, F> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+impl<'a, F> AdvancedSeekable<'a, F> {
+    /// Decompresses the data at `offset` into `dst`.
+    ///
+    /// See [`Seekable::decompress()`].
+    pub fn decompress<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        offset: u64,
+    ) -> SafeResult {
+        self.inner.decompress(dst, offset)
+    }
+
+    /// Decompresses the frame with index `frame_index` into `dst`.
+    ///
+    /// See [`Seekable::decompress_frame()`].
+    pub fn decompress_frame<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        frame_index: u32,
+    ) -> SafeResult {
+        self.inner.decompress_frame(dst, frame_index)
     }
 }
 
@@ -512,6 +535,13 @@ impl<'a> Seekable<'a> {
         };
 
         if crate::is_error(code) {
+            // The context was not initialized, so nothing will ever call back
+            // into `opaque`; take the box back rather than leaking it (and
+            // whatever `F` holds, like a file descriptor).
+            // Safety: `opaque` comes from the `Box::into_raw` above, and has
+            // not been handed to anything that outlives this function.
+            let _: std::boxed::Box<F> =
+                unsafe { std::boxed::Box::from_raw(opaque) };
             return Err(code);
         }
 

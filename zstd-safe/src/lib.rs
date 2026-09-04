@@ -220,11 +220,46 @@ pub fn compress_bound(src_size: usize) -> usize {
     unsafe { zstd_sys::ZSTD_compressBound(src_size) }
 }
 
+/// Remembers an error that may have left a context in a state zstd considers
+/// undefined.
+///
+/// zstd.h says of both `ZSTD_compressStream2()` and `ZSTD_decompressStream()`
+/// that "if an operation ends with an error, it may leave [the context] in an
+/// undefined state", and that calling them again on such a state is undefined
+/// behaviour - the context has to be reset first. So once a streaming
+/// operation fails, refuse to run another one until something resets the
+/// context, and hand the original error back instead.
+#[derive(Clone, Debug, Default)]
+struct Poison(Option<ErrorCode>);
+
+impl Poison {
+    /// Fails with the error that poisoned the context, if there was one.
+    fn guard(&self) -> Result<(), ErrorCode> {
+        match self.0 {
+            Some(code) => Err(code),
+            None => Ok(()),
+        }
+    }
+
+    /// Remembers `res` if it failed, and passes it through.
+    fn record(&mut self, res: SafeResult) -> SafeResult {
+        if let Err(code) = res {
+            self.0 = Some(code);
+        }
+        res
+    }
+
+    /// The context was reset, so it is usable again.
+    fn clear(&mut self) {
+        self.0 = None;
+    }
+}
+
 /// Compression context
 ///
 /// It is recommended to allocate a single context per thread and re-use it
 /// for many compression operations.
-pub struct CCtx<'a>(NonNull<zstd_sys::ZSTD_CCtx>, PhantomData<&'a ()>);
+pub struct CCtx<'a>(NonNull<zstd_sys::ZSTD_CCtx>, PhantomData<&'a ()>, Poison);
 
 impl Default for CCtx<'_> {
     fn default() -> Self {
@@ -241,6 +276,7 @@ impl<'a> CCtx<'a> {
         Some(CCtx(
             NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })?,
             PhantomData,
+            Poison::default(),
         ))
     }
 
@@ -261,6 +297,7 @@ impl<'a> CCtx<'a> {
         src: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
+        self.2.clear();
         // Safety: ZSTD_compressCCtx returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
@@ -282,6 +319,7 @@ impl<'a> CCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        self.2.clear();
         // Safety: ZSTD_compress2 returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
@@ -304,6 +342,7 @@ impl<'a> CCtx<'a> {
         dict: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
+        self.2.clear();
         // Safety: ZSTD_compress_usingDict returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
@@ -328,6 +367,7 @@ impl<'a> CCtx<'a> {
         src: &[u8],
         cdict: &CDict<'_>,
     ) -> SafeResult {
+        self.2.clear();
         // Safety: ZSTD_compress_usingCDict returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
@@ -349,11 +389,12 @@ impl<'a> CCtx<'a> {
     /// * `reset()`
     /// * `set_parameter(CompressionLevel, compression_level)`
     pub fn init(&mut self, compression_level: CompressionLevel) -> SafeResult {
+        self.2.clear();
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream(self.0.as_ptr(), compression_level)
         };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Wraps the `ZSTD_initCStream_srcSize()` function.
@@ -365,6 +406,7 @@ impl<'a> CCtx<'a> {
         compression_level: CompressionLevel,
         pledged_src_size: u64,
     ) -> SafeResult {
+        self.2.clear();
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_srcSize(
@@ -385,6 +427,8 @@ impl<'a> CCtx<'a> {
         dict: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
+        self.2.clear();
+        self.2.clear();
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingDict(
@@ -497,6 +541,7 @@ impl<'a> CCtx<'a> {
         output: &mut OutBuffer<'_, C>,
         input: &mut InBuffer<'_>,
     ) -> SafeResult {
+        self.2.guard()?;
         let mut output = output.wrap();
         let mut input = input.wrap();
         // Safety: Just FFI
@@ -507,7 +552,7 @@ impl<'a> CCtx<'a> {
                 ptr_mut(&mut input),
             )
         };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Performs a step of a streaming compression operation.
@@ -531,17 +576,19 @@ impl<'a> CCtx<'a> {
         input: &mut InBuffer<'_>,
         end_op: zstd_sys::ZSTD_EndDirective,
     ) -> SafeResult {
+        self.2.guard()?;
         let mut output = output.wrap();
         let mut input = input.wrap();
         // Safety: Just FFI
-        parse_code(unsafe {
+        let code = unsafe {
             zstd_sys::ZSTD_compressStream2(
                 self.0.as_ptr(),
                 ptr_mut(&mut output),
                 ptr_mut(&mut input),
                 end_op,
             )
-        })
+        };
+        self.2.record(parse_code(code))
     }
 
     /// Flush any intermediate buffer.
@@ -553,12 +600,13 @@ impl<'a> CCtx<'a> {
         &mut self,
         output: &mut OutBuffer<'_, C>,
     ) -> SafeResult {
+        self.2.guard()?;
         let mut output = output.wrap();
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_flushStream(self.0.as_ptr(), ptr_mut(&mut output))
         };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Ends the stream.
@@ -570,12 +618,13 @@ impl<'a> CCtx<'a> {
         &mut self,
         output: &mut OutBuffer<'_, C>,
     ) -> SafeResult {
+        self.2.guard()?;
         let mut output = output.wrap();
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_endStream(self.0.as_ptr(), ptr_mut(&mut output))
         };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Returns the size currently used by this context.
@@ -593,9 +642,14 @@ impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_CCtx_reset()` function.
     pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
         // Safety: Just FFI
-        parse_code(unsafe {
+        let resets_session = reset.resets_session();
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_reset(self.0.as_ptr(), reset.as_sys())
-        })
+        });
+        if res.is_ok() && resets_session {
+            self.2.clear();
+        }
+        res
     }
 
     /// Sets a compression parameter.
@@ -767,7 +821,7 @@ impl<'a> CCtx<'a> {
             )
         })?;
 
-        Ok(CCtx(context, self.1))
+        Ok(CCtx(context, self.1, self.2.clone()))
     }
 
     /// Wraps the `ZSTD_getBlockSize()` function.
@@ -908,7 +962,7 @@ pub fn get_error_name(code: usize) -> &'static str {
 /// If no dictionary was used, it will most likely be `'static`.
 ///
 /// Same as `DStream`.
-pub struct DCtx<'a>(NonNull<zstd_sys::ZSTD_DCtx>, PhantomData<&'a ()>);
+pub struct DCtx<'a>(NonNull<zstd_sys::ZSTD_DCtx>, PhantomData<&'a ()>, Poison);
 
 impl Default for DCtx<'_> {
     fn default() -> Self {
@@ -924,6 +978,7 @@ impl<'a> DCtx<'a> {
         Some(DCtx(
             NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })?,
             PhantomData,
+            Poison::default(),
         ))
     }
 
@@ -948,6 +1003,7 @@ impl<'a> DCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        self.2.clear();
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompressDCtx(
@@ -975,6 +1031,7 @@ impl<'a> DCtx<'a> {
         src: &[u8],
         dict: &[u8],
     ) -> SafeResult {
+        self.2.clear();
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompress_usingDict(
@@ -1001,6 +1058,7 @@ impl<'a> DCtx<'a> {
         src: &[u8],
         ddict: &DDict<'_>,
     ) -> SafeResult {
+        self.2.clear();
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompress_usingDDict(
@@ -1023,8 +1081,9 @@ impl<'a> DCtx<'a> {
     ///
     /// Wraps the `ZSTD_initCStream()` function.
     pub fn init(&mut self) -> SafeResult {
+        self.2.clear();
         let code = unsafe { zstd_sys::ZSTD_initDStream(self.0.as_ptr()) };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Wraps the `ZSTD_initDStream_usingDict()` function.
@@ -1032,6 +1091,8 @@ impl<'a> DCtx<'a> {
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated]
     pub fn init_using_dict(&mut self, dict: &[u8]) -> SafeResult {
+        self.2.clear();
+        self.2.clear();
         let code = unsafe {
             zstd_sys::ZSTD_initDStream_usingDict(
                 self.0.as_ptr(),
@@ -1065,9 +1126,14 @@ impl<'a> DCtx<'a> {
     ///
     /// Wraps the `ZSTD_DCtx_reset()` function.
     pub fn reset(&mut self, reset: ResetDirective) -> SafeResult {
-        parse_code(unsafe {
+        let resets_session = reset.resets_session();
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_DCtx_reset(self.0.as_ptr(), reset.as_sys())
-        })
+        });
+        if res.is_ok() && resets_session {
+            self.2.clear();
+        }
+        res
     }
 
     /// Loads a dictionary.
@@ -1195,6 +1261,7 @@ impl<'a> DCtx<'a> {
         output: &mut OutBuffer<'_, C>,
         input: &mut InBuffer<'_>,
     ) -> SafeResult {
+        self.2.guard()?;
         let mut output = output.wrap();
         let mut input = input.wrap();
         let code = unsafe {
@@ -1204,7 +1271,7 @@ impl<'a> DCtx<'a> {
                 ptr_mut(&mut input),
             )
         };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Wraps the `ZSTD_DStreamInSize()` function.
@@ -1284,7 +1351,7 @@ impl<'a> DCtx<'a> {
 
         unsafe { zstd_sys::ZSTD_copyDCtx(context.as_ptr(), self.0.as_ptr()) };
 
-        Ok(DCtx(context, self.1))
+        Ok(DCtx(context, self.1, self.2.clone()))
     }
 }
 
@@ -2119,6 +2186,18 @@ pub enum ResetDirective {
 }
 
 impl ResetDirective {
+    /// Does this drop a session in progress?
+    ///
+    /// Only a session reset brings a context back from the undefined state an
+    /// error can leave it in - `Parameters` alone is refused while a session is
+    /// open.
+    fn resets_session(&self) -> bool {
+        matches!(
+            self,
+            ResetDirective::SessionOnly | ResetDirective::SessionAndParameters
+        )
+    }
+
     fn as_sys(self) -> zstd_sys::ZSTD_ResetDirective {
         match self {
             ResetDirective::SessionOnly => zstd_sys::ZSTD_ResetDirective::ZSTD_reset_session_only,

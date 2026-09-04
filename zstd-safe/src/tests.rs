@@ -335,3 +335,83 @@ where
     let decompressed = &buffer[..written];
     assert_eq!(INPUT, decompressed);
 }
+
+/// An error can leave a context in a state zstd calls undefined, and says it is
+/// UB to keep using. The context should refuse instead, until it is reset.
+///
+/// https://github.com/gyscos/zstd-rs/issues/315
+#[cfg(feature = "std")]
+#[test]
+fn test_context_poisoned_by_an_error() {
+    use zstd_safe::{DCtx, InBuffer, OutBuffer, ResetDirective};
+
+    let mut dctx = DCtx::create();
+    let mut buffer = std::vec![0u8; 1024];
+
+    // Not a zstd frame: this fails, and may leave the context undefined.
+    let garbage = [0xFFu8; 64];
+    let first = {
+        let mut input = InBuffer::around(&garbage[..]);
+        let mut output = OutBuffer::around(&mut buffer[..]);
+        dctx.decompress_stream(&mut output, &mut input).unwrap_err()
+    };
+
+    let mut compressed = Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    zstd_safe::compress(&mut compressed, INPUT, 3)
+        .map_err(zstd_safe::get_error_name)
+        .unwrap();
+
+    // Even perfectly good input must not reach zstd now: the context has to be
+    // reset first. The same error comes back, and nothing was consumed.
+    let second = {
+        let mut input = InBuffer::around(&compressed[..]);
+        let mut output = OutBuffer::around(&mut buffer[..]);
+        let err = dctx
+            .decompress_stream(&mut output, &mut input)
+            .unwrap_err();
+        assert_eq!(input.pos(), 0, "the poisoned context consumed input");
+        assert_eq!(output.pos(), 0, "the poisoned context produced output");
+        err
+    };
+    assert_eq!(
+        zstd_safe::get_error_name(first),
+        zstd_safe::get_error_name(second)
+    );
+
+    // Resetting the session makes it usable again.
+    dctx.reset(ResetDirective::SessionOnly)
+        .map_err(zstd_safe::get_error_name)
+        .unwrap();
+
+    let written = {
+        let mut input = InBuffer::around(&compressed[..]);
+        let mut output = OutBuffer::around(&mut buffer[..]);
+        dctx.decompress_stream(&mut output, &mut input)
+            .map_err(zstd_safe::get_error_name)
+            .unwrap();
+        output.pos()
+    };
+    assert_eq!(&buffer[..written], INPUT);
+}
+
+#[test]
+fn test_poison_tracking() {
+    use crate::Poison;
+
+    let mut poison = Poison::default();
+    assert!(poison.guard().is_ok());
+
+    // Successes leave it alone.
+    assert_eq!(poison.record(Ok(3)), Ok(3));
+    assert!(poison.guard().is_ok());
+
+    // A failure is remembered, and handed back to every later caller.
+    assert_eq!(poison.record(Err(42)), Err(42));
+    assert_eq!(poison.guard(), Err(42));
+    // Nothing but a reset clears it - not even a later success.
+    assert_eq!(poison.record(Ok(1)), Ok(1));
+    assert_eq!(poison.guard(), Err(42));
+
+    poison.clear();
+    assert!(poison.guard().is_ok());
+}

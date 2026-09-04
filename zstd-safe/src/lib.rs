@@ -1692,8 +1692,6 @@ pub unsafe trait WriteBuf {
     }
 }
 
-#[cfg(feature = "std")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
 /// The position of a `Cursor`, as an index into the buffer it wraps.
 ///
 /// `Cursor` stores the position as a `u64` and lets it be set anywhere, so on a
@@ -1708,6 +1706,8 @@ fn cursor_position<T>(cursor: &std::io::Cursor<T>) -> usize {
     usize::try_from(cursor.position()).unwrap_or(usize::MAX)
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
 unsafe impl<T> WriteBuf for std::io::Cursor<T>
 where
     T: WriteBuf,

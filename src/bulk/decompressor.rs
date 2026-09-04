@@ -124,7 +124,10 @@ impl<'a> Decompressor<'a> {
             }
             // Known to fit, since it is not greater than `capacity`.
             Some(needed) => needed as usize,
-            None => Self::upper_bound(data).unwrap_or(capacity).min(capacity),
+            // The walk has already told us there is no total to be had, so
+            // go straight to zstd rather than back through `upper_bound`,
+            // which would only repeat it.
+            None => bound_from_zstd(data).unwrap_or(capacity).min(capacity),
         };
 
         let mut buffer = Vec::with_capacity(capacity);
@@ -161,21 +164,26 @@ impl<'a> Decompressor<'a> {
     /// that adds them up is part of zstd's experimental API.
     pub fn upper_bound(data: &[u8]) -> Option<usize> {
         // Walking the frames ourselves gives the exact total, and needs
-        // nothing experimental.
-        if let Some(size) = total_decompressed_size(data) {
-            return size.try_into().ok();
-        }
-
-        // That only works while every frame records its size. When one does
-        // not, zstd can still bound it from the window size, but only through
-        // the experimental API.
-        #[cfg(feature = "experimental")]
-        if let Ok(bound) = zstd_safe::decompress_bound(data) {
-            return bound.try_into().ok();
-        }
-
-        None
+        // nothing experimental. Failing that, zstd can bound a frame that
+        // records no size, but only through its experimental API.
+        total_decompressed_size(data)
+            .and_then(|size| size.try_into().ok())
+            .or_else(|| bound_from_zstd(data))
     }
+}
+
+/// What zstd can say about frames that do not record their decompressed size.
+///
+/// It bounds each one from its block count and window size, which needs
+/// walking the block headers - so this is the one part we do not reimplement,
+/// and without the experimental feature there is nothing to offer.
+fn bound_from_zstd(_data: &[u8]) -> Option<usize> {
+    #[cfg(feature = "experimental")]
+    if let Ok(bound) = zstd_safe::decompress_bound(_data) {
+        return bound.try_into().ok();
+    }
+
+    None
 }
 
 /// Adds up the decompressed size of every frame in `data`.

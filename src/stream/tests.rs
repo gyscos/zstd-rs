@@ -276,3 +276,28 @@ fn test_finish_empty_encoder() {
     enc.write_all(b"this should not work").unwrap_err();
     enc.finish().unwrap();
 }
+
+#[test]
+fn test_empty_read_buffer() {
+    // `Read::read` must return `Ok(0)` for an empty buffer rather than
+    // reporting that it could not make progress.
+    // https://github.com/gyscos/zstd-rs/issues/318
+    use std::io::Read;
+
+    let compressed = encode_all(&b"some data to decompress"[..], 3).unwrap();
+
+    let mut decoder = Decoder::new(&compressed[..]).unwrap();
+    assert_eq!(decoder.read(&mut []).unwrap(), 0);
+    // Reading normally still works afterwards.
+    let mut decoded = Vec::new();
+    decoder.read_to_end(&mut decoded).unwrap();
+    assert_eq!(decoded, b"some data to decompress");
+
+    // Same on the way in: a read-based encoder.
+    let mut encoder =
+        crate::stream::read::Encoder::new(&b"some data"[..], 3).unwrap();
+    assert_eq!(encoder.read(&mut []).unwrap(), 0);
+    let mut encoded = Vec::new();
+    encoder.read_to_end(&mut encoded).unwrap();
+    assert_eq!(decode_all(&encoded[..]).unwrap(), b"some data");
+}

@@ -169,6 +169,13 @@ where
     D: Operation,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // `Read::read` is specified to return `Ok(0)` for an empty buffer.
+        // Without this, the loop below would keep asking the operation to write
+        // into no space at all, until zstd gives up with a "no progress" error.
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
         // Keep trying until _something_ has been written.
         let mut first = true;
         loop {

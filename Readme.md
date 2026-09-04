@@ -60,6 +60,36 @@ The [`async-compression`](https://github.com/Nemo157/async-compression/) crate
 provides an async-ready integration of various compression algorithms,
 including `zstd-rs`.
 
+# Performance
+
+This wrapper adds little over the C library. On the same data at level 3, a
+re-used `bulk::Compressor` and `bulk::Decompressor` land within a few percent
+of what `zstd -b3` reports for the same file. If you are seeing much less than
+that, it is usually one of these:
+
+* **A debug build.** Always measure with `--release`; a debug build times this
+  crate's wrappers rather than zstd.
+* **Growing a `Vec` rather than sizing it.** The convenience functions that
+  return a `Vec` start from an empty one. On decompression, sizing the output
+  up front - `bulk::decompress`, or `copy_decode` into a
+  `Vec::with_capacity` - was worth roughly a factor of two in our measurements.
+* **Streaming data that is already in memory.** The streaming API has
+  per-call overhead that the `bulk` one does not; for a slice you already
+  hold, `bulk` is the faster route.
+* **Leaving compression single-threaded.** With the `zstdmt` feature and
+  several workers, compression of a 33 MB input went about three times faster
+  here. It is a loss on small inputs, where there is not enough data to keep
+  the workers busy.
+
+To measure all of these on your own data:
+
+```
+cargo run --release --features zstdmt --example throughput -- <file>
+```
+
+It prints the matching `zstd -b<level>` command so you can compare against the
+C library directly.
+
 # Cargo features
 
 Enabled by default: `legacy`, `arrays`, `zdict_builder`.

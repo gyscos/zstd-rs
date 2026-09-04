@@ -17,7 +17,30 @@
 //! zstd::stream::copy_decode(io::stdin(), io::stdout()).unwrap();
 //! ```
 //!
+//! # Cargo features
+//!
+//! Enabled by default: `legacy`, `arrays`, `zdict_builder`.
+//!
+//! | Feature | Default | Description |
+//! | --- | --- | --- |
+//! | `arrays` | yes | Use fixed-size arrays (`[u8; N]`) as output buffers. |
+//! | `legacy` | yes | Decode frames written by zstd versions older than 0.8. |
+//! | `zdict_builder` | yes | Train new dictionaries. *Using* a dictionary always works. |
+//! | `experimental` | | Expose zstd's experimental API, which has no stability guarantees. |
+//! | `zstdmt` | | Multi-threaded compression inside the C library. |
+//! | `thin` | | Build a smaller C library, at some cost in speed and error reporting. |
+//! | `debug` | | Enable zstd's debug logs. |
+//! | `no_asm` | | Do not build the x86-64 assembly. |
+//! | `fat-lto`, `thin-lto` | | Cross-language LTO. Only works if `clang` builds the C library. |
+//! | `bindgen` | | Generate the bindings at build time rather than using the pre-generated ones. |
+//! | `pkg-config` | | Link against a system-installed libzstd instead of building the bundled source. |
+//! | `vendored` | | Always build the bundled source, even when `pkg-config` is also enabled. |
+//! | `cmake` | | Build the C library with zstd's own CMake files instead of the `cc` crate. |
+//!
+//! See the [readme] for more about the build-related ones.
+//!
 //! [zstd]: https://github.com/facebook/zstd
+//! [readme]: https://github.com/gyscos/zstd-rs#cargo-features
 #![deny(missing_docs)]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 

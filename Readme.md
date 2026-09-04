@@ -60,6 +60,33 @@ The [`async-compression`](https://github.com/Nemo157/async-compression/) crate
 provides an async-ready integration of various compression algorithms,
 including `zstd-rs`.
 
+# Cargo features
+
+Enabled by default: `legacy`, `arrays`, `zdict_builder`.
+
+| Feature | Default | Description |
+| --- | --- | --- |
+| `arrays` | yes | Use fixed-size arrays (`[u8; N]`) as output buffers. |
+| `legacy` | yes | Decode frames written by zstd versions older than 0.8. |
+| `zdict_builder` | yes | Train new dictionaries. *Using* a dictionary always works. |
+| `experimental` | | Expose zstd's experimental API. It has no stability guarantees, and may change between zstd releases. |
+| `zstdmt` | | Multi-threaded compression inside the C library. |
+| `thin` | | Build a smaller C library, at some cost in speed and error reporting. |
+| `debug` | | Enable zstd's debug logs. |
+| `no_asm` | | Do not build the x86-64 assembly. |
+| `fat-lto`, `thin-lto` | | Cross-language LTO. Only works if `clang` builds the C library. |
+| `doc-cfg` | | Mark feature-gated items in the generated documentation. Needs a nightly compiler. |
+| `wasm` | | Does nothing; kept so that existing dependants keep building. |
+
+The following change how the C library is obtained or built:
+
+| Feature | Default | Description |
+| --- | --- | --- |
+| `bindgen` | | Generate the bindings at build time rather than using the pre-generated ones. Needs `libclang`. |
+| `pkg-config` | | Link against a system-installed libzstd instead of building the bundled source. |
+| `vendored` | | Always build the bundled source, even when `pkg-config` is also enabled. Useful to force a static build from a dependent crate. |
+| `cmake` | | Build the C library with zstd's own CMake files instead of the `cc` crate, which handles cross-compilation better. Needs `cmake`. |
+
 # Compile it yourself
 
 `zstd` is included as a submodule. To get everything during your clone, use:

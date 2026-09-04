@@ -35,12 +35,76 @@ fn compile_zstd_cmake() {
         config.define("ZSTD_BUILD_DICTBUILDER", "OFF");
     }
 
-    // Hide symbols so we can coexist with another zstd-linking lib
+    // Hide symbols so we can coexist with another zstd-linking lib.
+    // See https://github.com/gyscos/zstd-rs/issues/58
+    //
+    // The ZSTD*_VISIBLE cache variables only cover the symbols annotated with
+    // the public API macros; the visibility preset is what hides everything
+    // else (internal helpers, and the vendored xxhash), matching what the cc
+    // backend gets from -fvisibility=hidden.
     config.define("ZSTDLIB_VISIBLE", "hidden");
     config.define("ZSTDERRORLIB_VISIBLE", "hidden");
     config.define("ZDICTLIB_VISIBLE", "hidden");
+    config.define("CMAKE_C_VISIBILITY_PRESET", "hidden");
+    config.define("CMAKE_VISIBILITY_INLINES_HIDDEN", "ON");
+
+    // Feature flags the cc backend applies as plain preprocessor defines.
+    if cfg!(feature = "debug") {
+        config.cflag("-DDEBUGLEVEL=5");
+    }
+    if cfg!(feature = "no_asm") {
+        config.cflag("-DZSTD_DISABLE_ASM");
+    }
+    if cfg!(feature = "thin") {
+        // Same set as the cc backend: build the smallest lib we can.
+        for flag in [
+            "-DHUF_FORCE_DECOMPRESS_X1=1",
+            "-DZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT=1",
+            "-DZSTD_NO_INLINE=1",
+            "-DZSTD_STRIP_ERROR_STRINGS=1",
+            "-DDYNAMIC_BMI2=0",
+            "-Os",
+        ] {
+            config.cflag(flag);
+        }
+    }
+    if cfg!(any(feature = "fat-lto", feature = "thin-lto")) {
+        cargo_print(
+            &"warning=the fat-lto/thin-lto features are ignored by the cmake backend",
+        );
+    }
 
     let dst = config.build();
+
+    // zstd's cmake build does not cover the seekable format, which lives in
+    // contrib/. Build it here the way the cc backend does, and emit it before
+    // the zstd library so the linker can resolve it against zstd.
+    #[cfg(feature = "seekable")]
+    {
+        let mut seekable = cc::Build::new();
+        seekable
+            .include("zstd/lib")
+            .include("zstd/lib/common")
+            .include("zstd/contrib/seekable_format")
+            .warnings(false)
+            .cargo_metadata(!cfg!(feature = "non-cargo"));
+
+        if env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default() != "msvc" {
+            seekable.flag("-fvisibility=hidden");
+        }
+
+        let mut entries: Vec<_> = fs::read_dir("zstd/contrib/seekable_format")
+            .unwrap()
+            .map(Result::unwrap)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension().and_then(|ext| ext.to_str()) == Some("c")
+            })
+            .collect();
+        entries.sort();
+        seekable.files(entries);
+        seekable.compile("zstd_seekable");
+    }
 
     // Tell cargo where to find the built library.
     // CMake may place it in lib/ or lib64/ depending on the platform.
@@ -56,8 +120,11 @@ fn compile_zstd_cmake() {
         lib_dir.display()
     ));
 
-    // On MSVC, the static library is named zstd_static
-    if cfg!(target_env = "msvc") {
+    // On MSVC, the static library is named zstd_static.
+    // This has to follow the target env: build scripts are compiled for the
+    // host, so cfg!(target_env) would be wrong when cross-compiling.
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target_env == "msvc" {
         cargo_print(&"rustc-link-lib=static=zstd_static");
     } else {
         cargo_print(&"rustc-link-lib=static=zstd");

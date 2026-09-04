@@ -66,7 +66,8 @@ pub fn compression_level_range(
 
 #[doc(no_inline)]
 pub use crate::stream::{
-    decode_all, decompressed_size, encode_all, Decoder, Encoder,
+    compress_from_file, compress_with_size, decode_all, decompressed_size,
+    encode_all, Decoder, Encoder,
 };
 
 /// Returns the error message as io::Error based on error_code.

@@ -62,6 +62,25 @@ including `zstd-rs`.
 
 # Performance
 
+## Which function to use
+
+The frame header can record how big the data will be once decompressed, and
+whoever reads it can then size their buffer in one go instead of growing it -
+worth roughly a factor of two to them. Only a compressor that knows the length
+up front can record it:
+
+| you are compressing | use | records the size |
+| --- | --- | --- |
+| a slice or a `Vec` | `bulk::compress` | yes |
+| a file | `compress_from_file` | yes |
+| a `Read` whose length you know | `compress_with_size` | yes |
+| any other `Read` | `encode_all` | no |
+
+On the way back, `decode_all` reads that header and sizes its output for you,
+and `decompressed_size` gives you the same number for a buffer of your own.
+
+## Matching the C library
+
 This wrapper adds little over the C library. On the same data at level 3, a
 re-used `bulk::Compressor` and `bulk::Decompressor` land within a few percent
 of what `zstd -b3` reports for the same file. If you are seeing much less than

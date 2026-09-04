@@ -301,3 +301,44 @@ fn test_empty_read_buffer() {
     encoder.read_to_end(&mut encoded).unwrap();
     assert_eq!(decode_all(&encoded[..]).unwrap(), b"some data");
 }
+
+#[test]
+fn test_compress_with_size() {
+    let data = &include_bytes!("../../assets/example.txt")[..];
+
+    let frame = super::compress_with_size(data, 3, data.len() as u64).unwrap();
+
+    // The point of it: the size is in the frame, so a reader can size its
+    // buffer without guessing.
+    assert_eq!(super::decompressed_size(&frame), Some(data.len() as u64));
+    assert_eq!(super::decode_all(&frame[..]).unwrap(), data);
+
+    // encode_all, for contrast, cannot record it.
+    let streamed = super::encode_all(data, 3).unwrap();
+    assert_eq!(super::decompressed_size(&streamed), None);
+}
+
+#[test]
+fn test_compress_with_wrong_size() {
+    let data = &include_bytes!("../../assets/example.txt")[..];
+
+    // Claiming the wrong length has to fail rather than write a frame whose
+    // header lies about its contents.
+    assert!(super::compress_with_size(data, 3, data.len() as u64 + 1).is_err());
+    assert!(super::compress_with_size(data, 3, data.len() as u64 - 1).is_err());
+}
+
+#[test]
+fn test_compress_from_file() {
+    let expected = &include_bytes!("../../assets/example.txt")[..];
+
+    let frame = super::compress_from_file("assets/example.txt", 3).unwrap();
+
+    assert_eq!(super::decompressed_size(&frame), Some(expected.len() as u64));
+    assert_eq!(super::decode_all(&frame[..]).unwrap(), expected);
+}
+
+#[test]
+fn test_compress_from_missing_file() {
+    assert!(super::compress_from_file("assets/does-not-exist", 3).is_err());
+}

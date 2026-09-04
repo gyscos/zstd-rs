@@ -13,6 +13,13 @@
 //! The C library is the reference point: `zstd -b3 <file>` benchmarks the same
 //! level in memory, and its numbers are directly comparable to these.
 //!
+//! One caveat on reading the output: everything here runs in one process, so
+//! the later measurements find an allocator that the earlier ones have already
+//! warmed up. That flatters whichever case would otherwise be paying to fault
+//! in fresh pages - usually the ones that grow a buffer. Comparisons within a
+//! section are sound; if you want to pin down one number, measure it on its
+//! own in a fresh process.
+//!
 //! The short version of what this tends to show:
 //!
 //! * Decompressing into a buffer of the right size is worth about a factor of

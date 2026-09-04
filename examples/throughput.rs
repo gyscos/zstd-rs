@@ -16,17 +16,19 @@
 //!
 //! Things this tends to show, on top of whatever your own data does:
 //!
-//! * The convenience functions that return a `Vec` start from an empty one and
-//!   grow it as they go. On decompression that can cost about half the
-//!   throughput, all of it in reallocation - decompressing into a buffer of a
-//!   known size is the single biggest thing you can change.
-//! * Re-using a `bulk::Compressor` saves a context allocation per call. That
-//!   matters for many small inputs, and disappears into the noise for large
-//!   ones.
+//! * Sizing the output buffer is the one that matters. The convenience
+//!   functions that return a `Vec` start from an empty one and grow it as they
+//!   go, which on decompression can cost about half the throughput - all of it
+//!   in reallocation, none of it in zstd.
+//! * The `Read`/`Write` wrappers are not the problem. Once the destination is
+//!   sized, `Encoder` matches the one-shot `bulk` API for compression and comes
+//!   within about ten percent of it for decompression, whether they are driven
+//!   by `io::copy`, a single `write_all`, or `read_to_end`.
 //! * `zstdmt` with several workers is a large win on big inputs and a loss on
 //!   small ones - there has to be enough data to fill the workers.
 
 use clap::Parser;
+use std::io::{Read, Write};
 use std::time::Instant;
 
 #[derive(Parser, Debug)]
@@ -96,6 +98,20 @@ fn main() {
         zstd::stream::copy_encode(&data[..], &mut out, level).unwrap();
     });
 
+    bench("Encoder + one write_all", data.len(), iterations, || {
+        let mut out = Vec::with_capacity(bound);
+        let mut encoder = zstd::Encoder::new(&mut out, level).unwrap();
+        encoder.write_all(&data).unwrap();
+        encoder.finish().unwrap();
+    });
+
+    bench("read::Encoder + read_to_end into a sized Vec", data.len(), iterations, || {
+        let mut out = Vec::with_capacity(bound);
+        let mut encoder =
+            zstd::stream::read::Encoder::new(&data[..], level).unwrap();
+        encoder.read_to_end(&mut out).unwrap();
+    });
+
     bench("bulk::compress (new context per call)", data.len(), iterations, || {
         zstd::bulk::compress(&data, level).unwrap();
     });
@@ -141,6 +157,19 @@ fn main() {
     bench("copy_decode into a sized Vec", data.len(), iterations, || {
         let mut out = Vec::with_capacity(data.len());
         zstd::stream::copy_decode(&compressed[..], &mut out).unwrap();
+    });
+
+    bench("Decoder + read_to_end into a sized Vec", data.len(), iterations, || {
+        let mut out = Vec::with_capacity(data.len());
+        let mut decoder = zstd::Decoder::new(&compressed[..]).unwrap();
+        decoder.read_to_end(&mut out).unwrap();
+    });
+
+    bench("write::Decoder + one write_all", data.len(), iterations, || {
+        let mut out = Vec::with_capacity(data.len());
+        let mut decoder = zstd::stream::write::Decoder::new(&mut out).unwrap();
+        decoder.write_all(&compressed).unwrap();
+        decoder.flush().unwrap();
     });
 
     bench("bulk::decompress (new context per call)", data.len(), iterations, || {

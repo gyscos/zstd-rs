@@ -73,9 +73,11 @@ that, it is usually one of these:
   return a `Vec` start from an empty one. On decompression, sizing the output
   up front - `bulk::decompress`, or `copy_decode` into a
   `Vec::with_capacity` - was worth roughly a factor of two in our measurements.
-* **Streaming data that is already in memory.** The streaming API has
-  per-call overhead that the `bulk` one does not; for a slice you already
-  hold, `bulk` is the faster route.
+* **Streaming data that is already in memory.** For a slice you already hold,
+  the one-shot `bulk` API avoids a copy through the streaming buffers. It is
+  worth about ten percent on decompression, so it is a much smaller effect
+  than sizing the output - the `Read`/`Write` wrappers are not the problem
+  people usually assume they are.
 * **Leaving compression single-threaded.** With the `zstdmt` feature and
   several workers, compression of a 33 MB input went about three times faster
   here. It is a loss on small inputs, where there is not enough data to keep

@@ -27,6 +27,7 @@ debug = ["zstd-sys/debug"]
 experimental = ["zstd-sys/experimental"]
 legacy = ["zstd-sys/legacy"]
 pkg-config = ["zstd-sys/pkg-config"]
+vendored = ["zstd-sys/vendored"]
 std = ["zstd-sys/std"] # Implements WriteBuf for std types like Cursor and Vec.
 zstdmt = ["zstd-sys/zstdmt"]
 thin = ["zstd-sys/thin"]

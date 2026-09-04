@@ -69,17 +69,15 @@ version = "0.3.28"
 [build-dependencies.cc]
 version = "1.0.45"
 features = ["parallel"]
-optional = true
 
 [build-dependencies.cmake]
 version = "0.1"
 optional = true
 
 [features]
-default = ["legacy", "zdict_builder", "cc"]
+default = ["legacy", "zdict_builder"]
 
-cc = ["dep:cc"] # Use cc crate to build zstd (default)
-cmake = ["dep:cmake"] # Use CMake to build zstd (improves cross-compilation support)
+cmake = ["dep:cmake"] # Build zstd with CMake instead of cc (improves cross-compilation support)
 debug = [] # Enable zstd debug logs
 experimental = [] # Expose experimental ZSTD API
 legacy = [] # Enable legacy ZSTD support (for versions < zstd-0.8)

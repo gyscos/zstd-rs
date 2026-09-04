@@ -1,4 +1,4 @@
-#[cfg(all(feature = "cc", not(feature = "cmake")))]
+#[cfg(not(feature = "cmake"))]
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::{env, fmt, fs};
@@ -135,34 +135,34 @@ fn pkg_config() -> (Vec<&'static str>, Vec<PathBuf>) {
     (vec!["PKG_CONFIG"], library.include_paths)
 }
 
-#[cfg(all(feature = "cc", not(feature = "legacy"), not(feature = "cmake")))]
+#[cfg(all(not(feature = "legacy"), not(feature = "cmake")))]
 fn set_legacy(_config: &mut cc::Build) {}
 
-#[cfg(all(feature = "cc", feature = "legacy", not(feature = "cmake")))]
+#[cfg(all(feature = "legacy", not(feature = "cmake")))]
 fn set_legacy(config: &mut cc::Build) {
     config.define("ZSTD_LEGACY_SUPPORT", Some("1"));
     config.include("zstd/lib/legacy");
 }
 
-#[cfg(all(feature = "cc", feature = "zstdmt", not(feature = "cmake")))]
+#[cfg(all(feature = "zstdmt", not(feature = "cmake")))]
 fn set_pthread(config: &mut cc::Build) {
     config.flag("-pthread");
 }
 
-#[cfg(all(feature = "cc", not(feature = "zstdmt"), not(feature = "cmake")))]
+#[cfg(all(not(feature = "zstdmt"), not(feature = "cmake")))]
 fn set_pthread(_config: &mut cc::Build) {}
 
-#[cfg(all(feature = "cc", feature = "zstdmt", not(feature = "cmake")))]
+#[cfg(all(feature = "zstdmt", not(feature = "cmake")))]
 fn enable_threading(config: &mut cc::Build) {
     config.define("ZSTD_MULTITHREAD", Some(""));
 }
 
-#[cfg(all(feature = "cc", not(feature = "zstdmt"), not(feature = "cmake")))]
+#[cfg(all(not(feature = "zstdmt"), not(feature = "cmake")))]
 fn enable_threading(_config: &mut cc::Build) {}
 
 /// This function would find the first flag in `flags` that is supported
 /// and add that to `config`.
-#[cfg(all(feature = "cc", not(feature = "cmake")))]
+#[cfg(not(feature = "cmake"))]
 #[allow(dead_code)]
 fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
     let option = flags
@@ -174,7 +174,7 @@ fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
     }
 }
 
-#[cfg(all(feature = "cc", not(feature = "cmake")))]
+#[cfg(not(feature = "cmake"))]
 fn compile_zstd() {
     let mut config = cc::Build::new();
 
@@ -380,17 +380,9 @@ fn main() {
         );
 
         #[cfg(feature = "cmake")]
-        {
-            compile_zstd_cmake();
-        }
-        #[cfg(all(feature = "cc", not(feature = "cmake")))]
-        {
-            compile_zstd();
-        }
-        #[cfg(not(any(feature = "cmake", feature = "cc")))]
-        {
-            panic!("Either the `cmake` or `cc` feature must be enabled to compile zstd from source.");
-        }
+        compile_zstd_cmake();
+        #[cfg(not(feature = "cmake"))]
+        compile_zstd();
         (vec![], vec![manifest_dir.join("zstd/lib")])
     };
 

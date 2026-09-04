@@ -29,10 +29,9 @@ partial-io = "0.5"
 walkdir = "2.2"
 
 [features]
-default = ["legacy", "arrays", "zdict_builder", "cc"]
+default = ["legacy", "arrays", "zdict_builder"]
 
 bindgen = ["zstd-safe/bindgen"]
-cc = ["zstd-safe/cc"]
 debug = ["zstd-safe/debug"]
 legacy = ["zstd-safe/legacy"]
 pkg-config = ["zstd-safe/pkg-config"]

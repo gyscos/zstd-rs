@@ -28,6 +28,8 @@ impl core::fmt::Display for FrameIndexTooLargeError {
 /// to start a new compression operation call `init()`.
 pub struct SeekableCStream(NonNull<zstd_sys::ZSTD_seekable_CStream>);
 
+// Safety: the stream is an owned heap allocation with no thread-local state,
+// and every method that advances it takes `&mut self`.
 unsafe impl Send for SeekableCStream {}
 unsafe impl Sync for SeekableCStream {}
 
@@ -175,6 +177,8 @@ impl Drop for SeekableCStream {
 /// afterward into a seekable archive.
 pub struct FrameLog(NonNull<zstd_sys::ZSTD_frameLog>);
 
+// Safety: as for `SeekableCStream` - owned, not thread-bound, and only mutated
+// through `&mut self`.
 unsafe impl Send for FrameLog {}
 unsafe impl Sync for FrameLog {}
 
@@ -259,6 +263,8 @@ impl Drop for FrameLog {
 /// The lifetime references the potential buffer that holds the data of this seekable.
 pub struct Seekable<'a>(NonNull<zstd_sys::ZSTD_seekable>, PhantomData<&'a ()>);
 
+// Safety: as for `SeekableCStream`. Note the decompression methods, which do
+// drive the C context, all take `&mut self`.
 unsafe impl Send for Seekable<'_> {}
 unsafe impl Sync for Seekable<'_> {}
 
@@ -456,8 +462,13 @@ pub struct AdvancedSeekable<'a, F> {
 }
 
 #[cfg(feature = "std")]
+// Safety: this owns both the `Seekable`, which is `Send`, and the `F` behind
+// `src`, so it can move between threads exactly when `F` can.
 unsafe impl<F> Send for AdvancedSeekable<'_, F> where F: Send {}
 #[cfg(feature = "std")]
+// Safety: `F` is only ever reached from the C callbacks, which run under the
+// `&mut self` methods, so a shared reference here never touches it. The `F:
+// Sync` bound is more than that needs.
 unsafe impl<F> Sync for AdvancedSeekable<'_, F> where F: Sync {}
 
 /// Only `Deref` is implemented, deliberately: handing out a `&mut Seekable`
@@ -625,6 +636,7 @@ impl core::fmt::Display for SeekTableCreateError {
 
 pub struct SeekTable(NonNull<zstd_sys::ZSTD_seekTable>);
 
+// Safety: a seek table is built once and only read afterwards.
 unsafe impl Send for SeekTable {}
 unsafe impl Sync for SeekTable {}
 

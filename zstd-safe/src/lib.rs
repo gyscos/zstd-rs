@@ -871,11 +871,22 @@ impl<'a> Drop for CCtx<'a> {
     }
 }
 
+// Safety: the context is a plain heap allocation this handle owns; zstd keeps
+// no thread-local state for it, so it can be moved between threads.
 unsafe impl Send for CCtx<'_> {}
-// Non thread-safe methods already take `&mut self`, so it's fine to implement Sync here.
+// Safety: every method that mutates the context takes `&mut self`, so a shared
+// `&CCtx` only ever reads. There is no interior mutability to race on.
 unsafe impl Sync for CCtx<'_> {}
 
+/// Converts a zstd-owned C string to a `str`.
+///
+/// # Safety
+///
+/// `text` must point to a nul-terminated C string that lives for the rest of
+/// the program - which is what the zstd functions this is used with return,
+/// as they hand back pointers to static string literals.
 unsafe fn c_char_to_str(text: *const c_char) -> &'static str {
+    // Safety: guaranteed by the caller, see above.
     core::ffi::CStr::from_ptr(text)
         .to_str()
         .expect("bad error message from zstd")
@@ -1285,8 +1296,10 @@ impl Drop for DCtx<'_> {
     }
 }
 
+// Safety: as for `CCtx` - an owned heap allocation with no thread-local state.
 unsafe impl Send for DCtx<'_> {}
 // Non thread-safe methods already take `&mut self`, so it's fine to implement Sync here.
+// Safety: as for `CCtx` - the mutating methods all take `&mut self`.
 unsafe impl Sync for DCtx<'_> {}
 
 /// Compression dictionary.
@@ -1385,6 +1398,9 @@ impl<'a> Drop for CDict<'a> {
     }
 }
 
+// Safety: a digested dictionary is immutable once built. zstd.h: "ZSTD_CDict
+// can be created once and shared by multiple threads concurrently, since its
+// usage is read-only".
 unsafe impl<'a> Send for CDict<'a> {}
 unsafe impl<'a> Sync for CDict<'a> {}
 
@@ -1468,6 +1484,8 @@ impl<'a> Drop for DDict<'a> {
     }
 }
 
+// Safety: like `CDict`, a digested dictionary is only read once built - the
+// contexts referencing it never write to it.
 unsafe impl<'a> Send for DDict<'a> {}
 unsafe impl<'a> Sync for DDict<'a> {}
 
@@ -1521,12 +1539,17 @@ impl Drop for ThreadPool {
     feature = "doc-cfg",
     doc(cfg(all(feature = "experimental", feature = "zstdmt")))
 )]
+// Safety: the pool owns its worker threads and the queue guarding them; none
+// of that is tied to the thread that created it.
 unsafe impl Send for ThreadPool {}
 #[cfg(all(feature = "experimental", feature = "zstdmt"))]
 #[cfg_attr(
     feature = "doc-cfg",
     doc(cfg(all(feature = "experimental", feature = "zstdmt")))
 )]
+// Safety: sharing is what the pool is for - zstd.h offers these functions to
+// "share a thread pool among multiple compression contexts" - and its work
+// queue is guarded by an internal mutex.
 unsafe impl Sync for ThreadPool {}
 
 /// Wraps the `ZSTD_decompress_usingDDict()` function.
@@ -1544,7 +1567,7 @@ pub fn decompress_using_ddict(
 /// Same as `CCtx`.
 pub type CStream<'a> = CCtx<'a>;
 
-// CStream can't be shared across threads, so it does not implement Sync.
+// `CStream` is an alias for `CCtx`, and shares its `Send` and `Sync` impls.
 
 /// Allocates a new `CStream`.
 pub fn create_cstream<'a>() -> CStream<'a> {

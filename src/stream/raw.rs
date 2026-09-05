@@ -162,6 +162,16 @@ impl<'a> Decoder<'a> {
         }
     }
 
+    /// Creates a new decoder that takes ownership of the provided context.
+    ///
+    /// This is useful when the context was built by the caller (for example
+    /// with a custom allocator) and the decoder is moved around by value.
+    pub fn with_owned_context(context: zstd_safe::DCtx<'a>) -> Self {
+        Self {
+            context: MaybeOwnedDCtx::Owned(context),
+        }
+    }
+
     /// Creates a new decoder, using an existing `DecoderDictionary`.
     pub fn with_prepared_dictionary<'b>(
         dictionary: &'a DecoderDictionary<'b>,
@@ -294,6 +304,16 @@ impl<'a> Encoder<'a> {
     pub fn with_context(context: &'a mut zstd_safe::CCtx<'static>) -> Self {
         Self {
             context: MaybeOwnedCCtx::Borrowed(context),
+        }
+    }
+
+    /// Creates a new encoder that takes ownership of the provided context.
+    ///
+    /// This is useful when the context was built by the caller (for example
+    /// with a custom allocator) and the encoder is moved around by value.
+    pub fn with_owned_context(context: zstd_safe::CCtx<'a>) -> Self {
+        Self {
+            context: MaybeOwnedCCtx::Owned(context),
         }
     }
 

@@ -303,10 +303,10 @@ fn test_empty_read_buffer() {
 }
 
 #[test]
-fn test_compress_with_size() {
+fn test_compress_sized() {
     let data = &include_bytes!("../../assets/example.txt")[..];
 
-    let frame = super::compress_with_size(data, 3, data.len() as u64).unwrap();
+    let frame = super::compress_sized(data, 3, data.len() as u64).unwrap();
 
     // The point of it: the size is in the frame, so a reader can size its
     // buffer without guessing.
@@ -324,15 +324,15 @@ fn test_compress_with_wrong_size() {
 
     // Claiming the wrong length has to fail rather than write a frame whose
     // header lies about its contents.
-    assert!(super::compress_with_size(data, 3, data.len() as u64 + 1).is_err());
-    assert!(super::compress_with_size(data, 3, data.len() as u64 - 1).is_err());
+    assert!(super::compress_sized(data, 3, data.len() as u64 + 1).is_err());
+    assert!(super::compress_sized(data, 3, data.len() as u64 - 1).is_err());
 }
 
 #[test]
-fn test_compress_from_file() {
+fn test_compress_file() {
     let expected = &include_bytes!("../../assets/example.txt")[..];
 
-    let frame = super::compress_from_file("assets/example.txt", 3).unwrap();
+    let frame = super::compress_file("assets/example.txt", 3).unwrap();
 
     assert_eq!(
         super::decompressed_size(&frame),
@@ -343,5 +343,65 @@ fn test_compress_from_file() {
 
 #[test]
 fn test_compress_from_missing_file() {
-    assert!(super::compress_from_file("assets/does-not-exist", 3).is_err());
+    assert!(super::compress_file("assets/does-not-exist", 3).is_err());
+}
+
+#[test]
+fn test_compress_sized_into() {
+    let data = &include_bytes!("../../assets/example.txt")[..];
+
+    let mut frame = Vec::new();
+    super::compress_sized_into(data, &mut frame, 3, data.len() as u64)
+        .unwrap();
+
+    // Same frame as the Vec-returning version, size and all.
+    assert_eq!(super::decompressed_size(&frame), Some(data.len() as u64));
+    assert_eq!(super::decode_all(&frame[..]).unwrap(), data);
+    assert_eq!(
+        frame,
+        super::compress_sized(data, 3, data.len() as u64).unwrap()
+    );
+}
+
+#[test]
+fn test_copy_compress_with_wrong_size() {
+    let data = &include_bytes!("../../assets/example.txt")[..];
+
+    let mut frame = Vec::new();
+    assert!(super::compress_sized_into(
+        data,
+        &mut frame,
+        3,
+        data.len() as u64 + 1
+    )
+    .is_err());
+}
+
+#[test]
+fn test_compress_file_into() {
+    let expected = &include_bytes!("../../assets/example.txt")[..];
+
+    let mut frame = Vec::new();
+    super::compress_file_into("assets/example.txt", &mut frame, 3).unwrap();
+
+    assert_eq!(
+        super::decompressed_size(&frame),
+        Some(expected.len() as u64)
+    );
+    assert_eq!(super::decode_all(&frame[..]).unwrap(), expected);
+
+    // Same frame as the Vec-returning version, which is built on this one.
+    assert_eq!(
+        frame,
+        super::compress_file("assets/example.txt", 3).unwrap()
+    );
+}
+
+#[test]
+fn test_copy_compress_from_missing_file() {
+    let mut frame = Vec::new();
+    assert!(
+        super::compress_file_into("assets/does-not-exist", &mut frame, 3)
+            .is_err()
+    );
 }

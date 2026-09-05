@@ -88,8 +88,8 @@ where
 /// so the frame this produces does not record its decompressed size. Whoever
 /// decompresses it cannot size their buffer up front, which costs them about a
 /// factor of two - see [`decompressed_size()`]. Use [`crate::bulk::compress()`]
-/// for a slice you already hold, [`compress_from_file()`] for a file, or
-/// [`compress_with_size()`] when you know the length some other way; all three
+/// for a slice you already hold, [`compress_file()`] for a file, or
+/// [`compress_sized()`] when you know the length some other way; all three
 /// record it.
 pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
     let mut result = Vec::<u8>::new();
@@ -108,32 +108,67 @@ pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
 /// if it turns out to be wrong.
 ///
 /// For data already in a slice, use [`crate::bulk::compress()`], which knows
-/// the length without being told. For a file, [`compress_from_file()`].
+/// the length without being told. For a file, [`compress_file()`].
 ///
 /// ```
 /// # fn main() -> std::io::Result<()> {
 /// let data = b"the length of this is known up front";
 ///
-/// let frame = zstd::compress_with_size(&data[..], 3, data.len() as u64)?;
+/// let frame = zstd::compress_sized(&data[..], 3, data.len() as u64)?;
 ///
 /// assert_eq!(zstd::decompressed_size(&frame), Some(data.len() as u64));
 /// # assert_eq!(zstd::decode_all(&frame[..])?, data);
 /// # Ok(())
 /// # }
 /// ```
-pub fn compress_with_size<R: io::Read>(
-    mut source: R,
+pub fn compress_sized<R: io::Read>(
+    source: R,
     level: i32,
     size: u64,
 ) -> io::Result<Vec<u8>> {
     let mut result = Vec::new();
-    {
-        let mut encoder = Encoder::new(&mut result, level)?;
-        encoder.set_pledged_src_size(Some(size))?;
-        io::copy(&mut source, &mut encoder)?;
-        encoder.finish()?;
-    }
+    compress_sized_into(source, &mut result, level, size)?;
     Ok(result)
+}
+
+/// Compress everything from `source`, whose length you already know, into
+/// `destination`.
+///
+/// Like [`copy_encode()`], but the length is recorded in the frame header, so
+/// whoever decompresses it can size their buffer up front - worth about a
+/// factor of two to them.
+///
+/// Nothing larger than the compressor's own buffers is held in memory, so this
+/// is the one to reach for when the data is too big to want a `Vec` of it.
+///
+/// `size` must be exactly how many bytes `source` yields; zstd fails the frame
+/// if it turns out to be wrong.
+///
+/// ```no_run
+/// # fn main() -> std::io::Result<()> {
+/// let input = std::fs::File::open("input.txt")?;
+/// let size = input.metadata()?.len();
+/// let output = std::fs::File::create("input.txt.zst")?;
+///
+/// zstd::compress_sized_into(input, output, 3, size)?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn compress_sized_into<R, W>(
+    mut source: R,
+    destination: W,
+    level: i32,
+    size: u64,
+) -> io::Result<()>
+where
+    R: io::Read,
+    W: io::Write,
+{
+    let mut encoder = Encoder::new(destination, level)?;
+    encoder.set_pledged_src_size(Some(size))?;
+    io::copy(&mut source, &mut encoder)?;
+    encoder.finish()?;
+    Ok(())
 }
 
 /// Compress the contents of a file.
@@ -143,16 +178,47 @@ pub fn compress_with_size<R: io::Read>(
 /// streamed through the compressor rather than read into memory first, so only
 /// the compressed result is held.
 ///
+/// That result is still a `Vec`, so for a file large enough that you would
+/// rather not have one, use [`compress_file_into()`] instead.
+///
 /// ```no_run
 /// # fn main() -> std::io::Result<()> {
-/// let frame = zstd::compress_from_file("input.txt", 3)?;
+/// let frame = zstd::compress_file("input.txt", 3)?;
 /// # Ok(())
 /// # }
 /// ```
-pub fn compress_from_file<P: AsRef<std::path::Path>>(
+pub fn compress_file<P: AsRef<std::path::Path>>(
     path: P,
     level: i32,
 ) -> io::Result<Vec<u8>> {
+    let mut result = Vec::new();
+    compress_file_into(path, &mut result, level)?;
+    Ok(result)
+}
+
+/// Compress the contents of a file into `destination`.
+///
+/// Like [`compress_file()`], but writing rather than handing back a
+/// `Vec` - so nothing beyond the compressor's own buffers is held, whatever
+/// the size of the file.
+///
+/// ```no_run
+/// # fn main() -> std::io::Result<()> {
+/// let output = std::fs::File::create("input.txt.zst")?;
+///
+/// zstd::compress_file_into("input.txt", output, 3)?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn compress_file_into<P, W>(
+    path: P,
+    destination: W,
+    level: i32,
+) -> io::Result<()>
+where
+    P: AsRef<std::path::Path>,
+    W: io::Write,
+{
     let file = std::fs::File::open(path)?;
     let size = file.metadata()?.len();
 
@@ -161,7 +227,7 @@ pub fn compress_from_file<P: AsRef<std::path::Path>>(
     let source =
         io::BufReader::with_capacity(zstd_safe::CCtx::in_size(), file);
 
-    compress_with_size(source, level, size)
+    compress_sized_into(source, destination, level, size)
 }
 
 /// Compress all data from the given source as if using an `Encoder`.

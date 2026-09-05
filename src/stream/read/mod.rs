@@ -23,6 +23,11 @@ pub struct Encoder<'a, R> {
 
 impl<R: Read> Decoder<'static, BufReader<R>> {
     /// Creates a new decoder.
+    ///
+    /// This wraps `reader` in a `BufReader` sized the way zstd likes, so there
+    /// is no need to do that yourself. If what you have already implements
+    /// `BufRead` - a `&[u8]`, say - use [`Decoder::with_buffer()`] instead and
+    /// save the second layer of buffering.
     pub fn new(reader: R) -> io::Result<Self> {
         let buffer_size = zstd_safe::DCtx::in_size();
 
@@ -32,6 +37,10 @@ impl<R: Read> Decoder<'static, BufReader<R>> {
 
 impl<R: BufRead> Decoder<'static, R> {
     /// Creates a new decoder around a `BufRead`.
+    ///
+    /// Unlike [`Decoder::new()`], this adds no buffering of its own, so give
+    /// it something with a reasonable buffer already - `new` uses zstd's
+    /// preferred input size for exactly that reason.
     pub fn with_buffer(reader: R) -> io::Result<Self> {
         Self::with_dictionary(reader, &[])
     }

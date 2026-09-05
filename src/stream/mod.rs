@@ -18,8 +18,8 @@ mod tests;
 pub mod raw;
 
 pub use self::functions::{
-    compress_from_file, compress_with_size, copy_decode, copy_encode,
-    decode_all, decompressed_size, encode_all,
+    compress_file, compress_file_into, compress_sized, compress_sized_into,
+    copy_decode, copy_encode, decode_all, decompressed_size, encode_all,
 };
 pub use self::read::Decoder;
 pub use self::write::{AutoFinishEncoder, Encoder};

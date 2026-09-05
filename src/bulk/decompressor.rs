@@ -82,6 +82,10 @@ impl<'a> Decompressor<'a> {
     ///
     /// Returns the number of bytes written, or an error if something happened
     /// (for instance if the destination buffer was too small).
+    /// [`crate::decompressed_size()`] says how big the result will be, when
+    /// the frame records it - there is no need to keep the size alongside the
+    /// data yourself. For a `Vec` it is the *capacity* that bounds the output,
+    /// so `reserve` what you need rather than `resize`.
     pub fn decompress_to_buffer<C: zstd_safe::WriteBuf + ?Sized>(
         &mut self,
         source: &[u8],

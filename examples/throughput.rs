@@ -98,7 +98,7 @@ fn main() {
         std::fs::read(&args.file).expect("could not read the input file");
     let level = args.level;
     let iterations = args.iterations;
-    let bound = zstd::zstd_safe::compress_bound(data.len());
+    let bound = zstd::compress_bound(data.len());
 
     println!(
         "{} bytes, level {}, {} iterations",
@@ -142,7 +142,7 @@ fn main() {
     let sized = zstd::bulk::compress(&data, level).unwrap();
     let unsized_ = zstd::encode_all(&data[..], level).unwrap();
     let streamed_sized =
-        zstd::compress_with_size(&data[..], level, data.len() as u64).unwrap();
+        zstd::compress_sized(&data[..], level, data.len() as u64).unwrap();
     println!(
         "  (bulk::compress      header says {:?})",
         zstd::decompressed_size(&sized)
@@ -152,7 +152,7 @@ fn main() {
         zstd::decompressed_size(&unsized_)
     );
     println!(
-        "  (compress_with_size  header says {:?})",
+        "  (compress_sized  header says {:?})",
         zstd::decompressed_size(&streamed_sized)
     );
 
@@ -181,9 +181,7 @@ fn main() {
     println!("on its own in a fresh process it is closer to 1.8x.\n");
 
     println!("The same frame, but written by the streaming compressor after");
-    println!(
-        "being told the length - compress_from_file does this for a file.\n"
-    );
+    println!("being told the length - compress_file does this for a file.\n");
 
     measure(
         "decode_all, streamed frame that recorded it",

@@ -64,10 +64,19 @@ pub fn compression_level_range(
     zstd_safe::min_c_level()..=zstd_safe::max_c_level()
 }
 
+/// How large a buffer a compressed block might need, at worst.
+///
+/// This is what to reserve before [`bulk::compress_to_buffer()`], which writes
+/// into a destination you provide rather than allocating one.
+///
+/// Re-exported from `zstd_safe`, where it lives alongside the rest of the
+/// direct bindings.
+pub use zstd_safe::compress_bound;
+
 #[doc(no_inline)]
 pub use crate::stream::{
-    compress_from_file, compress_with_size, decode_all, decompressed_size,
-    encode_all, Decoder, Encoder,
+    compress_file, compress_file_into, compress_sized, compress_sized_into,
+    decode_all, decompressed_size, encode_all, Decoder, Encoder,
 };
 
 /// Returns the error message as io::Error based on error_code.

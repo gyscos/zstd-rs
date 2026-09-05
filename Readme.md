@@ -69,12 +69,18 @@ whoever reads it can then size their buffer in one go instead of growing it -
 worth roughly a factor of two to them. Only a compressor that knows the length
 up front can record it:
 
-| you are compressing | use | records the size |
+| you are compressing | into a `Vec` | into a `Write` |
 | --- | --- | --- |
-| a slice or a `Vec` | `bulk::compress` | yes |
-| a file | `compress_from_file` | yes |
-| a `Read` whose length you know | `compress_with_size` | yes |
-| any other `Read` | `encode_all` | no |
+| a slice or a `Vec` | `bulk::compress` | `compress_sized_into` |
+| a file | `compress_file` | `compress_file_into` |
+| a `Read` whose length you know | `compress_sized` | `compress_sized_into` |
+| any other `Read` | `encode_all` *(no size)* | `copy_encode` *(no size)* |
+
+Everything but the last row records the size. Reach for the `Write` column
+when the data is large enough that you would rather not hold a `Vec` of it -
+these stream straight through, so only the compressor's own buffers are in
+memory. For a source that is neither a file nor a slice, its length is the
+one thing you have to supply yourself.
 
 On the way back, `decode_all` reads that header and sizes its output for you,
 and `decompressed_size` gives you the same number for a buffer of your own.

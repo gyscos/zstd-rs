@@ -168,6 +168,43 @@ where
     R: BufRead,
     D: Operation,
 {
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        let start = buf.len();
+        let mut written = start;
+        loop {
+            let result = if written == buf.capacity() {
+                // Check for EOF before growing a full (or empty) vector.
+                let mut probe = [0; 32];
+                self.read(&mut probe).map(|n| {
+                    buf.extend_from_slice(&probe[..n]);
+                    n
+                })
+            } else {
+                // Initialize only one block of spare capacity at a time.
+                // Keep it initialized across short reads so we don't repeatedly
+                // zero the same space. Bounded slices retain streaming behavior.
+                if written == buf.len() {
+                    let chunk = (buf.capacity() - written)
+                        .min(zstd_safe::BLOCKSIZE_MAX as usize);
+                    buf.resize(written + chunk, 0);
+                }
+                self.read(&mut buf[written..])
+            };
+            match result {
+                Ok(0) => {
+                    buf.truncate(written);
+                    return Ok(written - start);
+                }
+                Ok(n) => written += n,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) => {
+                    buf.truncate(written);
+                    return Err(e);
+                }
+            }
+        }
+    }
+
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // `Read::read` is specified to return `Ok(0)` for an empty buffer.
         // Without this, the loop below would keep asking the operation to write
@@ -287,6 +324,22 @@ mod tests {
             reader.read_to_end(&mut output).unwrap();
         }
         assert_eq!(&output, input);
+    }
+
+    #[test]
+    fn test_noop_read_to_end_appends_across_chunks() {
+        use crate::stream::raw::NoOp;
+
+        let input = vec![42; zstd_safe::BLOCKSIZE_MAX as usize + 17];
+        for spare in [0, 1, input.len(), input.len() + 1] {
+            let mut output = Vec::with_capacity(6 + spare);
+            output.extend_from_slice(b"prefix");
+            let mut reader = Reader::new(&input[..], NoOp);
+            assert_eq!(reader.read_to_end(&mut output).unwrap(), input.len());
+            assert_eq!(&output[..6], b"prefix");
+            assert_eq!(&output[6..], input);
+            assert_eq!(reader.read_to_end(&mut output).unwrap(), 0);
+        }
     }
 
     #[test]

@@ -154,6 +154,10 @@ impl<R: BufRead> Read for Decoder<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.reader.read(buf)
     }
+
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        self.reader.read_to_end(buf)
+    }
 }
 
 impl<R: Read> Encoder<'static, BufReader<R>> {

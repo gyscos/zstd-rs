@@ -168,6 +168,20 @@ where
     R: BufRead,
     D: Operation,
 {
+    /// Reads everything the operation produces into `buf`.
+    ///
+    /// The default implementation has an awkward ending: when the output
+    /// happens to fill the vector exactly, it doubles the capacity and
+    /// reallocates - copying everything decoded so far - then reads zero bytes
+    /// and truncates back. Probing with a small stack buffer first establishes
+    /// there is nothing left without paying for that. Whether the saving shows
+    /// up depends on the allocator: one that can grow a large block in place
+    /// makes it cheap, one that has to copy does not.
+    ///
+    /// This should be deleted once `Read::read_buf` is stable. std can then
+    /// fill spare capacity without initializing it first, which removes both
+    /// the reallocation and the zeroing this does by hand, and its version
+    /// will be the better one.
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         let start = buf.len();
         let mut written = start;

@@ -330,6 +330,17 @@ fn compile_zstd() {
         .flag_if_supported("-ffunction-sections")
         .flag_if_supported("-fdata-sections")
         .flag_if_supported("-fmerge-all-constants");
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    if target_arch == "riscv64" {
+        flag_if_supported_with_fallbacks(
+            &mut config,
+            &["-march=rv64gcv", "-march=rv64gc"],
+        );
+        let profile = env::var("PROFILE").unwrap_or_default();
+        if profile == "release" {
+            config.flag_if_supported("-O3");
+        }
+    }
 
     if cfg!(feature = "fat-lto") {
         config.flag_if_supported("-flto");

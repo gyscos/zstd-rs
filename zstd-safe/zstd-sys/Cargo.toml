@@ -59,7 +59,7 @@ doctest = false  # Documentation is for C code, good luck testing that.
 
 [build-dependencies.bindgen]
 optional = true
-version = "0.72"
+version = "0.73"
 default-features = false
 features = ["runtime"]
 

@@ -1411,23 +1411,42 @@ impl CDict<'static> {
 }
 
 impl<'a> CDict<'a> {
+    /// Prepare a dictionary to compress data, referencing `dict_buffer`.
+    ///
+    /// # Panics
+    ///
+    /// If loading this dictionary failed. See [`CDict::try_create_by_reference`].
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(
         dict_buffer: &'a [u8],
         compression_level: CompressionLevel,
     ) -> Self {
-        CDict(
+        Self::try_create_by_reference(dict_buffer, compression_level)
+            .expect("zstd returned null pointer")
+    }
+
+    /// Prepare a dictionary to compress data, referencing `dict_buffer`.
+    ///
+    /// Returns `None` if zstd could not load the dictionary, for instance
+    /// because it starts with the dictionary magic number but its header is
+    /// corrupt.
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    pub fn try_create_by_reference(
+        dict_buffer: &'a [u8],
+        compression_level: CompressionLevel,
+    ) -> Option<Self> {
+        Some(CDict(
             NonNull::new(unsafe {
                 zstd_sys::ZSTD_createCDict_byReference(
                     ptr_void(dict_buffer),
                     dict_buffer.len(),
                     compression_level,
                 )
-            })
-            .expect("zstd returned null pointer"),
+            })?,
             PhantomData,
-        )
+        ))
     }
 
     /// Returns the _current_ memory usage of this dictionary.
@@ -1483,11 +1502,23 @@ pub fn compress_using_cdict(
 pub struct DDict<'a>(NonNull<zstd_sys::ZSTD_DDict>, PhantomData<&'a ()>);
 
 impl DDict<'static> {
+    /// Prepare a dictionary to decompress data.
+    ///
+    /// The dictionary content will be copied internally, and does not need to be kept around.
+    ///
+    /// # Panics
+    ///
+    /// If loading this dictionary failed. See [`DDict::try_create`].
     pub fn create(dict_buffer: &[u8]) -> Self {
         Self::try_create(dict_buffer)
             .expect("zstd returned null pointer when creating dict")
     }
 
+    /// Prepare a dictionary to decompress data.
+    ///
+    /// The dictionary content will be copied internally, and does not need to be kept around.
+    /// Returns `None` if zstd could not load the dictionary, for instance because it starts
+    /// with the dictionary magic number but its header is corrupt.
     pub fn try_create(dict_buffer: &[u8]) -> Option<Self> {
         Some(DDict(
             NonNull::new(unsafe {
@@ -1509,19 +1540,34 @@ impl<'a> DDict<'a> {
     /// Wraps the `ZSTD_createDDict_byReference()` function.
     ///
     /// The dictionary will keep referencing `dict_buffer`.
+    ///
+    /// # Panics
+    ///
+    /// If loading this dictionary failed. See [`DDict::try_create_by_reference`].
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(dict_buffer: &'a [u8]) -> Self {
-        DDict(
+        Self::try_create_by_reference(dict_buffer)
+            .expect("zstd returned null pointer")
+    }
+
+    /// Wraps the `ZSTD_createDDict_byReference()` function.
+    ///
+    /// The dictionary will keep referencing `dict_buffer`. Returns `None` if
+    /// zstd could not load the dictionary, for instance because it starts with
+    /// the dictionary magic number but its header is corrupt.
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    pub fn try_create_by_reference(dict_buffer: &'a [u8]) -> Option<Self> {
+        Some(DDict(
             NonNull::new(unsafe {
                 zstd_sys::ZSTD_createDDict_byReference(
                     ptr_void(dict_buffer),
                     dict_buffer.len(),
                 )
-            })
-            .expect("zstd returned null pointer"),
+            })?,
             PhantomData,
-        )
+        ))
     }
 
     /// Returns the dictionary ID for this dict.

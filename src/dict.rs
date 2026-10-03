@@ -27,14 +27,39 @@ pub struct EncoderDictionary<'a> {
     cdict: CDict<'a>,
 }
 
+/// The error for a dictionary zstd could not load.
+fn invalid_dictionary() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "zstd could not load the dictionary",
+    )
+}
+
 impl EncoderDictionary<'static> {
     /// Creates a prepared dictionary for compression.
     ///
     /// This will copy the dictionary internally.
+    ///
+    /// # Panics
+    ///
+    /// If zstd cannot load the dictionary - for instance, it starts with the
+    /// dictionary magic number but its header is corrupt. Use
+    /// [`EncoderDictionary::try_copy`] for a dictionary you did not make
+    /// yourself.
     pub fn copy(dictionary: &[u8], level: i32) -> Self {
         Self {
             cdict: zstd_safe::create_cdict(dictionary, level),
         }
+    }
+
+    /// Creates a prepared dictionary for compression, or an error if zstd
+    /// cannot load it.
+    ///
+    /// This will copy the dictionary internally.
+    pub fn try_copy(dictionary: &[u8], level: i32) -> std::io::Result<Self> {
+        let cdict = zstd_safe::CDict::try_create(dictionary, level)
+            .ok_or_else(invalid_dictionary)?;
+        Ok(Self { cdict })
     }
 }
 
@@ -46,10 +71,29 @@ impl<'a> EncoderDictionary<'a> {
     /// A level of `0` uses zstd's default (currently `3`).
     ///
     /// Only available with the `experimental` feature. Use `EncoderDictionary::copy` otherwise.
+    ///
+    /// # Panics
+    ///
+    /// If zstd cannot load the dictionary. Use [`EncoderDictionary::try_new`]
+    /// for a dictionary you did not make yourself.
     pub fn new(dictionary: &'a [u8], level: i32) -> Self {
         Self {
             cdict: zstd_safe::CDict::create_by_reference(dictionary, level),
         }
+    }
+
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    /// Create prepared dictionary for compression, or an error if zstd cannot
+    /// load it.
+    ///
+    /// Only available with the `experimental` feature. Use
+    /// `EncoderDictionary::try_copy` otherwise.
+    pub fn try_new(dictionary: &'a [u8], level: i32) -> std::io::Result<Self> {
+        let cdict =
+            zstd_safe::CDict::try_create_by_reference(dictionary, level)
+                .ok_or_else(invalid_dictionary)?;
+        Ok(Self { cdict })
     }
 
     /// Returns reference to `CDict` inner object
@@ -67,10 +111,27 @@ impl DecoderDictionary<'static> {
     /// Create a prepared dictionary for decompression.
     ///
     /// This will copy the dictionary internally.
+    ///
+    /// # Panics
+    ///
+    /// If zstd cannot load the dictionary - for instance, it starts with the
+    /// dictionary magic number but its header is corrupt. Use
+    /// [`DecoderDictionary::try_copy`] for a dictionary you did not make
+    /// yourself.
     pub fn copy(dictionary: &[u8]) -> Self {
         Self {
             ddict: zstd_safe::DDict::create(dictionary),
         }
+    }
+
+    /// Create a prepared dictionary for decompression, or an error if zstd
+    /// cannot load it.
+    ///
+    /// This will copy the dictionary internally.
+    pub fn try_copy(dictionary: &[u8]) -> std::io::Result<Self> {
+        let ddict = zstd_safe::DDict::try_create(dictionary)
+            .ok_or_else(invalid_dictionary)?;
+        Ok(Self { ddict })
     }
 }
 
@@ -80,10 +141,28 @@ impl<'a> DecoderDictionary<'a> {
     /// Create prepared dictionary for decompression
     ///
     /// Only available with the `experimental` feature. Use `DecoderDictionary::copy` otherwise.
+    ///
+    /// # Panics
+    ///
+    /// If zstd cannot load the dictionary. Use [`DecoderDictionary::try_new`]
+    /// for a dictionary you did not make yourself.
     pub fn new(dict: &'a [u8]) -> Self {
         Self {
             ddict: zstd_safe::DDict::create_by_reference(dict),
         }
+    }
+
+    #[cfg(feature = "experimental")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    /// Create prepared dictionary for decompression, or an error if zstd
+    /// cannot load it.
+    ///
+    /// Only available with the `experimental` feature. Use
+    /// `DecoderDictionary::try_copy` otherwise.
+    pub fn try_new(dict: &'a [u8]) -> std::io::Result<Self> {
+        let ddict = zstd_safe::DDict::try_create_by_reference(dict)
+            .ok_or_else(invalid_dictionary)?;
+        Ok(Self { ddict })
     }
 
     /// Returns reference to `DDict` inner object

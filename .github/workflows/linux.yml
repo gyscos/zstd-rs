@@ -28,6 +28,11 @@ jobs:
     - name: Run tests
       run: cargo test --verbose --features thin
 
+    - name: Build with feature with-rust-allocator
+      run: cargo build --verbose --features with-rust-allocator
+    - name: Run tests with feature with-rust-allocator
+      run: cargo test --verbose --features with-rust-allocator
+
     - name: Build zstd-safe with feature seekable
       run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features seekable
     - name: Run zstd-safe tests with feature seekable

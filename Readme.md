@@ -166,6 +166,27 @@ git submodule update --init
 Then, running `cargo build` should take care
 of building the C library and linking to it.
 
+# Using Rust's global allocator
+
+By default, zstd allocates its internal state (compression windows, match
+finder tables, stream buffers, dictionaries) with the C runtime's
+`malloc`/`free`, invisible to a custom `#[global_allocator]`.
+
+The `with-rust-allocator` feature makes every context and dictionary this
+crate creates (`Encoder`, `Decoder`, `bulk::Compressor`, dictionaries, ...)
+allocate through Rust's global allocator instead. It is crate-wide: enabling
+it in your own `Cargo.toml` also covers `zstd` usage inside your
+dependencies, since Cargo unifies features.
+
+```toml
+zstd = { version = "0.13", features = ["with-rust-allocator"] }
+```
+
+The feature implies `experimental` on `zstd-safe` (it relies on zstd's
+`ZSTD_create*_advanced()` constructors) and thus requires linking the bundled
+zstd statically. Objects from the `seekable` format and zstd's thread pool
+still use `malloc` directly.
+
 # Build-time bindgen
 
 This library includes a pre-generated `bindings.rs` file.

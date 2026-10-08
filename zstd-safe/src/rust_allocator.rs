@@ -68,3 +68,63 @@ pub(crate) const RUST_GLOBAL_ALLOCATOR: zstd_sys::ZSTD_customMem =
         customFree: Some(rust_free),
         opaque: ptr::null_mut(),
     };
+
+/// Equivalent of `ZSTD_createCDict()` / `ZSTD_createCDict_byReference()`
+/// (depending on `load_method`), but allocating through the Rust global
+/// allocator.
+///
+/// Mirrors zstd's own implementation: compression parameters are derived from
+/// the level for an unknown source size and the dictionary size, and the
+/// dictionary content type is auto-detected.
+///
+/// Note: unlike `ZSTD_createCDict()`, the `_advanced` constructor cannot
+/// record the compression level inside the `CDict`. zstd uses that level to
+/// re-derive parameters when compressing a large input of known size against
+/// a small dictionary; dictionaries created here always use the parameters
+/// they were built with instead, which is exactly what `ZSTD_CCtx_refCDict()`
+/// does for streaming and for inputs of unknown size.
+///
+/// # Safety
+///
+/// Just FFI.
+#[cfg(feature = "with-rust-allocator")]
+pub(crate) unsafe fn create_cdict(
+    dict_buffer: &[u8],
+    compression_level: crate::CompressionLevel,
+    load_method: zstd_sys::ZSTD_dictLoadMethod_e,
+) -> *mut zstd_sys::ZSTD_CDict {
+    let cparams = zstd_sys::ZSTD_getCParams(
+        compression_level,
+        crate::CONTENTSIZE_UNKNOWN as core::ffi::c_ulonglong,
+        dict_buffer.len(),
+    );
+    zstd_sys::ZSTD_createCDict_advanced(
+        crate::ptr_void(dict_buffer),
+        dict_buffer.len(),
+        load_method,
+        zstd_sys::ZSTD_dictContentType_e::ZSTD_dct_auto,
+        cparams,
+        RUST_GLOBAL_ALLOCATOR,
+    )
+}
+
+/// Equivalent of `ZSTD_createDDict()` / `ZSTD_createDDict_byReference()`
+/// (depending on `load_method`), but allocating through the Rust global
+/// allocator.
+///
+/// # Safety
+///
+/// Just FFI.
+#[cfg(feature = "with-rust-allocator")]
+pub(crate) unsafe fn create_ddict(
+    dict_buffer: &[u8],
+    load_method: zstd_sys::ZSTD_dictLoadMethod_e,
+) -> *mut zstd_sys::ZSTD_DDict {
+    zstd_sys::ZSTD_createDDict_advanced(
+        crate::ptr_void(dict_buffer),
+        dict_buffer.len(),
+        load_method,
+        zstd_sys::ZSTD_dictContentType_e::ZSTD_dct_auto,
+        RUST_GLOBAL_ALLOCATOR,
+    )
+}

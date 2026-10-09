@@ -420,6 +420,7 @@ fn test_poison_tracking() {
 
 #[cfg(all(feature = "std", feature = "experimental"))]
 #[test]
+#[allow(deprecated)] // Exercises the deprecated context-copying API.
 fn test_cloning_poisoned_contexts_returns_the_original_error() {
     use crate::{CCtx, DCtx, InBuffer, OutBuffer};
 
@@ -440,6 +441,7 @@ fn test_cloning_poisoned_contexts_returns_the_original_error() {
 
 #[cfg(all(feature = "std", feature = "experimental"))]
 #[test]
+#[allow(deprecated)] // Exercises the deprecated context-copying API.
 fn test_cloning_initialized_compression_context() {
     use crate::{parse_code, zstd_sys, CCtx, DCtx};
 

@@ -237,7 +237,7 @@ pub fn decompress<C: WriteBuf + ?Sized>(
 /// Wraps the `ZSTD_getDecompressedSize` function.
 ///
 /// Returns `None` if the size could not be found, or if the content is actually empty.
-#[deprecated(note = "Use ZSTD_getFrameContentSize instead")]
+#[deprecated(note = "Use get_frame_content_size instead.")]
 pub fn get_decompressed_size(src: &[u8]) -> Option<NonZeroU64> {
     // Safety: Just FFI
     NonZeroU64::new(unsafe {
@@ -442,7 +442,9 @@ impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_initCStream_srcSize()` function.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated]
+    #[deprecated(
+        note = "Use reset, set_parameter, and set_pledged_src_size instead."
+    )]
     pub fn init_src_size(
         &mut self,
         compression_level: CompressionLevel,
@@ -463,7 +465,9 @@ impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_initCStream_usingDict()` function.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated]
+    #[deprecated(
+        note = "Use reset, set_parameter, and load_dictionary instead."
+    )]
     pub fn init_using_dict(
         &mut self,
         dict: &[u8],
@@ -486,7 +490,7 @@ impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_initCStream_usingCDict()` function.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated]
+    #[deprecated(note = "Use reset and ref_cdict instead.")]
     pub fn init_using_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
     where
         'b: 'a, // Dictionary outlives the stream.
@@ -846,6 +850,9 @@ impl<'a> CCtx<'a> {
     /// A poisoned context cannot be cloned until its session is reset.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    #[deprecated(
+        note = "Context copying is deprecated by zstd; create a new context and configure it instead."
+    )]
     pub fn try_clone(
         &self,
         pledged_src_size: Option<u64>,
@@ -872,6 +879,9 @@ impl<'a> CCtx<'a> {
     /// Wraps the `ZSTD_getBlockSize()` function.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    #[deprecated(
+        note = "The block API is deprecated; use the normal compression API instead."
+    )]
     pub fn get_block_size(&self) -> usize {
         // Safety: Just FFI
         unsafe { zstd_sys::ZSTD_getBlockSize(self.0.as_ptr()) }
@@ -886,6 +896,9 @@ impl<'a> CCtx<'a> {
     /// following block is compressed against it.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    #[deprecated(
+        note = "The block API is deprecated; use compress_stream2 instead."
+    )]
     pub unsafe fn compress_block<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
@@ -1146,7 +1159,7 @@ impl<'a> DCtx<'a> {
     /// Wraps the `ZSTD_initDStream_usingDict()` function.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated]
+    #[deprecated(note = "Use reset and load_dictionary instead.")]
     pub fn init_using_dict(&mut self, dict: &[u8]) -> SafeResult {
         self.2.clear();
         self.2.clear();
@@ -1163,7 +1176,7 @@ impl<'a> DCtx<'a> {
     /// Wraps the `ZSTD_initDStream_usingDDict()` function.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated]
+    #[deprecated(note = "Use reset and ref_ddict instead.")]
     pub fn init_using_ddict<'b>(&mut self, ddict: &DDict<'b>) -> SafeResult
     where
         'b: 'a,
@@ -1358,6 +1371,9 @@ impl<'a> DCtx<'a> {
     /// context (or until this context is dropped), as the following block is decoded against it.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    #[deprecated(
+        note = "The block API is deprecated; use decompress_stream instead."
+    )]
     pub unsafe fn decompress_block<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
@@ -1385,6 +1401,9 @@ impl<'a> DCtx<'a> {
     /// context is dropped), as the following block is decoded against it.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    #[deprecated(
+        note = "The block API is deprecated; use decompress_stream instead."
+    )]
     pub unsafe fn insert_block(&mut self, block: &[u8]) -> usize {
         unsafe {
             zstd_sys::ZSTD_insertBlock(
@@ -1402,6 +1421,9 @@ impl<'a> DCtx<'a> {
     /// A poisoned context cannot be cloned until its session is reset.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    #[deprecated(
+        note = "Context copying is deprecated by zstd; create a new context and configure it instead."
+    )]
     pub fn try_clone(&self) -> Result<Self, ErrorCode> {
         // An error may leave the C context undefined; do not copy it.
         self.2.guard()?;
@@ -2610,6 +2632,9 @@ pub fn get_dict_id(dict_buffer: &[u8]) -> Option<NonZeroU32> {
 /// Wraps the `ZSTD_getBlockSize()` function.
 #[cfg(feature = "experimental")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+#[deprecated(
+    note = "The block API is deprecated; use the normal compression API instead."
+)]
 pub fn get_block_size(cctx: &CCtx) -> usize {
     unsafe { zstd_sys::ZSTD_getBlockSize(cctx.0.as_ptr()) }
 }

@@ -1,3 +1,5 @@
+// These tests cover allocator safety of the deprecated context-copying API.
+#![allow(deprecated)]
 #![cfg(all(feature = "with-rust-allocator", feature = "std"))]
 
 mod support {

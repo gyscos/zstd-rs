@@ -13,17 +13,74 @@ use zstd_safe::{CCtx, CDict, DCtx, DDict};
 static LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
 /// Bytes ever requested from the global allocator (monotonic).
 static TOTAL_BYTES: AtomicUsize = AtomicUsize::new(0);
+/// Number of `dealloc` calls for pointers this allocator never handed out,
+/// i.e. memory that was allocated by C's `malloc` but freed through Rust.
+static FOREIGN_FREES: AtomicUsize = AtomicUsize::new(0);
+
+/// Open-addressing table of live pointers, so `dealloc` can tell whether it
+/// is being handed back memory that it actually allocated. Must not allocate
+/// itself, hence the fixed-size static.
+const SLOTS: usize = 1 << 16;
+const EMPTY: usize = 0;
+const TOMBSTONE: usize = 1;
+static LIVE_PTRS: [AtomicUsize; SLOTS] =
+    [const { AtomicUsize::new(EMPTY) }; SLOTS];
+
+fn slot_for(ptr: usize) -> usize {
+    (ptr >> 4).wrapping_mul(0x9E37_79B9_7F4A_7C15) % SLOTS
+}
+
+fn track(ptr: usize) {
+    let mut i = slot_for(ptr);
+    for _ in 0..SLOTS {
+        let slot = &LIVE_PTRS[i];
+        let cur = slot.load(Relaxed);
+        if (cur == EMPTY || cur == TOMBSTONE)
+            && slot.compare_exchange(cur, ptr, Relaxed, Relaxed).is_ok()
+        {
+            return;
+        }
+        i = (i + 1) % SLOTS;
+    }
+    panic!("pointer table full");
+}
+
+/// Returns whether `ptr` was live (and forgets it).
+fn untrack(ptr: usize) -> bool {
+    let mut i = slot_for(ptr);
+    for _ in 0..SLOTS {
+        let slot = &LIVE_PTRS[i];
+        match slot.load(Relaxed) {
+            EMPTY => return false,
+            cur if cur == ptr => {
+                slot.store(TOMBSTONE, Relaxed);
+                return true;
+            }
+            _ => i = (i + 1) % SLOTS,
+        }
+    }
+    false
+}
 
 struct CountingAllocator;
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        LIVE_BYTES.fetch_add(layout.size(), Relaxed);
-        TOTAL_BYTES.fetch_add(layout.size(), Relaxed);
-        System.alloc(layout)
+        let ptr = System.alloc(layout);
+        if !ptr.is_null() {
+            LIVE_BYTES.fetch_add(layout.size(), Relaxed);
+            TOTAL_BYTES.fetch_add(layout.size(), Relaxed);
+            track(ptr as usize);
+        }
+        ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if !untrack(ptr as usize) {
+            // Not ours: record it and leak rather than corrupt the heap.
+            FOREIGN_FREES.fetch_add(1, Relaxed);
+            return;
+        }
         LIVE_BYTES.fetch_sub(layout.size(), Relaxed);
         System.dealloc(ptr, layout)
     }
@@ -156,6 +213,36 @@ fn dictionaries_use_global_allocator() {
     assert_eq!(input, decompressed);
 }
 
+/// `ZSTD_copyDCtx` (and `ZSTD_copyCCtx`) copy the source context's allocator
+/// callbacks into the destination, and `ZSTD_free*Ctx` frees the destination
+/// struct through those callbacks. A clone must therefore be allocated with
+/// the same allocator as its source, or it is freed through the wrong one -
+/// which this allocator would report as a foreign free.
+///
+/// Only the decompression side can be exercised: `ZSTD_copyCCtx` requires
+/// the source to have gone through `ZSTD_compressBegin`, which this crate
+/// does not expose, so `CCtx::try_clone` always fails with `stage_wrong`.
+fn clones_are_freed_through_the_source_allocator() {
+    let live_before = LIVE_BYTES.load(Relaxed);
+    let foreign_before = FOREIGN_FREES.load(Relaxed);
+    {
+        let dctx = DCtx::create();
+        let clone = dctx.try_clone().expect("failed to clone DCtx");
+        drop(clone);
+        drop(dctx);
+    }
+    assert_eq!(
+        FOREIGN_FREES.load(Relaxed),
+        foreign_before,
+        "a DCtx clone was freed through an allocator it was not allocated with"
+    );
+    assert_eq!(
+        LIVE_BYTES.load(Relaxed),
+        live_before,
+        "DCtx clone leaked global-allocator memory"
+    );
+}
+
 /// The allocation counters are process-wide, so everything runs from a
 /// single test to keep other test threads from disturbing them.
 #[test]
@@ -163,4 +250,5 @@ fn global_allocator_is_used_by_default() {
     default_contexts_use_global_allocator();
     one_shot_functions_use_global_allocator();
     dictionaries_use_global_allocator();
+    clones_are_freed_through_the_source_allocator();
 }

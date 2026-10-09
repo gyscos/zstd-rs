@@ -1,7 +1,6 @@
 //! With the `with-rust-allocator` feature, every encoder/decoder this crate
-//! builds - including ones created by third-party code that never heard of
-//! `try_create_with_global_allocator` - must allocate through Rust's global
-//! allocator.
+//! builds - including ones created by third-party code that never opted into
+//! anything - must allocate through Rust's global allocator.
 #![cfg(feature = "with-rust-allocator")]
 
 use std::alloc::{GlobalAlloc, Layout, System};

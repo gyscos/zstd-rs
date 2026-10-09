@@ -33,12 +33,15 @@ unsafe extern "C" fn rust_alloc(
     _opaque: *mut c_void,
     size: usize,
 ) -> *mut c_void {
-    let Some(total) = size.checked_add(HEADER) else {
-        return ptr::null_mut();
+    let total = match size.checked_add(HEADER) {
+        Some(total) => total,
+        None => return ptr::null_mut(),
     };
-    // Safety: `total` is non-zero, does not overflow, and HEADER is a power
-    // of two, so the layout is valid.
-    let layout = Layout::from_size_align_unchecked(total, HEADER);
+    // Layout also checks that the aligned size fits in isize::MAX.
+    let layout = match Layout::from_size_align(total, HEADER) {
+        Ok(layout) => layout,
+        Err(_) => return ptr::null_mut(),
+    };
     let base = alloc(layout);
     if base.is_null() {
         // zstd surfaces NULL as a memory_allocation error; never unwind
@@ -127,4 +130,30 @@ pub(crate) unsafe fn create_ddict(
         zstd_sys::ZSTD_dictContentType_e::ZSTD_dct_auto,
         RUST_GLOBAL_ALLOCATOR,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oversized_allocations_return_null() {
+        unsafe {
+            assert!(rust_alloc(ptr::null_mut(), usize::MAX).is_null());
+            assert!(rust_alloc(ptr::null_mut(), isize::MAX as usize).is_null());
+            assert!(rust_alloc(ptr::null_mut(), isize::MAX as usize - HEADER)
+                .is_null());
+        }
+    }
+
+    #[test]
+    fn zero_sized_allocation_is_aligned_and_can_be_freed() {
+        unsafe {
+            let address = rust_alloc(ptr::null_mut(), 0);
+            assert!(!address.is_null());
+            assert_eq!(address as usize % HEADER, 0);
+            rust_free(ptr::null_mut(), address);
+            rust_free(ptr::null_mut(), ptr::null_mut());
+        }
+    }
 }

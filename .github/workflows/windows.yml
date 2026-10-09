@@ -56,3 +56,7 @@ jobs:
       run: cargo build --verbose --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run tests with Rust allocator
+      run: |
+        cargo test --verbose --features with-rust-allocator
+        cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,with-rust-allocator

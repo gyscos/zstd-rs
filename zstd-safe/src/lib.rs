@@ -182,7 +182,7 @@ pub fn compress<C: WriteBuf + ?Sized>(
     #[cfg(feature = "with-rust-allocator")]
     {
         let mut cctx = CCtx::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
-        return cctx.compress(dst, src, compression_level);
+        cctx.compress(dst, src, compression_level)
     }
 
     // Safety: ZSTD_compress indeed returns how many bytes have been written.
@@ -217,7 +217,7 @@ pub fn decompress<C: WriteBuf + ?Sized>(
     #[cfg(feature = "with-rust-allocator")]
     {
         let mut dctx = DCtx::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
-        return dctx.decompress(dst, src);
+        dctx.decompress(dst, src)
     }
 
     // Safety: ZSTD_decompress indeed returns how many bytes have been written.
@@ -863,12 +863,15 @@ impl<'a> CCtx<'a> {
     ///
     /// This only works before any data has been compressed. An error will be
     /// returned otherwise.
+    /// A poisoned context cannot be cloned until its session is reset.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn try_clone(
         &self,
         pledged_src_size: Option<u64>,
     ) -> Result<Self, ErrorCode> {
+        // An error may leave the C context undefined; do not copy it.
+        self.2.guard()?;
         // zstd copies the allocator callbacks from `self` into the new
         // context, so both must be created the same way; `try_create` always
         // picks the same allocator within a build.
@@ -1435,9 +1438,12 @@ impl<'a> DCtx<'a> {
     ///
     /// This only works before any data has been decompressed. An error will be
     /// returned otherwise.
+    /// A poisoned context cannot be cloned until its session is reset.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn try_clone(&self) -> Result<Self, ErrorCode> {
+        // An error may leave the C context undefined; do not copy it.
+        self.2.guard()?;
         // zstd copies the allocator callbacks from `self` into the new
         // context, so both must be created the same way; `try_create` always
         // picks the same allocator within a build.
@@ -1467,6 +1473,10 @@ unsafe impl Send for DCtx<'_> {}
 unsafe impl Sync for DCtx<'_> {}
 
 /// Compression dictionary.
+///
+/// With `with-rust-allocator`, prepared dictionaries retain fixed compression
+/// parameters rather than adapting them to later input sizes. This can change
+/// compression ratio, speed, and memory usage compared with the C allocator.
 pub struct CDict<'a>(NonNull<zstd_sys::ZSTD_CDict>, PhantomData<&'a ()>);
 
 impl CDict<'static> {

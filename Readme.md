@@ -199,6 +199,9 @@ dictionaries.
 
 # Build-time bindgen
 
+The `bindgen` feature requires Rust 1.71 or newer and `libclang`.
+The pre-generated bindings remain compatible with Rust 1.64.
+
 This library includes a pre-generated `bindings.rs` file.
 You can also generate new bindings at build-time, using the `bindgen` feature:
 

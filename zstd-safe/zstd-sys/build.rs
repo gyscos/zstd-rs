@@ -149,6 +149,33 @@ fn compile_zstd_cmake() {
 fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     use bindgen::RustTarget;
 
+    // Preserve the traits exposed by older bindings on opaque C handles.
+    // These copy only bindgen's placeholder, never the underlying C object.
+    #[derive(Debug)]
+    struct OpaqueHandleDerives;
+    impl bindgen::callbacks::ParseCallbacks for OpaqueHandleDerives {
+        fn add_derives(
+            &self,
+            info: &bindgen::callbacks::DeriveInfo<'_>,
+        ) -> Vec<String> {
+            match info.name {
+                "ZSTD_CCtx_s"
+                | "ZSTD_DCtx_s"
+                | "ZSTD_CDict_s"
+                | "ZSTD_DDict_s"
+                | "ZSTD_CCtx_params_s"
+                | "POOL_ctx_s"
+                | "ZSTD_seekable_CStream_s"
+                | "ZSTD_seekable_s"
+                | "ZSTD_seekTable_s"
+                | "ZSTD_frameLog_s" => {
+                    vec!["Copy".into(), "Clone".into()]
+                }
+                _ => Vec::new(),
+            }
+        }
+    }
+
     let bindings = bindgen::Builder::default().header("zstd.h");
 
     #[cfg(feature = "zdict_builder")]
@@ -158,6 +185,7 @@ fn generate_bindings(defs: Vec<&str>, headerpaths: Vec<PathBuf>) {
     let bindings = bindings.header("zstd_seekable.h");
 
     let bindings = bindings
+        .parse_callbacks(Box::new(OpaqueHandleDerives))
         .layout_tests(false)
         .blocklist_type("max_align_t")
         .size_t_is_usize(true)

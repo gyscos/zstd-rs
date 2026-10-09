@@ -7,7 +7,7 @@ categories = ["compression", "api-bindings"]
 license = "BSD-3-Clause"
 name = "zstd"
 repository = "https://github.com/gyscos/zstd-rs"
-version = "0.14.0"
+version = "0.14.1"
 exclude = ["assets/*.zst", "/.github"]
 readme = "Readme.md"
 edition = "2018"
@@ -17,7 +17,7 @@ rust-version = "1.64"
 features = ["experimental", "zstdmt", "zdict_builder", "doc-cfg"]
 
 [dependencies]
-zstd-safe = { path = "zstd-safe", version = "8.0.0", default-features = false, features = ["std"] }
+zstd-safe = { path = "zstd-safe", version = "8.1.0", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 clap = {version = "4.0", features=["derive"]}

@@ -79,8 +79,12 @@ fn test_cctx_cycle() {
 fn test_dictionary() {
     // Prepare some content to train the dictionary.
     let bytes = LONG_CONTENT.as_bytes();
-    let line_sizes: Vec<usize> =
-        LONG_CONTENT.lines().map(|line| line.len() + 1).collect();
+    // Include the actual newline bytes, including CRLF on Windows and a
+    // possibly unterminated final line.
+    let line_sizes: Vec<usize> = LONG_CONTENT
+        .split_inclusive('\n')
+        .map(|line| line.len())
+        .collect();
 
     // Train the dictionary
     let mut dict_buffer = std::vec![0u8; 100_000];

@@ -89,8 +89,10 @@ pub(crate) const RUST_GLOBAL_ALLOCATOR: zstd_sys::ZSTD_customMem =
 ///
 /// # Safety
 ///
-/// Just FFI.
-#[cfg(feature = "with-rust-allocator")]
+/// With `ZSTD_dlm_byRef`, the caller must keep `dict_buffer` alive and
+/// unmodified until the dictionary is freed. A non-null result must not be
+/// freed while referenced by a context; free it at most once with
+/// `ZSTD_freeCDict`.
 pub(crate) unsafe fn create_cdict(
     dict_buffer: &[u8],
     compression_level: crate::CompressionLevel,
@@ -117,8 +119,10 @@ pub(crate) unsafe fn create_cdict(
 ///
 /// # Safety
 ///
-/// Just FFI.
-#[cfg(feature = "with-rust-allocator")]
+/// With `ZSTD_dlm_byRef`, the caller must keep `dict_buffer` alive and
+/// unmodified until the dictionary is freed. A non-null result must not be
+/// freed while referenced by a context; free it at most once with
+/// `ZSTD_freeDDict`.
 pub(crate) unsafe fn create_ddict(
     dict_buffer: &[u8],
     load_method: zstd_sys::ZSTD_dictLoadMethod_e,

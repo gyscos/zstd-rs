@@ -308,18 +308,18 @@ impl<'a> CCtx<'a> {
     /// runtime's `malloc`.
     pub fn try_create() -> Option<Self> {
         #[cfg(feature = "with-rust-allocator")]
-        {
-            Self::try_create_with_global_allocator()
-        }
+        // Safety: the callbacks satisfy zstd's allocation contract and remain
+        // valid for the lifetime of the context.
+        let context = unsafe {
+            zstd_sys::ZSTD_createCCtx_advanced(
+                crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
+            )
+        };
         #[cfg(not(feature = "with-rust-allocator"))]
-        {
-            // Safety: Just FFI
-            Some(CCtx(
-                NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })?,
-                PhantomData,
-                Poison::default(),
-            ))
-        }
+        // Safety: zstd returns a newly owned context or null.
+        let context = unsafe { zstd_sys::ZSTD_createCCtx() };
+
+        Some(Self(NonNull::new(context)?, PhantomData, Poison::default()))
     }
 
     /// Wrap `ZSTD_createCCtx`
@@ -330,26 +330,6 @@ impl<'a> CCtx<'a> {
     pub fn create() -> Self {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
-    }
-
-    /// Tries to create a new context whose internal allocations go through
-    /// Rust's global allocator instead of the C runtime's `malloc`.
-    ///
-    /// Returns `None` if zstd returns a NULL pointer - may happen if
-    /// allocation fails.
-    #[cfg(feature = "with-rust-allocator")]
-    fn try_create_with_global_allocator() -> Option<Self> {
-        // Safety: Just FFI. The customMem callbacks uphold the malloc/free
-        // contract (see `rust_allocator`).
-        Some(CCtx(
-            NonNull::new(unsafe {
-                zstd_sys::ZSTD_createCCtx_advanced(
-                    crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
-                )
-            })?,
-            PhantomData,
-            Poison::default(),
-        ))
     }
 
     /// Wraps the `ZSTD_compressCCtx()` function
@@ -1045,18 +1025,18 @@ impl<'a> DCtx<'a> {
     /// runtime's `malloc`.
     pub fn try_create() -> Option<Self> {
         #[cfg(feature = "with-rust-allocator")]
-        {
-            Self::try_create_with_global_allocator()
-        }
+        // Safety: the callbacks satisfy zstd's allocation contract and remain
+        // valid for the lifetime of the context.
+        let context = unsafe {
+            zstd_sys::ZSTD_createDCtx_advanced(
+                crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
+            )
+        };
         #[cfg(not(feature = "with-rust-allocator"))]
-        {
-            // Safety: Just FFI
-            Some(DCtx(
-                NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })?,
-                PhantomData,
-                Poison::default(),
-            ))
-        }
+        // Safety: zstd returns a newly owned context or null.
+        let context = unsafe { zstd_sys::ZSTD_createDCtx() };
+
+        Some(Self(NonNull::new(context)?, PhantomData, Poison::default()))
     }
 
     /// Creates a new decoding context.
@@ -1067,25 +1047,6 @@ impl<'a> DCtx<'a> {
     pub fn create() -> Self {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
-    }
-
-    /// Tries to create a new decompression context whose internal allocations
-    /// go through Rust's global allocator instead of the C runtime's `malloc`.
-    ///
-    /// Returns `None` if the operation failed
-    #[cfg(feature = "with-rust-allocator")]
-    fn try_create_with_global_allocator() -> Option<Self> {
-        // Safety: Just FFI. The customMem callbacks uphold the malloc/free
-        // contract (see `rust_allocator`).
-        Some(DCtx(
-            NonNull::new(unsafe {
-                zstd_sys::ZSTD_createDCtx_advanced(
-                    crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
-                )
-            })?,
-            PhantomData,
-            Poison::default(),
-        ))
     }
 
     /// Fully decompress the given frame.

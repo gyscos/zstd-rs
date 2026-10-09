@@ -47,9 +47,8 @@ impl EncoderDictionary<'static> {
     /// [`EncoderDictionary::try_copy`] for a dictionary you did not make
     /// yourself.
     pub fn copy(dictionary: &[u8], level: i32) -> Self {
-        Self {
-            cdict: zstd_safe::create_cdict(dictionary, level),
-        }
+        Self::try_copy(dictionary, level)
+            .expect("zstd returned null pointer when creating dict")
     }
 
     /// Creates a prepared dictionary for compression, or an error if zstd
@@ -77,9 +76,7 @@ impl<'a> EncoderDictionary<'a> {
     /// If zstd cannot load the dictionary. Use [`EncoderDictionary::try_new`]
     /// for a dictionary you did not make yourself.
     pub fn new(dictionary: &'a [u8], level: i32) -> Self {
-        Self {
-            cdict: zstd_safe::CDict::create_by_reference(dictionary, level),
-        }
+        Self::try_new(dictionary, level).expect("zstd returned null pointer")
     }
 
     #[cfg(feature = "experimental")]
@@ -119,9 +116,8 @@ impl DecoderDictionary<'static> {
     /// [`DecoderDictionary::try_copy`] for a dictionary you did not make
     /// yourself.
     pub fn copy(dictionary: &[u8]) -> Self {
-        Self {
-            ddict: zstd_safe::DDict::create(dictionary),
-        }
+        Self::try_copy(dictionary)
+            .expect("zstd returned null pointer when creating dict")
     }
 
     /// Create a prepared dictionary for decompression, or an error if zstd
@@ -147,9 +143,7 @@ impl<'a> DecoderDictionary<'a> {
     /// If zstd cannot load the dictionary. Use [`DecoderDictionary::try_new`]
     /// for a dictionary you did not make yourself.
     pub fn new(dict: &'a [u8]) -> Self {
-        Self {
-            ddict: zstd_safe::DDict::create_by_reference(dict),
-        }
+        Self::try_new(dict).expect("zstd returned null pointer")
     }
 
     #[cfg(feature = "experimental")]

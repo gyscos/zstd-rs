@@ -336,9 +336,8 @@ impl<'a> CCtx<'a> {
     ///
     /// Returns `None` if zstd returns a NULL pointer - may happen if
     /// allocation fails.
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    pub fn try_create_with_global_allocator() -> Option<Self> {
+    #[cfg(feature = "with-rust-allocator")]
+    fn try_create_with_global_allocator() -> Option<Self> {
         // Safety: Just FFI. The customMem callbacks uphold the malloc/free
         // contract (see `rust_allocator`).
         Some(CCtx(
@@ -1066,9 +1065,8 @@ impl<'a> DCtx<'a> {
     /// go through Rust's global allocator instead of the C runtime's `malloc`.
     ///
     /// Returns `None` if the operation failed
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    pub fn try_create_with_global_allocator() -> Option<Self> {
+    #[cfg(feature = "with-rust-allocator")]
+    fn try_create_with_global_allocator() -> Option<Self> {
         // Safety: Just FFI. The customMem callbacks uphold the malloc/free
         // contract (see `rust_allocator`).
         Some(DCtx(

@@ -166,6 +166,37 @@ git submodule update --init
 Then, running `cargo build` should take care
 of building the C library and linking to it.
 
+# Using Rust's global allocator
+
+By default, zstd allocates its internal state (compression windows, match
+finder tables, stream buffers, dictionaries) with the C runtime's
+`malloc`/`free`, invisible to a custom `#[global_allocator]`.
+
+The `with-rust-allocator` feature makes every context and dictionary this
+crate creates (`Encoder`, `Decoder`, `bulk::Compressor`, dictionaries, ...)
+allocate through Rust's global allocator instead. It is crate-wide: enabling
+it in your own `Cargo.toml` also covers `zstd` usage inside your
+dependencies, since Cargo unifies features.
+
+```toml
+zstd = { version = "0.14", features = ["with-rust-allocator"] }
+```
+
+The feature implies `experimental` on `zstd-safe` because it relies on zstd's
+`ZSTD_create*_advanced()` constructors, which require static linking. It
+applies to contexts and prepared dictionaries created by the Rust wrappers,
+including clones. Direct calls to `zstd_sys`, dictionary training, legacy
+frame decoding, objects from the `seekable` format, and explicit zstd thread
+pools can still allocate through C.
+
+Prepared compression dictionaries use fixed parameters derived from their
+compression level and dictionary size. Unlike the default C constructor,
+the custom-allocator constructor does not store the level for later parameter
+adjustments based on the input size. Compressed output remains interoperable,
+but enabling this feature can change compression ratio, speed, and memory
+usage for prepared dictionaries, especially with large inputs and small
+dictionaries.
+
 # Build-time bindgen
 
 This library includes a pre-generated `bindings.rs` file.

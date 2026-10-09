@@ -27,6 +27,9 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "with-rust-allocator")]
+mod rust_allocator;
+
 #[cfg(feature = "seekable")]
 pub mod seekable;
 
@@ -69,6 +72,14 @@ pub type ErrorCode = usize;
 ///
 /// Either a success code (usually number of bytes written), or an error code.
 pub type SafeResult = Result<usize, ErrorCode>;
+
+/// The error code zstd itself returns when an allocation fails
+/// (`-ZSTD_error_memory_allocation` as a `size_t`), for the places where a
+/// context is allocated on the Rust side of a call.
+#[cfg(feature = "experimental")]
+const MEMORY_ALLOCATION_ERROR: ErrorCode =
+    (zstd_sys::ZSTD_ErrorCode::ZSTD_error_memory_allocation as usize)
+        .wrapping_neg();
 
 /// Indicates an error happened when parsing the frame content size.
 ///
@@ -164,7 +175,18 @@ pub fn compress<C: WriteBuf + ?Sized>(
     src: &[u8],
     compression_level: CompressionLevel,
 ) -> SafeResult {
+    // `ZSTD_compress` allocates its workspace with the C runtime's `malloc`.
+    // Route it through a context built on the Rust global allocator instead;
+    // `ZSTD_compressCCtx` on a fresh context is exactly what `ZSTD_compress`
+    // does internally.
+    #[cfg(feature = "with-rust-allocator")]
+    {
+        let mut cctx = CCtx::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
+        cctx.compress(dst, src, compression_level)
+    }
+
     // Safety: ZSTD_compress indeed returns how many bytes have been written.
+    #[cfg(not(feature = "with-rust-allocator"))]
     unsafe {
         dst.write_from(|buffer, capacity| {
             parse_code(zstd_sys::ZSTD_compress(
@@ -190,7 +212,16 @@ pub fn decompress<C: WriteBuf + ?Sized>(
     dst: &mut C,
     src: &[u8],
 ) -> SafeResult {
+    // See `compress()`: keep the implicit context's allocations visible to
+    // the Rust global allocator.
+    #[cfg(feature = "with-rust-allocator")]
+    {
+        let mut dctx = DCtx::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
+        dctx.decompress(dst, src)
+    }
+
     // Safety: ZSTD_decompress indeed returns how many bytes have been written.
+    #[cfg(not(feature = "with-rust-allocator"))]
     unsafe {
         dst.write_from(|buffer, capacity| {
             parse_code(zstd_sys::ZSTD_decompress(
@@ -271,13 +302,24 @@ impl<'a> CCtx<'a> {
     /// Tries to create a new context.
     ///
     /// Returns `None` if zstd returns a NULL pointer - may happen if allocation fails.
+    ///
+    /// With the `with-rust-allocator` feature enabled, the context's internal
+    /// allocations go through Rust's global allocator instead of the C
+    /// runtime's `malloc`.
     pub fn try_create() -> Option<Self> {
-        // Safety: Just FFI
-        Some(CCtx(
-            NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })?,
-            PhantomData,
-            Poison::default(),
-        ))
+        #[cfg(feature = "with-rust-allocator")]
+        {
+            Self::try_create_with_global_allocator()
+        }
+        #[cfg(not(feature = "with-rust-allocator"))]
+        {
+            // Safety: Just FFI
+            Some(CCtx(
+                NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })?,
+                PhantomData,
+                Poison::default(),
+            ))
+        }
     }
 
     /// Wrap `ZSTD_createCCtx`
@@ -288,6 +330,26 @@ impl<'a> CCtx<'a> {
     pub fn create() -> Self {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
+    }
+
+    /// Tries to create a new context whose internal allocations go through
+    /// Rust's global allocator instead of the C runtime's `malloc`.
+    ///
+    /// Returns `None` if zstd returns a NULL pointer - may happen if
+    /// allocation fails.
+    #[cfg(feature = "with-rust-allocator")]
+    fn try_create_with_global_allocator() -> Option<Self> {
+        // Safety: Just FFI. The customMem callbacks uphold the malloc/free
+        // contract (see `rust_allocator`).
+        Some(CCtx(
+            NonNull::new(unsafe {
+                zstd_sys::ZSTD_createCCtx_advanced(
+                    crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
+                )
+            })?,
+            PhantomData,
+            Poison::default(),
+        ))
     }
 
     /// Wraps the `ZSTD_compressCCtx()` function
@@ -801,26 +863,30 @@ impl<'a> CCtx<'a> {
     ///
     /// This only works before any data has been compressed. An error will be
     /// returned otherwise.
+    /// A poisoned context cannot be cloned until its session is reset.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn try_clone(
         &self,
         pledged_src_size: Option<u64>,
     ) -> Result<Self, ErrorCode> {
-        // Safety: Just FFI
-        let context = NonNull::new(unsafe { zstd_sys::ZSTD_createCCtx() })
-            .ok_or(0usize)?;
+        // An error may leave the C context undefined; do not copy it.
+        self.2.guard()?;
+        // zstd copies the allocator callbacks from `self` into the new
+        // context, so both must be created the same way; `try_create` always
+        // picks the same allocator within a build.
+        let context = Self::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
 
         // Safety: Just FFI
         parse_code(unsafe {
             zstd_sys::ZSTD_copyCCtx(
-                context.as_ptr(),
+                context.0.as_ptr(),
                 self.0.as_ptr(),
                 pledged_src_size.unwrap_or(CONTENTSIZE_UNKNOWN),
             )
         })?;
 
-        Ok(CCtx(context, self.1, self.2.clone()))
+        Ok(context)
     }
 
     /// Wraps the `ZSTD_getBlockSize()` function.
@@ -973,12 +1039,24 @@ impl<'a> DCtx<'a> {
     /// Try to create a new decompression context.
     ///
     /// Returns `None` if the operation failed (for example, not enough memory).
+    ///
+    /// With the `with-rust-allocator` feature enabled, the context's internal
+    /// allocations go through Rust's global allocator instead of the C
+    /// runtime's `malloc`.
     pub fn try_create() -> Option<Self> {
-        Some(DCtx(
-            NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })?,
-            PhantomData,
-            Poison::default(),
-        ))
+        #[cfg(feature = "with-rust-allocator")]
+        {
+            Self::try_create_with_global_allocator()
+        }
+        #[cfg(not(feature = "with-rust-allocator"))]
+        {
+            // Safety: Just FFI
+            Some(DCtx(
+                NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })?,
+                PhantomData,
+                Poison::default(),
+            ))
+        }
     }
 
     /// Creates a new decoding context.
@@ -989,6 +1067,25 @@ impl<'a> DCtx<'a> {
     pub fn create() -> Self {
         Self::try_create()
             .expect("zstd returned null pointer when creating new context")
+    }
+
+    /// Tries to create a new decompression context whose internal allocations
+    /// go through Rust's global allocator instead of the C runtime's `malloc`.
+    ///
+    /// Returns `None` if the operation failed
+    #[cfg(feature = "with-rust-allocator")]
+    fn try_create_with_global_allocator() -> Option<Self> {
+        // Safety: Just FFI. The customMem callbacks uphold the malloc/free
+        // contract (see `rust_allocator`).
+        Some(DCtx(
+            NonNull::new(unsafe {
+                zstd_sys::ZSTD_createDCtx_advanced(
+                    crate::rust_allocator::RUST_GLOBAL_ALLOCATOR,
+                )
+            })?,
+            PhantomData,
+            Poison::default(),
+        ))
     }
 
     /// Fully decompress the given frame.
@@ -1341,15 +1438,23 @@ impl<'a> DCtx<'a> {
     ///
     /// This only works before any data has been decompressed. An error will be
     /// returned otherwise.
+    /// A poisoned context cannot be cloned until its session is reset.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn try_clone(&self) -> Result<Self, ErrorCode> {
-        let context = NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })
-            .ok_or(0usize)?;
+        // An error may leave the C context undefined; do not copy it.
+        self.2.guard()?;
+        // zstd copies the allocator callbacks from `self` into the new
+        // context, so both must be created the same way; `try_create` always
+        // picks the same allocator within a build.
+        let context = Self::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
 
-        unsafe { zstd_sys::ZSTD_copyDCtx(context.as_ptr(), self.0.as_ptr()) };
+        // Safety: Just FFI
+        unsafe {
+            zstd_sys::ZSTD_copyDCtx(context.0.as_ptr(), self.0.as_ptr())
+        };
 
-        Ok(DCtx(context, self.1, self.2.clone()))
+        Ok(context)
     }
 }
 
@@ -1368,6 +1473,10 @@ unsafe impl Send for DCtx<'_> {}
 unsafe impl Sync for DCtx<'_> {}
 
 /// Compression dictionary.
+///
+/// With `with-rust-allocator`, prepared dictionaries retain fixed compression
+/// parameters rather than adapting them to later input sizes. This can change
+/// compression ratio, speed, and memory usage compared with the C allocator.
 pub struct CDict<'a>(NonNull<zstd_sys::ZSTD_CDict>, PhantomData<&'a ()>);
 
 impl CDict<'static> {
@@ -1397,16 +1506,23 @@ impl CDict<'static> {
         dict_buffer: &[u8],
         compression_level: CompressionLevel,
     ) -> Option<Self> {
-        Some(CDict(
-            NonNull::new(unsafe {
-                zstd_sys::ZSTD_createCDict(
-                    ptr_void(dict_buffer),
-                    dict_buffer.len(),
-                    compression_level,
-                )
-            })?,
-            PhantomData,
-        ))
+        #[cfg(feature = "with-rust-allocator")]
+        let ptr = unsafe {
+            rust_allocator::create_cdict(
+                dict_buffer,
+                compression_level,
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byCopy,
+            )
+        };
+        #[cfg(not(feature = "with-rust-allocator"))]
+        let ptr = unsafe {
+            zstd_sys::ZSTD_createCDict(
+                ptr_void(dict_buffer),
+                dict_buffer.len(),
+                compression_level,
+            )
+        };
+        Some(CDict(NonNull::new(ptr)?, PhantomData))
     }
 }
 
@@ -1417,15 +1533,24 @@ impl<'a> CDict<'a> {
         dict_buffer: &'a [u8],
         compression_level: CompressionLevel,
     ) -> Self {
+        #[cfg(feature = "with-rust-allocator")]
+        let ptr = unsafe {
+            rust_allocator::create_cdict(
+                dict_buffer,
+                compression_level,
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byRef,
+            )
+        };
+        #[cfg(not(feature = "with-rust-allocator"))]
+        let ptr = unsafe {
+            zstd_sys::ZSTD_createCDict_byReference(
+                ptr_void(dict_buffer),
+                dict_buffer.len(),
+                compression_level,
+            )
+        };
         CDict(
-            NonNull::new(unsafe {
-                zstd_sys::ZSTD_createCDict_byReference(
-                    ptr_void(dict_buffer),
-                    dict_buffer.len(),
-                    compression_level,
-                )
-            })
-            .expect("zstd returned null pointer"),
+            NonNull::new(ptr).expect("zstd returned null pointer"),
             PhantomData,
         )
     }
@@ -1489,15 +1614,21 @@ impl DDict<'static> {
     }
 
     pub fn try_create(dict_buffer: &[u8]) -> Option<Self> {
-        Some(DDict(
-            NonNull::new(unsafe {
-                zstd_sys::ZSTD_createDDict(
-                    ptr_void(dict_buffer),
-                    dict_buffer.len(),
-                )
-            })?,
-            PhantomData,
-        ))
+        #[cfg(feature = "with-rust-allocator")]
+        let ptr = unsafe {
+            rust_allocator::create_ddict(
+                dict_buffer,
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byCopy,
+            )
+        };
+        #[cfg(not(feature = "with-rust-allocator"))]
+        let ptr = unsafe {
+            zstd_sys::ZSTD_createDDict(
+                ptr_void(dict_buffer),
+                dict_buffer.len(),
+            )
+        };
+        Some(DDict(NonNull::new(ptr)?, PhantomData))
     }
 }
 
@@ -1512,14 +1643,22 @@ impl<'a> DDict<'a> {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(dict_buffer: &'a [u8]) -> Self {
+        #[cfg(feature = "with-rust-allocator")]
+        let ptr = unsafe {
+            rust_allocator::create_ddict(
+                dict_buffer,
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byRef,
+            )
+        };
+        #[cfg(not(feature = "with-rust-allocator"))]
+        let ptr = unsafe {
+            zstd_sys::ZSTD_createDDict_byReference(
+                ptr_void(dict_buffer),
+                dict_buffer.len(),
+            )
+        };
         DDict(
-            NonNull::new(unsafe {
-                zstd_sys::ZSTD_createDDict_byReference(
-                    ptr_void(dict_buffer),
-                    dict_buffer.len(),
-                )
-            })
-            .expect("zstd returned null pointer"),
+            NonNull::new(ptr).expect("zstd returned null pointer"),
             PhantomData,
         )
     }

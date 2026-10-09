@@ -42,6 +42,9 @@ cmake = ["zstd-safe/cmake"]
 no_asm = ["zstd-safe/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-safe/zdict_builder"]
+# Route every allocation zstd makes for contexts and dictionaries through
+# Rust's global allocator instead of the C runtime's malloc/free.
+with-rust-allocator = ["zstd-safe/with-rust-allocator"]
 
 # These two are for cross-language LTO.
 # Will only work if `clang` is used to build the C library.

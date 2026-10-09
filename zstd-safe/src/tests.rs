@@ -79,8 +79,12 @@ fn test_cctx_cycle() {
 fn test_dictionary() {
     // Prepare some content to train the dictionary.
     let bytes = LONG_CONTENT.as_bytes();
-    let line_sizes: Vec<usize> =
-        LONG_CONTENT.lines().map(|line| line.len() + 1).collect();
+    // Include the actual newline bytes, including CRLF on Windows and a
+    // possibly unterminated final line.
+    let line_sizes: Vec<usize> = LONG_CONTENT
+        .split_inclusive('\n')
+        .map(|line| line.len())
+        .collect();
 
     // Train the dictionary
     let mut dict_buffer = std::vec![0u8; 100_000];
@@ -412,4 +416,98 @@ fn test_poison_tracking() {
 
     poison.clear();
     assert!(poison.guard().is_ok());
+}
+
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+fn test_cloning_poisoned_contexts_returns_the_original_error() {
+    use crate::{CCtx, DCtx, InBuffer, OutBuffer};
+
+    let mut dctx = DCtx::create();
+    let mut output = [0; 1024];
+    let error = dctx
+        .decompress_stream(
+            &mut OutBuffer::around(&mut output[..]),
+            &mut InBuffer::around(&[0xff; 64]),
+        )
+        .unwrap_err();
+    assert_eq!(dctx.try_clone().err(), Some(error));
+
+    let mut cctx = CCtx::create();
+    cctx.2.record(Err(error)).unwrap_err();
+    assert_eq!(cctx.try_clone(None).err(), Some(error));
+}
+
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+fn test_cloning_initialized_compression_context() {
+    use crate::{parse_code, zstd_sys, CCtx, DCtx};
+
+    let cctx = CCtx::create();
+    // The deprecated copy API requires the buffer-less initial stage,
+    // which has no safe constructor in this wrapper.
+    parse_code(unsafe { zstd_sys::ZSTD_compressBegin(cctx.0.as_ptr(), 3) })
+        .unwrap();
+    let mut cloned = cctx.try_clone(Some(INPUT.len() as u64)).unwrap();
+    drop(cctx);
+
+    let mut compressed =
+        Vec::with_capacity(crate::compress_bound(INPUT.len()));
+    cloned.compress(&mut compressed, INPUT, 3).unwrap();
+    let mut decoded = Vec::with_capacity(INPUT.len());
+    DCtx::create()
+        .decompress(&mut decoded, &compressed)
+        .unwrap();
+    assert_eq!(decoded, INPUT);
+}
+
+#[cfg(all(feature = "std", feature = "with-rust-allocator"))]
+#[test]
+fn test_custom_allocator_dictionaries_interoperate_with_c_dictionaries() {
+    use crate::{zstd_sys, CCtx, CDict, DCtx};
+    use core::{marker::PhantomData, ptr::NonNull};
+
+    for dict_size in [512, 4096] {
+        let dict: Vec<u8> = (0..=255u8).cycle().take(dict_size).collect();
+        for level in [-3, 0, 3, 19] {
+            let rust_dict = CDict::create(&dict, level);
+            // This dictionary owns C-allocated storage and frees it through
+            // its own callbacks, independently of the context's allocator.
+            let c_dict = CDict(
+                NonNull::new(unsafe {
+                    zstd_sys::ZSTD_createCDict(
+                        crate::ptr_void(&dict),
+                        dict.len(),
+                        level,
+                    )
+                })
+                .unwrap(),
+                PhantomData,
+            );
+            for input_size in [256, 256 * 1024] {
+                let input: Vec<u8> =
+                    dict.iter().copied().cycle().take(input_size).collect();
+                let mut compressed =
+                    Vec::with_capacity(crate::compress_bound(input_size));
+                let mut decoded = Vec::with_capacity(input_size);
+                for dictionary in [&rust_dict, &c_dict] {
+                    CCtx::create()
+                        .compress_using_cdict(
+                            &mut compressed,
+                            &input,
+                            dictionary,
+                        )
+                        .unwrap();
+                    DCtx::create()
+                        .decompress_using_dict(
+                            &mut decoded,
+                            &compressed,
+                            &dict,
+                        )
+                        .unwrap();
+                    assert_eq!(decoded, input);
+                }
+            }
+        }
+    }
 }

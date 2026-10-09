@@ -1081,7 +1081,7 @@ impl<'a> DCtx<'a> {
                 )
             })?,
             PhantomData,
-            Poison::default()
+            Poison::default(),
         ))
     }
 

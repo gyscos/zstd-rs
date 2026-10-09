@@ -27,7 +27,7 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "experimental")]
+#[cfg(feature = "with-rust-allocator")]
 mod rust_allocator;
 
 #[cfg(feature = "seekable")]
@@ -303,8 +303,9 @@ impl<'a> CCtx<'a> {
     ///
     /// Returns `None` if zstd returns a NULL pointer - may happen if allocation fails.
     ///
-    /// With the `with-rust-allocator` feature enabled, this is equivalent to
-    /// `CCtx::try_create_with_global_allocator`.
+    /// With the `with-rust-allocator` feature enabled, the context's internal
+    /// allocations go through Rust's global allocator instead of the C
+    /// runtime's `malloc`.
     pub fn try_create() -> Option<Self> {
         #[cfg(feature = "with-rust-allocator")]
         {
@@ -868,6 +869,9 @@ impl<'a> CCtx<'a> {
         &self,
         pledged_src_size: Option<u64>,
     ) -> Result<Self, ErrorCode> {
+        // zstd copies the allocator callbacks from `self` into the new
+        // context, so both must be created the same way; `try_create` always
+        // picks the same allocator within a build.
         let context = Self::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
 
         // Safety: Just FFI
@@ -1033,8 +1037,9 @@ impl<'a> DCtx<'a> {
     ///
     /// Returns `None` if the operation failed (for example, not enough memory).
     ///
-    /// With the `with-rust-allocator` feature enabled, this is equivalent to
-    /// `DCtx::try_create_with_global_allocator`.
+    /// With the `with-rust-allocator` feature enabled, the context's internal
+    /// allocations go through Rust's global allocator instead of the C
+    /// runtime's `malloc`.
     pub fn try_create() -> Option<Self> {
         #[cfg(feature = "with-rust-allocator")]
         {
@@ -1433,6 +1438,9 @@ impl<'a> DCtx<'a> {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn try_clone(&self) -> Result<Self, ErrorCode> {
+        // zstd copies the allocator callbacks from `self` into the new
+        // context, so both must be created the same way; `try_create` always
+        // picks the same allocator within a build.
         let context = Self::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
 
         // Safety: Just FFI

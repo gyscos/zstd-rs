@@ -127,14 +127,28 @@ impl<'a, R: BufRead> Decoder<'a, R> {
         self.reader.reader_mut()
     }
 
-    /// Consume the rest of the current frame, so the underlying reader is
-    /// left pointing just after it.
+    /// Return the inner reader without consuming additional input.
+    ///
+    /// This does not read from the underlying reader or try to finish the
+    /// current frame. Any buffered decoded data is discarded, and the reader
+    /// is returned at its current position.
+    ///
+    /// Use [`Self::finish()`] to try to consume any remaining frame input
+    /// before returning the reader.
+    pub fn into_inner(self) -> R {
+        self.reader.into_inner()
+    }
+
+    /// Try to consume the remaining input from the current frame.
     ///
     /// zstd can hand out the last of the decoded data before it has read the
     /// frame epilogue, so a reader that stops as soon as it has the bytes it
     /// wanted leaves the input somewhere inside the frame. Call this to line
     /// the reader back up with the end of the frame - for instance to carry on
     /// reading whatever follows the compressed section.
+    ///
+    /// This does not discard unread decoded data. If there is still output
+    /// to read, it may stop before reaching the end of the frame.
     ///
     /// This does not touch the underlying reader if the frame is already
     /// complete, and never starts decoding the next frame.
@@ -147,13 +161,16 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     /// Calling `finish()` is not *required* after reading a stream -
     /// just use it if you need to get the `Read` back.
     ///
-    /// This consumes the rest of the current frame first, so the reader is
-    /// returned pointing just after it - see [`Self::finish_frame()`]. That
-    /// may read from the underlying reader, and any error doing so is
-    /// ignored; call `finish_frame()` directly if you need to see it.
+    /// This tries to consume any remaining input from the current frame
+    /// first - see [`Self::finish_frame()`]. That may read from the underlying
+    /// reader, and any error doing so is ignored; call `finish_frame()`
+    /// directly if you need to see it.
+    ///
+    /// To return the reader without consuming additional input, use
+    /// [`Self::into_inner()`].
     pub fn finish(mut self) -> R {
         let _ = self.finish_frame();
-        self.reader.into_inner()
+        self.into_inner()
     }
 
     crate::decoder_common!(reader);

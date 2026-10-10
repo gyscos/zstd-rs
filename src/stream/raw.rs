@@ -135,6 +135,15 @@ pub struct Decoder<'a> {
     context: MaybeOwnedDCtx<'a>,
 }
 
+fn create_dctx<'a>() -> io::Result<zstd_safe::DCtx<'a>> {
+    zstd_safe::DCtx::try_create().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            "zstd could not allocate a decompression context",
+        )
+    })
+}
+
 impl Decoder<'static> {
     /// Creates a new decoder.
     pub fn new() -> io::Result<Self> {
@@ -143,7 +152,7 @@ impl Decoder<'static> {
 
     /// Creates a new decoder initialized with the given dictionary.
     pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
-        let mut context = zstd_safe::DCtx::create();
+        let mut context = create_dctx()?;
         context.init().map_err(map_error_code)?;
         context
             .load_dictionary(dictionary)
@@ -169,7 +178,7 @@ impl<'a> Decoder<'a> {
     where
         'b: 'a,
     {
-        let mut context = zstd_safe::DCtx::create();
+        let mut context = create_dctx()?;
         context
             .ref_ddict(dictionary.as_ddict())
             .map_err(map_error_code)?;
@@ -183,7 +192,7 @@ impl<'a> Decoder<'a> {
     where
         'b: 'a,
     {
-        let mut context = zstd_safe::DCtx::create();
+        let mut context = create_dctx()?;
         context.ref_prefix(ref_prefix).map_err(map_error_code)?;
         Ok(Decoder {
             context: MaybeOwnedDCtx::Owned(context),

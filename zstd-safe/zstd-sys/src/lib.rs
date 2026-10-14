@@ -6,10 +6,10 @@
 //!
 //! [zstd]: https://facebook.github.io/zstd/
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 extern crate alloc;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 mod wasm_shim;
 
 // If running bindgen, we'll end up with the correct bindings anyway.

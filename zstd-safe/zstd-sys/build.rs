@@ -337,6 +337,7 @@ fn compile_zstd() {
     let need_wasm_shim = !cfg!(feature = "no_wasm_shim")
         && env::var("TARGET").map_or(false, |target| {
             target == "wasm32-unknown-unknown"
+                || target == "wasm64-unknown-unknown"
                 || target.starts_with("wasm32-wasi")
         });
 
@@ -553,11 +554,11 @@ fn main() {
     cargo_print(&"rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
     cargo_print(&"rerun-if-env-changed=ZSTD_SYS_NO_HIDE_SYMBOLS");
 
-    let target_arch =
-        std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let target_family =
+        std::env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
-    if target_arch == "wasm32" || target_os == "hermit" {
+    if target_family == "wasm" || target_os == "hermit" {
         cargo_print(&"rustc-cfg=feature=\"std\"");
     }
 

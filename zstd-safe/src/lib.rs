@@ -76,7 +76,7 @@ pub type SafeResult = Result<usize, ErrorCode>;
 /// The error code zstd itself returns when an allocation fails
 /// (`-ZSTD_error_memory_allocation` as a `size_t`), for the places where a
 /// context is allocated on the Rust side of a call.
-#[cfg(feature = "experimental")]
+#[cfg(feature = "with-rust-allocator")]
 const MEMORY_ALLOCATION_ERROR: ErrorCode =
     (zstd_sys::ZSTD_ErrorCode::ZSTD_error_memory_allocation as usize)
         .wrapping_neg();
@@ -1048,42 +1048,6 @@ impl<'a> CCtx<'a> {
         Ok(())
     }
 
-    /// Creates a copy of this context.
-    ///
-    /// This only works before any data has been compressed. An error will be
-    /// returned otherwise.
-    /// A poisoned context cannot be cloned until its session is reset.
-    /// A context on which `NbWorkers` was ever set to a non-zero value cannot
-    /// be cloned anymore.
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated(
-        note = "Context copying is deprecated by zstd; create a new context and configure it instead."
-    )]
-    pub fn try_clone(
-        &self,
-        pledged_src_size: Option<u64>,
-    ) -> Result<Self, ErrorCode> {
-        // An error may leave the C context undefined; do not copy it.
-        self.2.guard()?;
-        self.guard_own_tables()?;
-        // zstd copies the allocator callbacks from `self` into the new
-        // context, so both must be created the same way; `try_create` always
-        // picks the same allocator within a build.
-        let context = Self::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
-
-        // Safety: Just FFI
-        parse_code(unsafe {
-            zstd_sys::ZSTD_copyCCtx(
-                context.0.as_ptr(),
-                self.0.as_ptr(),
-                pledged_src_size.unwrap_or(CONTENTSIZE_UNKNOWN),
-            )
-        })?;
-
-        Ok(context)
-    }
-
     /// Wraps the `ZSTD_getBlockSize()` function.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
@@ -1242,9 +1206,6 @@ pub struct DCtx<'a>(
 /// What a `DCtx` remembers about its own use.
 #[derive(Clone, Copy, Debug, Default)]
 struct DState {
-    /// `RefMultipleDDicts` was ever enabled, see `try_clone`.
-    #[cfg(feature = "experimental")]
-    multiple_ddicts: bool,
     /// A streaming (or block) call ran since the session was last reset, so
     /// a stream may be open, see `finish_one_shot`.
     streamed: bool,
@@ -1577,9 +1538,6 @@ impl<'a> DCtx<'a> {
             }
             #[cfg(feature = "experimental")]
             RefMultipleDDicts(value) => {
-                // From now on `ref_ddict` may allocate the table of
-                // dictionaries, which zstd keeps until the context is freed.
-                self.3.multiple_ddicts |= value;
                 (ZSTD_d_refMultipleDDicts, value as c_int)
             }
 
@@ -1695,92 +1653,6 @@ impl<'a> DCtx<'a> {
         }
     }
 
-    /// Creates a copy of this context.
-    ///
-    /// This only works before any data has been decompressed. An error will be
-    /// returned otherwise.
-    /// A poisoned context cannot be cloned until its session is reset.
-    /// The copy always starts at the beginning of a frame.
-    ///
-    /// A dictionary this context merely references (see [`DCtx::ref_ddict`])
-    /// is referenced by the copy too. One it owns cannot be shared, so an
-    /// error is also returned while a dictionary from
-    /// [`DCtx::load_dictionary`] or a prefix from [`DCtx::ref_prefix`] is set,
-    /// and once [`DParameter::RefMultipleDDicts`] has been enabled.
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    #[deprecated(
-        note = "Context copying is deprecated by zstd; create a new context and configure it instead."
-    )]
-    pub fn try_clone(&self) -> Result<Self, ErrorCode> {
-        use zstd_sys::ZSTD_dParameter::{
-            ZSTD_d_experimentalParam2 as ZSTD_d_stableOutBuffer,
-            ZSTD_d_windowLogMax,
-        };
-
-        // An error may leave the C context undefined; do not copy it.
-        self.2.guard()?;
-        // zstd copies the allocator callbacks from `self` into the new
-        // context, so both must be created the same way; `try_create` always
-        // picks the same allocator within a build.
-        let mut context = Self::try_create().ok_or(MEMORY_ALLOCATION_ERROR)?;
-
-        // `ZSTD_copyDCtx()` is a plain `memcpy`, so a dictionary `self` owns
-        // would end up owned, and freed, by both contexts. A loaded dictionary
-        // or prefix shows up as memory a new context does not use - as do the
-        // streaming buffers, once data has been decompressed. The table behind
-        // `RefMultipleDDicts` is not counted there, and outlives the
-        // parameter, hence the flag.
-        if self.3.multiple_ddicts || self.sizeof() != context.sizeof() {
-            return Err(STAGE_WRONG_ERROR);
-        }
-
-        // `ZSTD_copyDCtx` stops where the streaming buffers start and leaves
-        // the parameters stored past that point (the window limit and the
-        // output buffer mode) at their defaults. Carry them over explicitly,
-        // on the fresh context so that it is still in its initial stage; the
-        // copy below does not touch these fields.
-        // Only for values that differ: the window limit reads back as a log,
-        // which rounds zstd's default limit down.
-        let get = |dctx: &Self, param| {
-            let mut value: c_int = 0;
-            // Safety: Just FFI
-            parse_code(unsafe {
-                zstd_sys::ZSTD_DCtx_getParameter(
-                    dctx.0.as_ptr(),
-                    param,
-                    &mut value,
-                )
-            })
-            .map(|_| value)
-        };
-        for param in [ZSTD_d_windowLogMax, ZSTD_d_stableOutBuffer] {
-            let value = get(self, param)?;
-            if value == get(&context, param)? {
-                continue;
-            }
-            // Safety: Just FFI
-            parse_code(unsafe {
-                zstd_sys::ZSTD_DCtx_setParameter(
-                    context.0.as_ptr(),
-                    param,
-                    value,
-                )
-            })?;
-        }
-
-        // Safety: Just FFI
-        unsafe {
-            zstd_sys::ZSTD_copyDCtx(context.0.as_ptr(), self.0.as_ptr())
-        };
-
-        // The position within a frame is copied, but not the state that goes
-        // with it (a partial header, a legacy context), so start from a frame
-        // boundary rather than run on what the new context never initialized.
-        context.reset(ResetDirective::SessionOnly)?;
-
-        Ok(context)
-    }
 }
 
 impl Drop for DCtx<'_> {

@@ -648,9 +648,11 @@ impl<'a> Seekable<'a> {
     where
         F: std::io::Read + std::io::Seek,
     {
-        let opaque = std::boxed::Box::into_raw(std::boxed::Box::new(
-            AdvancedSource { src, panic: None },
-        ));
+        let opaque =
+            std::boxed::Box::into_raw(std::boxed::Box::new(AdvancedSource {
+                src,
+                panic: None,
+            }));
         let custom_file = zstd_sys::ZSTD_seekable_customFile {
             opaque: opaque as *mut core::ffi::c_void,
             read: Some(advanced_read::<F>),

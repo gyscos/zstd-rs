@@ -44,6 +44,9 @@ pub struct Decoder<'a, W: Write> {
 ///
 /// This can be created by the [`auto_finish()`] method on the [`Encoder`].
 ///
+/// If it is dropped because the wrapped writer panicked, the stream is left
+/// unfinished and the writer is not used again.
+///
 /// [`auto_finish()`]: Encoder::auto_finish
 /// [`Encoder`]: Encoder
 pub struct AutoFinishEncoder<
@@ -60,6 +63,9 @@ pub struct AutoFinishEncoder<
 /// A wrapper around a `Decoder<W>` that flushes the stream on drop.
 ///
 /// This can be created by the [`auto_flush()`] method on the [`Decoder`].
+///
+/// If it is dropped because the wrapped writer panicked, nothing is flushed
+/// and the writer is not used again.
 ///
 /// [`auto_flush()`]: Decoder::auto_flush
 /// [`Decoder`]: Decoder
@@ -105,6 +111,12 @@ where
 {
     fn drop(&mut self) {
         let mut decoder = self.decoder.take().unwrap();
+        // The writer panicked and still has the same data pending: calling
+        // it again would panic again, and a second panic while unwinding
+        // aborts the process.
+        if decoder.writer.panicked() {
+            return;
+        }
         let result = decoder.flush();
         if let Some(mut on_finish) = self.on_flush.take() {
             on_finish(result);
@@ -148,7 +160,14 @@ impl<'a, W: Write, F: FnMut(io::Result<W>)> AutoFinishEncoder<'a, W, F> {
 
 impl<W: Write, F: FnMut(io::Result<W>)> Drop for AutoFinishEncoder<'_, W, F> {
     fn drop(&mut self) {
-        let result = self.encoder.take().unwrap().finish();
+        let encoder = self.encoder.take().unwrap();
+        // The writer panicked and still has the same data pending: calling
+        // it again would panic again, and a second panic while unwinding
+        // aborts the process.
+        if encoder.writer.panicked() {
+            return;
+        }
+        let result = encoder.finish();
         if let Some(mut on_finish) = self.on_finish.take() {
             on_finish(result);
         }
@@ -251,7 +270,8 @@ impl<'a, W: Write> Encoder<'a, W> {
     /// Returns an encoder that will finish the stream on drop.
     ///
     /// Calls the given callback with the result from `finish()`. This runs during drop so it's
-    /// important that the provided callback doesn't panic.
+    /// important that the provided callback doesn't panic. It is not called if the wrapped
+    /// writer panicked.
     pub fn on_finish<F: FnMut(io::Result<W>)>(
         self,
         f: F,
@@ -428,7 +448,8 @@ impl<'a, W: Write> Decoder<'a, W> {
     /// Returns a decoder that will flush the stream on drop.
     ///
     /// Calls the given callback with the result from `flush()`. This runs during drop so it's
-    /// important that the provided callback doesn't panic.
+    /// important that the provided callback doesn't panic. It is not called if the wrapped
+    /// writer panicked.
     pub fn on_flush<F: FnMut(io::Result<()>)>(
         self,
         f: F,

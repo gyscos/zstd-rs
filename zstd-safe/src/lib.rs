@@ -1199,6 +1199,27 @@ pub fn get_error_name(code: usize) -> &'static str {
     }
 }
 
+/// Returns whether `code` is an error of the given kind.
+///
+/// The kinds are those of `zstd_sys::ZSTD_ErrorCode`, listed in
+/// `zstd_errors.h`.
+///
+/// This goes from `kind` to a code rather than the other way around, so it
+/// works whatever the version of the linked libzstd: a code these bindings
+/// don't know is just not equal to any `kind`.
+///
+/// ```
+/// use zstd_safe::zstd_sys::ZSTD_ErrorCode;
+///
+/// let mut small = [0u8; 4];
+/// let code = zstd_safe::compress(&mut small[..], &[42u8; 1000], 3).unwrap_err();
+/// assert!(zstd_safe::is_error_kind(code, ZSTD_ErrorCode::ZSTD_error_dstSize_tooSmall));
+/// ```
+pub fn is_error_kind(code: ErrorCode, kind: zstd_sys::ZSTD_ErrorCode) -> bool {
+    // Error codes are the negated error values, as a `size_t`.
+    is_error(code) && code == (kind as usize).wrapping_neg()
+}
+
 /// A Decompression Context.
 ///
 /// The lifetime references the potential dictionary used for this context.

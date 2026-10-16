@@ -1070,3 +1070,20 @@ fn test_one_shot_decompression_without_a_stream() {
         }
     }
 }
+
+/// `is_error_kind` tells error kinds apart, and never matches a success.
+#[test]
+fn test_is_error_kind() {
+    use zstd_safe::zstd_sys::ZSTD_ErrorCode::*;
+
+    let mut small = [0u8; 4];
+    let code = zstd_safe::compress(&mut small[..], INPUT, 3).unwrap_err();
+    assert!(zstd_safe::is_error_kind(code, ZSTD_error_dstSize_tooSmall));
+    assert!(!zstd_safe::is_error_kind(code, ZSTD_error_srcSize_wrong));
+
+    let code = zstd_safe::decompress(&mut [0u8; 64][..], INPUT).unwrap_err();
+    assert!(zstd_safe::is_error_kind(code, ZSTD_error_prefix_unknown));
+
+    // `ZSTD_error_no_error` is 0, and no success value is an error.
+    assert!(!zstd_safe::is_error_kind(0, ZSTD_error_no_error));
+}

@@ -46,6 +46,32 @@ fn test_writebuf() {
     assert_eq!(data.as_slice(), &[0, 1, 2, 3, 0, 0, 4, 5, 6, 7]);
 }
 
+/// Writing nothing after a cursor truncates there, like writing something
+/// does: it must not leave the previous result in place.
+#[cfg(feature = "std")]
+#[test]
+fn test_cursor_empty_write_truncates() {
+    use zstd_safe::DCtx;
+
+    let mut dctx = DCtx::create();
+    let mut frame = std::vec![0u8; 128];
+    let frame_len =
+        zstd_safe::compress(&mut frame[..], b"previous secret", 1).unwrap();
+    let mut empty = std::vec![0u8; 128];
+    let empty_len = zstd_safe::compress(&mut empty[..], b"", 1).unwrap();
+
+    let mut buffer = Vec::with_capacity(64);
+    buffer.extend_from_slice(b"> ");
+    let mut cursor = std::io::Cursor::new(&mut buffer);
+    cursor.set_position(2);
+    dctx.decompress(&mut cursor, &frame[..frame_len]).unwrap();
+    assert_eq!(cursor.get_ref().as_slice(), b"> previous secret");
+
+    cursor.set_position(2);
+    assert_eq!(dctx.decompress(&mut cursor, &empty[..empty_len]), Ok(0));
+    assert_eq!(cursor.get_ref().as_slice(), b"> ");
+}
+
 #[cfg(feature = "std")]
 #[test]
 fn test_around_pos_past_initialized_data() {

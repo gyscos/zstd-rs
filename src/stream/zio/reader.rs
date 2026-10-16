@@ -17,6 +17,10 @@ pub struct Reader<R, D> {
 
     single_frame: bool,
     finished_frame: bool,
+
+    // Whether the operation has consumed any input yet.
+    // Until then, `!finished_frame` does not mean we are inside a frame.
+    started: bool,
 }
 
 enum State {
@@ -39,6 +43,7 @@ impl<R, D> Reader<R, D> {
             state: State::Reading,
             single_frame: false,
             finished_frame: false,
+            started: false,
         }
     }
 
@@ -97,13 +102,17 @@ where
     /// stream of concatenated frames keeps its remaining frames, and trailing
     /// non-zstd data is left untouched.
     ///
-    /// This is a no-op if the current frame is already complete, so it will
-    /// not read from the underlying reader in that case.
+    /// This is a no-op if the current frame is already complete, or if no
+    /// frame has been started yet, so it will not read from the underlying
+    /// reader in those cases.
     pub fn finish_frame(&mut self) -> io::Result<()> {
         // Only pull on the reader if zstd is actually waiting for the rest of
         // a frame. Otherwise this could block on a stream - a socket, say -
         // that has nothing more to give.
-        if self.finished_frame || !matches!(self.state, State::Reading) {
+        if !self.started
+            || self.finished_frame
+            || !matches!(self.state, State::Reading)
+        {
             return Ok(());
         }
 
@@ -285,6 +294,7 @@ where
                     };
 
                     self.reader.consume(bytes_read);
+                    self.started |= bytes_read > 0;
 
                     if bytes_written > 0 {
                         return Ok(bytes_written);

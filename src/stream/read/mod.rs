@@ -243,7 +243,8 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     /// to read, it may stop before reaching the end of the frame.
     ///
     /// This does not touch the underlying reader if the frame is already
-    /// complete, and never starts decoding the next frame.
+    /// complete or if nothing has been read from this decoder yet, and never
+    /// starts decoding the next frame.
     pub fn finish_frame(&mut self) -> io::Result<()> {
         self.reader.finish_frame()
     }

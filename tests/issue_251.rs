@@ -178,3 +178,31 @@ fn finish_does_not_read_ahead_past_a_completed_frame() {
         "finish() read ahead although the frame was already complete"
     );
 }
+
+#[test]
+fn finish_does_not_start_a_frame_that_was_never_read() {
+    // Nothing was read from the decoder, so there is no frame to complete:
+    // the one waiting in the reader belongs to whoever reads next.
+    let frame = frame();
+
+    let decoder =
+        zstd::Decoder::with_buffer(Counting::new(Cursor::new(&frame)))
+            .unwrap();
+    let reader = decoder.finish();
+    assert_eq!(reader.inner.position(), 0);
+    assert_eq!(reader.fill_buf_calls.get(), 0);
+
+    // An empty read does not start it either.
+    let mut decoder =
+        zstd::Decoder::with_buffer(Counting::new(Cursor::new(&frame)))
+            .unwrap();
+    decoder.read_exact(&mut []).unwrap();
+    decoder.finish_frame().unwrap();
+    assert_eq!(decoder.get_ref().inner.position(), 0);
+    assert_eq!(decoder.get_ref().fill_buf_calls.get(), 0);
+
+    // The decoder is still usable afterwards.
+    let mut decoded = Vec::new();
+    decoder.read_to_end(&mut decoded).unwrap();
+    assert_eq!(decoded, vec![0u8; PAYLOAD_LEN]);
+}

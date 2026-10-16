@@ -132,6 +132,9 @@ where
                 let hint = self.operation.run(&mut src, &mut dst)?;
                 if hint == 0 {
                     self.finished_frame = true;
+                    if self.single_frame {
+                        self.state = State::Finished;
+                    }
                 }
 
                 src.pos()

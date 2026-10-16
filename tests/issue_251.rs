@@ -84,6 +84,29 @@ fn concatenated_frames_are_not_consumed() {
     );
 }
 
+#[test]
+fn single_frame_stays_finished_after_finish_frame() {
+    let first = frame();
+    let second = zstd::encode_all(&vec![7u8; PAYLOAD_LEN][..], 3).unwrap();
+    let mut stream = first.clone();
+    stream.extend_from_slice(&second);
+
+    let mut decoder = zstd::Decoder::with_buffer(Cursor::new(&stream))
+        .unwrap()
+        .single_frame();
+    read_exactly(&mut decoder, PAYLOAD_LEN);
+    decoder.finish_frame().unwrap();
+
+    // The frame ended in finish_frame() rather than in read(): that is still
+    // the end of a single-frame decoder.
+    let mut surplus = Vec::new();
+    decoder.read_to_end(&mut surplus).unwrap();
+    assert!(surplus.is_empty(), "read() went on to the second frame");
+
+    let reader = decoder.finish();
+    assert_eq!(reader.position() as usize, first.len());
+}
+
 /// A `BufRead` that counts how often it is asked for more data.
 struct Counting<R> {
     inner: R,

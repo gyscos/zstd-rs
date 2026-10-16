@@ -114,7 +114,8 @@ impl SeekableCStream {
                 ptr_mut(&mut input),
             )
         };
-        parse_code(code)
+        let res = output.check(parse_code(code));
+        input.check(res)
     }
 
     /// Wraps the `ZSTD_seekable_endFrame()` function.
@@ -132,7 +133,7 @@ impl SeekableCStream {
                 ptr_mut(&mut output),
             )
         };
-        parse_code(code)
+        output.check(parse_code(code))
     }
 
     /// Wraps the `ZSTD_seekable_endStream()` function.
@@ -155,7 +156,7 @@ impl SeekableCStream {
                 ptr_mut(&mut output),
             )
         };
-        parse_code(code)
+        output.check(parse_code(code))
     }
 }
 
@@ -241,7 +242,7 @@ impl FrameLog {
                 ptr_mut(&mut output),
             )
         };
-        parse_code(code)
+        output.check(parse_code(code))
     }
 }
 

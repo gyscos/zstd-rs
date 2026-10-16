@@ -1,7 +1,6 @@
 #[cfg(not(feature = "cmake"))]
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::{env, fmt, fs};
 
 #[cfg(feature = "cmake")]
@@ -473,74 +472,60 @@ fn cargo_print(content: &dyn fmt::Display) {
     }
 }
 
-fn check_clang_wasm_support() {
-    // Use cc-rs to find the exact compiler it will use for this target,
-    // so we probe the same binary that compile_zstd() will invoke.
+/// Fails with an explanation when the C compiler cannot build for a wasm
+/// target, instead of letting cc fail with a cryptic error.
+///
+/// This happens on macOS, where the default clang (Apple's) has no
+/// WebAssembly backend: it parses the code, but cannot emit an object file.
+#[cfg(not(feature = "cmake"))]
+fn check_macos_wasm_compiler() {
+    let target = env::var("TARGET").unwrap_or_default();
+    // Probe the same compiler, and the same target, that cc will use.
     let compiler = cc::Build::new().get_compiler();
-    let clang = compiler.path().to_string_lossy().to_string();
+    let probe = PathBuf::from(env::var_os("OUT_DIR").unwrap())
+        .join("wasm_compiler_probe.o");
 
-    // We must attempt actual code generation (not just -fsyntax-only),
-    // because Apple clang can parse for wasm32 but cannot emit code for it.
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let test_obj = out_dir.join("__wasm_probe.o");
-
-    let output = Command::new(compiler.path())
-        .args([
-            "--target=wasm32-unknown-unknown",
-            "-x", "c",
-            "-c", // compile to object (exercises the backend)
-            "-o",
-        ])
-        .arg(&test_obj)
-        .arg("-") // read from stdin
+    let output = std::process::Command::new(compiler.path())
+        .arg(format!("--target={}", target))
+        // Generating code, not just parsing, is what Apple's clang cannot do.
+        .args(["-x", "c", "-c", "-o"])
+        .arg(&probe)
+        .arg("-")
         .stdin(std::process::Stdio::null())
         .output();
+    let _ = fs::remove_file(&probe);
 
-    match output {
-        Err(e) => {
-            panic!(
-                "\n\n\
-                Could not run `{}`: {}\n\
-                \n\
-                To build for wasm32-unknown-unknown on macOS you need LLVM's clang,\n\
-                which ships with wasm32 target support. Fix:\n\
-                \n\
-                    brew install llvm\n\
-                    export PATH=\"/opt/homebrew/opt/llvm/bin:$PATH\"\n\
-                \n\
-                Then re-run your build.\n",
-                clang, e
-            );
+    let problem = match output {
+        Err(e) => format!(
+            "Could not run the C compiler `{}`: {}.",
+            compiler.path().display(),
+            e
+        ),
+        Ok(out)
+            if String::from_utf8_lossy(&out.stderr).contains(
+                "No available targets are compatible with triple",
+            ) =>
+        {
+            format!(
+                "The C compiler `{}` cannot build for `{}`. Apple's clang, the \
+                 default on macOS, has no WebAssembly backend.",
+                compiler.path().display(),
+                target
+            )
         }
-        Ok(out) => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            if stderr
-                .contains("No available targets are compatible with triple")
-            {
-                panic!(
-                    "\n\n\
-                    The `clang` on your PATH ({}) does not support\n\
-                    target `wasm32-unknown-unknown`.\n\
-                    \n\
-                    This is likely the Apple/Xcode clang, which omits wasm backends.\n\
-                    Fix by installing LLVM via Homebrew and prepending it to PATH:\n\
-                    \n\
-                        brew install llvm\n\
-                        export PATH=\"/opt/homebrew/opt/llvm/bin:$PATH\"\n\
-                    \n\
-                    Then re-run your build.\n\
-                    \n\
-                    Alternatively, pin the env var for just this build:\n\
-                    \n\
-                        CC=/opt/homebrew/opt/llvm/bin/clang cargo build \
-                        --target wasm32-unknown-unknown\n",
-                    clang
-                );
-            }
-            // Probe succeeded — clean up the test object
-            let _ = fs::remove_file(&test_obj);
-        }
-    }
+        // Anything else is left for cc to report.
+        Ok(_) => return,
+    };
+
+    panic!(
+        "\n\n{}\n\n\
+         Install LLVM's clang, which can, and build with it:\n\n\
+         \x20   brew install llvm\n\
+         \x20   export CC_{}=\"$(brew --prefix llvm)/bin/clang\"\n\n\
+         or put \"$(brew --prefix llvm)/bin\" first in your PATH.\n",
+        problem,
+        target.replace('-', "_")
+    );
 }
 
 fn main() {
@@ -550,10 +535,6 @@ fn main() {
     let target_arch =
         std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-
-    if target_arch == "wasm32" {
-        check_clang_wasm_support();
-    }
 
     if target_arch == "wasm32" || target_os == "hermit" {
         cargo_print(&"rustc-cfg=feature=\"std\"");
@@ -578,7 +559,13 @@ fn main() {
         #[cfg(feature = "cmake")]
         compile_zstd_cmake();
         #[cfg(not(feature = "cmake"))]
-        compile_zstd();
+        {
+            let host = env::var("HOST").unwrap_or_default();
+            if target_arch == "wasm32" && host.contains("apple-darwin") {
+                check_macos_wasm_compiler();
+            }
+            compile_zstd();
+        }
         (vec![], vec![manifest_dir.join("zstd/lib")])
     };
 

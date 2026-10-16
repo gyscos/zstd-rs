@@ -17,7 +17,30 @@
 //! zstd::stream::copy_decode(io::stdin(), io::stdout()).unwrap();
 //! ```
 //!
+//! # Cargo features
+//!
+//! Enabled by default: `legacy`, `arrays`, `zdict_builder`.
+//!
+//! | Feature | Default | Description |
+//! | --- | --- | --- |
+//! | `arrays` | yes | Use fixed-size arrays (`[u8; N]`) as output buffers. |
+//! | `legacy` | yes | Decode frames written by zstd versions older than 0.8. |
+//! | `zdict_builder` | yes | Train new dictionaries. *Using* a dictionary always works. |
+//! | `experimental` | | Expose zstd's experimental API, which has no stability guarantees. |
+//! | `zstdmt` | | Multi-threaded compression inside the C library. |
+//! | `thin` | | Build a smaller C library, at some cost in speed and error reporting. |
+//! | `debug` | | Enable zstd's debug logs. |
+//! | `no_asm` | | Do not build the x86-64 assembly. |
+//! | `fat-lto`, `thin-lto` | | Cross-language LTO. Only works if `clang` builds the C library. |
+//! | `bindgen` | | Generate the bindings at build time rather than using the pre-generated ones. |
+//! | `pkg-config` | | Link against a system-installed libzstd instead of building the bundled source. |
+//! | `vendored` | | Always build the bundled source, even when `pkg-config` is also enabled. |
+//! | `cmake` | | Build the C library with zstd's own CMake files instead of the `cc` crate. |
+//!
+//! See the [readme] for more about the build-related ones.
+//!
 //! [zstd]: https://github.com/facebook/zstd
+//! [readme]: https://github.com/gyscos/zstd-rs#cargo-features
 #![deny(missing_docs)]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 
@@ -41,13 +64,40 @@ pub fn compression_level_range(
     zstd_safe::min_c_level()..=zstd_safe::max_c_level()
 }
 
+/// How large a buffer a compressed block might need, at worst.
+///
+/// This is what to reserve before [`bulk::compress_to_buffer()`], which writes
+/// into a destination you provide rather than allocating one.
+///
+/// Re-exported from `zstd_safe`, where it lives alongside the rest of the
+/// direct bindings.
+pub use zstd_safe::compress_bound;
+
 #[doc(no_inline)]
-pub use crate::stream::{decode_all, encode_all, Decoder, Encoder};
+pub use crate::stream::{
+    compress_file, compress_file_into, compress_sized, compress_sized_into,
+    decode_all, decompressed_size, encode_all, Decoder, Encoder,
+};
 
 /// Returns the error message as io::Error based on error_code.
 fn map_error_code(code: usize) -> io::Error {
     let msg = zstd_safe::get_error_name(code);
     io::Error::new(io::ErrorKind::Other, msg.to_string())
+}
+
+/// Returns an empty `Vec` with room for exactly `capacity` bytes.
+///
+/// Unlike `Vec::with_capacity`, this fails with an `OutOfMemory` error instead
+/// of aborting the process when that much memory cannot be allocated.
+fn vec_with_capacity(capacity: usize) -> io::Result<Vec<u8>> {
+    let mut vec = Vec::new();
+    vec.try_reserve_exact(capacity).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            format!("could not allocate a buffer of {} bytes", capacity),
+        )
+    })?;
+    Ok(vec)
 }
 
 // Some helper functions to write full-cycle tests.

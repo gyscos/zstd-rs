@@ -23,23 +23,79 @@ pub struct Encoder<'a, R> {
 
 impl<R: Read> Decoder<'static, BufReader<R>> {
     /// Creates a new decoder.
+    ///
+    /// This wraps `reader` in a `BufReader` sized the way zstd likes, so there
+    /// is no need to do that yourself. If what you have already implements
+    /// `BufRead` - a `&[u8]`, say - use [`Decoder::with_buffer()`] instead and
+    /// save the second layer of buffering.
+    ///
+    /// Use [`Self::try_new()`] to recover the reader if initialization fails.
     pub fn new(reader: R) -> io::Result<Self> {
-        let buffer_size = zstd_safe::DCtx::in_size();
+        Self::try_new(reader).map_err(|(_, error)| error)
+    }
 
-        Self::with_buffer(BufReader::with_capacity(buffer_size, reader))
+    /// Creates a new decoder, returning the original reader on error.
+    ///
+    /// Like [`Self::new()`], this wraps the reader in a `BufReader` on
+    /// success. On error, it returns the original `R`, without buffering.
+    /// Construction does not read from or consume the reader.
+    pub fn try_new(reader: R) -> Result<Self, (R, io::Error)> {
+        let decoder = match raw::Decoder::new() {
+            Ok(decoder) => decoder,
+            Err(error) => return Err((reader, error)),
+        };
+        let reader =
+            BufReader::with_capacity(zstd_safe::DCtx::in_size(), reader);
+        Ok(Self {
+            reader: zio::Reader::new(reader, decoder),
+        })
     }
 }
 
 impl<R: BufRead> Decoder<'static, R> {
     /// Creates a new decoder around a `BufRead`.
+    ///
+    /// Unlike [`Decoder::new()`], this adds no buffering of its own, so give
+    /// it something with a reasonable buffer already - `new` uses zstd's
+    /// preferred input size for exactly that reason.
+    ///
+    /// Use [`Self::try_with_buffer()`] to recover the reader if initialization
+    /// fails.
     pub fn with_buffer(reader: R) -> io::Result<Self> {
-        Self::with_dictionary(reader, &[])
+        Self::try_with_buffer(reader).map_err(|(_, error)| error)
     }
+
+    /// Creates a decoder around a `BufRead`, returning the reader on error.
+    ///
+    /// Like [`Self::with_buffer()`], this adds no buffering of its own.
+    /// Construction does not read from or consume the reader.
+    pub fn try_with_buffer(reader: R) -> Result<Self, (R, io::Error)> {
+        Self::try_with_dictionary(reader, &[])
+    }
+
     /// Creates a new decoder, using an existing dictionary.
     ///
     /// The dictionary must be the same as the one used during compression.
+    ///
+    /// Use [`Self::try_with_dictionary()`] to recover the reader if
+    /// initialization fails.
     pub fn with_dictionary(reader: R, dictionary: &[u8]) -> io::Result<Self> {
-        let decoder = raw::Decoder::with_dictionary(dictionary)?;
+        Self::try_with_dictionary(reader, dictionary)
+            .map_err(|(_, error)| error)
+    }
+
+    /// Creates a decoder using a dictionary, returning the reader on error.
+    ///
+    /// The dictionary must be the same as the one used during compression.
+    /// Construction does not read from or consume the reader.
+    pub fn try_with_dictionary(
+        reader: R,
+        dictionary: &[u8],
+    ) -> Result<Self, (R, io::Error)> {
+        let decoder = match raw::Decoder::with_dictionary(dictionary) {
+            Ok(decoder) => decoder,
+            Err(error) => return Err((reader, error)),
+        };
         let reader = zio::Reader::new(reader, decoder);
 
         Ok(Decoder { reader })
@@ -71,14 +127,37 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     /// Creates a new decoder, using an existing `DecoderDictionary`.
     ///
     /// The dictionary must be the same as the one used during compression.
+    ///
+    /// Use [`Self::try_with_prepared_dictionary()`] to recover the reader if
+    /// initialization fails.
     pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &DecoderDictionary<'b>,
+        dictionary: &'a DecoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
     {
-        let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
+        Self::try_with_prepared_dictionary(reader, dictionary)
+            .map_err(|(_, error)| error)
+    }
+
+    /// Creates a decoder using a prepared dictionary, returning the reader
+    /// on error.
+    ///
+    /// The dictionary must be the same as the one used during compression.
+    /// Construction does not read from or consume the reader.
+    pub fn try_with_prepared_dictionary<'b>(
+        reader: R,
+        dictionary: &'a DecoderDictionary<'b>,
+    ) -> Result<Self, (R, io::Error)>
+    where
+        'b: 'a,
+    {
+        let decoder = match raw::Decoder::with_prepared_dictionary(dictionary)
+        {
+            Ok(decoder) => decoder,
+            Err(error) => return Err((reader, error)),
+        };
         let reader = zio::Reader::new(reader, decoder);
 
         Ok(Decoder { reader })
@@ -87,6 +166,9 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     /// Creates a new decoder, using a ref prefix.
     ///
     /// The prefix must be the same as the one used during compression.
+    ///
+    /// Use [`Self::try_with_ref_prefix()`] to recover the reader if
+    /// initialization fails.
     pub fn with_ref_prefix<'b>(
         reader: R,
         ref_prefix: &'b [u8],
@@ -94,7 +176,26 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     where
         'b: 'a,
     {
-        let decoder = raw::Decoder::with_ref_prefix(ref_prefix)?;
+        Self::try_with_ref_prefix(reader, ref_prefix)
+            .map_err(|(_, error)| error)
+    }
+
+    /// Creates a decoder using a reference prefix, returning the reader on
+    /// error.
+    ///
+    /// The prefix must be the same as the one used during compression.
+    /// Construction does not read from or consume the reader.
+    pub fn try_with_ref_prefix<'b>(
+        reader: R,
+        ref_prefix: &'b [u8],
+    ) -> Result<Self, (R, io::Error)>
+    where
+        'b: 'a,
+    {
+        let decoder = match raw::Decoder::with_ref_prefix(ref_prefix) {
+            Ok(decoder) => decoder,
+            Err(error) => return Err((reader, error)),
+        };
         let reader = zio::Reader::new(reader, decoder);
 
         Ok(Decoder { reader })
@@ -118,12 +219,51 @@ impl<'a, R: BufRead> Decoder<'a, R> {
         self.reader.reader_mut()
     }
 
+    /// Return the inner reader without consuming additional input.
+    ///
+    /// This does not read from the underlying reader or try to finish the
+    /// current frame. Any buffered decoded data is discarded, and the reader
+    /// is returned at its current position.
+    ///
+    /// Use [`Self::finish()`] to try to consume any remaining frame input
+    /// before returning the reader.
+    pub fn into_inner(self) -> R {
+        self.reader.into_inner()
+    }
+
+    /// Try to consume the remaining input from the current frame.
+    ///
+    /// zstd can hand out the last of the decoded data before it has read the
+    /// frame epilogue, so a reader that stops as soon as it has the bytes it
+    /// wanted leaves the input somewhere inside the frame. Call this to line
+    /// the reader back up with the end of the frame - for instance to carry on
+    /// reading whatever follows the compressed section.
+    ///
+    /// This does not discard unread decoded data. If there is still output
+    /// to read, it may stop before reaching the end of the frame.
+    ///
+    /// This does not touch the underlying reader if the frame is already
+    /// complete or if nothing has been read from this decoder yet, and never
+    /// starts decoding the next frame.
+    pub fn finish_frame(&mut self) -> io::Result<()> {
+        self.reader.finish_frame()
+    }
+
     /// Return the inner `Read`.
     ///
     /// Calling `finish()` is not *required* after reading a stream -
     /// just use it if you need to get the `Read` back.
-    pub fn finish(self) -> R {
-        self.reader.into_inner()
+    ///
+    /// This tries to consume any remaining input from the current frame
+    /// first - see [`Self::finish_frame()`]. That may read from the underlying
+    /// reader, and any error doing so is ignored; call `finish_frame()`
+    /// directly if you need to see it.
+    ///
+    /// To return the reader without consuming additional input, use
+    /// [`Self::into_inner()`].
+    pub fn finish(mut self) -> R {
+        let _ = self.finish_frame();
+        self.into_inner()
     }
 
     crate::decoder_common!(reader);
@@ -132,6 +272,10 @@ impl<'a, R: BufRead> Decoder<'a, R> {
 impl<R: BufRead> Read for Decoder<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.reader.read(buf)
+    }
+
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+        self.reader.read_to_end(buf)
     }
 }
 
@@ -184,7 +328,7 @@ impl<'a, R: BufRead> Encoder<'a, R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &EncoderDictionary<'b>,
+        dictionary: &'a EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,

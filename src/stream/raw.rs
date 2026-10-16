@@ -135,6 +135,15 @@ pub struct Decoder<'a> {
     context: MaybeOwnedDCtx<'a>,
 }
 
+fn create_dctx<'a>() -> io::Result<zstd_safe::DCtx<'a>> {
+    zstd_safe::DCtx::try_create().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            "zstd could not allocate a decompression context",
+        )
+    })
+}
+
 impl Decoder<'static> {
     /// Creates a new decoder.
     pub fn new() -> io::Result<Self> {
@@ -143,7 +152,7 @@ impl Decoder<'static> {
 
     /// Creates a new decoder initialized with the given dictionary.
     pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
-        let mut context = zstd_safe::DCtx::create();
+        let mut context = create_dctx()?;
         context.init().map_err(map_error_code)?;
         context
             .load_dictionary(dictionary)
@@ -156,7 +165,15 @@ impl Decoder<'static> {
 
 impl<'a> Decoder<'a> {
     /// Creates a new decoder which employs the provided context for deserialization.
+    ///
+    /// The context's session is reset first: anything left over from a frame
+    /// that a previous user of the context did not finish is discarded.
+    /// Parameters and dictionary are kept.
     pub fn with_context(context: &'a mut zstd_safe::DCtx<'static>) -> Self {
+        // Otherwise we would start by handing out what is left of the
+        // previous decoder's output. Resetting only the session cannot fail.
+        let _ = context.reset(zstd_safe::ResetDirective::SessionOnly);
+
         Self {
             context: MaybeOwnedDCtx::Borrowed(context),
         }
@@ -164,12 +181,12 @@ impl<'a> Decoder<'a> {
 
     /// Creates a new decoder, using an existing `DecoderDictionary`.
     pub fn with_prepared_dictionary<'b>(
-        dictionary: &DecoderDictionary<'b>,
+        dictionary: &'a DecoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
     {
-        let mut context = zstd_safe::DCtx::create();
+        let mut context = create_dctx()?;
         context
             .ref_ddict(dictionary.as_ddict())
             .map_err(map_error_code)?;
@@ -183,7 +200,7 @@ impl<'a> Decoder<'a> {
     where
         'b: 'a,
     {
-        let mut context = zstd_safe::DCtx::create();
+        let mut context = create_dctx()?;
         context.ref_prefix(ref_prefix).map_err(map_error_code)?;
         Ok(Decoder {
             context: MaybeOwnedDCtx::Owned(context),
@@ -291,7 +308,16 @@ impl Encoder<'static> {
 
 impl<'a> Encoder<'a> {
     /// Creates a new encoder that uses the provided context for serialization.
+    ///
+    /// The context's session is reset first: anything left over from a frame
+    /// that a previous user of the context did not finish is discarded, and
+    /// so is the pledged source size (set it on the encoder instead).
+    /// Parameters and dictionary are kept.
     pub fn with_context(context: &'a mut zstd_safe::CCtx<'static>) -> Self {
+        // Otherwise the input buffered by the previous encoder would become
+        // the start of our frame. Resetting only the session cannot fail.
+        let _ = context.reset(zstd_safe::ResetDirective::SessionOnly);
+
         Self {
             context: MaybeOwnedCCtx::Borrowed(context),
         }
@@ -299,7 +325,7 @@ impl<'a> Encoder<'a> {
 
     /// Creates a new encoder using an existing `EncoderDictionary`.
     pub fn with_prepared_dictionary<'b>(
-        dictionary: &EncoderDictionary<'b>,
+        dictionary: &'a EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,

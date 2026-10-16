@@ -1,10 +1,8 @@
-use zstd;
-
 use std::env;
 use std::fs;
 use std::io;
 
-const SUFFIX: &'static str = ".zst";
+const SUFFIX: &str = ".zst";
 
 fn main() {
     for arg in env::args().skip(1) {

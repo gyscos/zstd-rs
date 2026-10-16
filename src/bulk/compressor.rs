@@ -114,6 +114,10 @@ impl<'a> Compressor<'a> {
     /// (for instance if the destination buffer was too small).
     ///
     /// A level of `0` uses zstd's default (currently `3`).
+    /// [`crate::compress_bound()`] says how large `destination` might need to
+    /// be. For a `Vec` it is the *capacity* that bounds the output, so
+    /// `reserve` what you need rather than `resize` - the bytes do not have to
+    /// be initialized first.
     pub fn compress_to_buffer<C: zstd_safe::WriteBuf + ?Sized>(
         &mut self,
         source: &[u8],
@@ -130,7 +134,7 @@ impl<'a> Compressor<'a> {
     pub fn compress(&mut self, data: &[u8]) -> io::Result<Vec<u8>> {
         // We allocate a big buffer, slightly larger than the input data.
         let buffer_len = zstd_safe::compress_bound(data.len());
-        let mut buffer = Vec::with_capacity(buffer_len);
+        let mut buffer = crate::vec_with_capacity(buffer_len)?;
 
         self.compress_to_buffer(data, &mut buffer)?;
 

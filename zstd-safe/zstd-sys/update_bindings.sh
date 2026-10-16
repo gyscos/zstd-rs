@@ -1,7 +1,9 @@
 #!/bin/sh
 
 RUST_TARGET=1.64
-bindgen="bindgen --no-layout-tests --blocklist-type=max_align_t --rustified-enum=.* --use-core --rust-target $RUST_TARGET"
+# Keep the existing Copy/Clone API for opaque handles, as in build.rs.
+opaque_handles='(ZSTD_(CCtx|DCtx|CDict|DDict|CCtx_params|seekable_CStream|seekable|seekTable|frameLog)_s|POOL_ctx_s)'
+bindgen="bindgen --no-layout-tests --blocklist-type=max_align_t --rustified-enum=.* --use-core --rust-target $RUST_TARGET --with-derive-custom-struct=$opaque_handles=Copy,Clone"
 experimental="-DZSTD_STATIC_LINKING_ONLY -DZDICT_STATIC_LINKING_ONLY -DZSTD_RUST_BINDINGS_EXPERIMENTAL"
 
 run_bindgen()

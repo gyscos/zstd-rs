@@ -1,0 +1,33 @@
+name: CMake
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        submodules: recursive
+
+    - name: Build with feature cmake
+      run: cargo build --verbose --features cmake
+    - name: Run tests with feature cmake
+      run: cargo test --verbose --features cmake
+
+    - name: Build with feature cmake and no default features
+      run: cargo build --verbose --no-default-features --features cmake
+
+    - name: Build zstd-safe with features cmake and seekable
+      run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable,cmake
+    - name: Run zstd-safe tests with features cmake and seekable
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable,cmake

@@ -1950,19 +1950,25 @@ where
     }
 
     unsafe fn filled_until(&mut self, n: usize) {
-        // Early exit: `n = 0` does not indicate anything.
-        if n == 0 {
-            return;
-        }
-
         // Here we assume data _before_ self.position() was already initialized.
         // Egh it's not actually guaranteed by Cursor? So let's guarantee it ourselves.
         // Since the cursor wraps another `WriteBuf`, we know how much data is initialized there.
         let position = cursor_position(self);
-        // The caller wrote `n > 0` bytes starting at `position`, so `position`
-        // is inside the buffer. Checking it before the zero-fill below keeps a
-        // position that could not be converted from running off the end.
-        assert!(position <= self.get_ref().capacity());
+        let capacity = self.get_ref().capacity();
+        if n == 0 && position > capacity {
+            // Nothing was written, and nothing could have been: there is
+            // no room at all after the cursor.
+            return;
+        }
+        // Otherwise the caller wrote `n` bytes starting at `position`, so
+        // `position` is inside the buffer. Checking it before the zero-fill
+        // below keeps a position that could not be converted from running off
+        // the end.
+        //
+        // Note that `n == 0` still truncates the data after the cursor, like
+        // any other `n` does: an empty result must not leave a previous one
+        // in place.
+        assert!(position <= capacity);
         let initialized = self.get_ref().as_slice().len();
         if let Some(uninitialized) = position.checked_sub(initialized) {
             // Here, the cursor is further than the known-initialized part.
@@ -1970,10 +1976,9 @@ where
             // We'll zero bytes from the end of valid data (as_slice().len()) to the cursor position.
 
             // Safety:
-            // * We know `n > 0`
-            // * This means `self.capacity() > 0` (promise by the caller)
-            // * This means `self.get_ref().capacity() > self.position`
-            // * This means that `position` is within the nested pointer's allocation.
+            // * We checked `position <= self.get_ref().capacity()`
+            // * This means that `position` is within (or one past) the nested
+            //   pointer's allocation.
             // * Finally, `initialized + uninitialized = position`, so the entire byte
             //   range here is within the allocation
             unsafe {

@@ -72,3 +72,35 @@ fn setup_partial_write(
 
     z
 }
+
+/// Test that a panic from the writer can be caught: the wrappers must not hand
+/// it the same data again on drop, or the second panic aborts the process.
+#[test]
+fn test_auto_wrappers_panicking_writer() {
+    struct Panicking;
+
+    impl Write for Panicking {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            panic!("this writer panics");
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let input = vec![b'b'; 128 * 1024];
+    let encoded = crate::encode_all(&input[..], 1).unwrap();
+
+    std::panic::catch_unwind(|| {
+        let mut decoder = Decoder::new(Panicking).unwrap().auto_flush();
+        decoder.write_all(&encoded)
+    })
+    .unwrap_err();
+
+    std::panic::catch_unwind(|| {
+        let mut encoder = Encoder::new(Panicking, 1).unwrap().auto_finish();
+        encoder.write_all(&input).and_then(|()| encoder.flush())
+    })
+    .unwrap_err();
+}

@@ -134,7 +134,7 @@ impl<'a> Compressor<'a> {
     pub fn compress(&mut self, data: &[u8]) -> io::Result<Vec<u8>> {
         // We allocate a big buffer, slightly larger than the input data.
         let buffer_len = zstd_safe::compress_bound(data.len());
-        let mut buffer = Vec::with_capacity(buffer_len);
+        let mut buffer = crate::vec_with_capacity(buffer_len)?;
 
         self.compress_to_buffer(data, &mut buffer)?;
 

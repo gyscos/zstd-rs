@@ -85,6 +85,21 @@ fn map_error_code(code: usize) -> io::Error {
     io::Error::new(io::ErrorKind::Other, msg.to_string())
 }
 
+/// Returns an empty `Vec` with room for exactly `capacity` bytes.
+///
+/// Unlike `Vec::with_capacity`, this fails with an `OutOfMemory` error instead
+/// of aborting the process when that much memory cannot be allocated.
+fn vec_with_capacity(capacity: usize) -> io::Result<Vec<u8>> {
+    let mut vec = Vec::new();
+    vec.try_reserve_exact(capacity).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            format!("could not allocate a buffer of {} bytes", capacity),
+        )
+    })?;
+    Ok(vec)
+}
+
 // Some helper functions to write full-cycle tests.
 
 #[cfg(test)]

@@ -188,3 +188,10 @@ fn test_decompress_capacity_between_actual_and_bound() {
     let generous = TEXT.len() * 2;
     assert_eq!(decompress(&compressed, generous).unwrap().len(), TEXT.len());
 }
+
+/// A capacity that cannot be allocated is an error, not an abort or a panic.
+#[test]
+fn test_decompress_impossible_capacity() {
+    let error = super::decompress(&[0u8], usize::MAX).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::OutOfMemory);
+}

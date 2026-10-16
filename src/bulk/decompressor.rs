@@ -137,7 +137,7 @@ impl<'a> Decompressor<'a> {
             None => bound_from_zstd(data).unwrap_or(capacity).min(capacity),
         };
 
-        let mut buffer = Vec::with_capacity(capacity);
+        let mut buffer = crate::vec_with_capacity(capacity)?;
         self.decompress_to_buffer(data, &mut buffer)?;
         Ok(buffer)
     }

@@ -200,7 +200,7 @@ pub fn from_continuous(
         ));
     }
 
-    let mut result = Vec::with_capacity(max_size);
+    let mut result = crate::vec_with_capacity(max_size)?;
     zstd_safe::train_from_buffer(&mut result, sample_data, sample_sizes)
         .map_err(map_error_code)?;
     Ok(result)
@@ -227,11 +227,21 @@ pub fn from_samples<S: AsRef<[u8]>>(
     samples: &[S],
     max_size: usize,
 ) -> io::Result<Vec<u8>> {
-    // Pre-allocate the entire required size.
-    let total_length: usize =
-        samples.iter().map(|sample| sample.as_ref().len()).sum();
+    // Pre-allocate the entire required size. The samples may overlap (the
+    // same slice given several times), so their total can exceed memory.
+    let total_length = samples
+        .iter()
+        .try_fold(0usize, |total, sample| {
+            total.checked_add(sample.as_ref().len())
+        })
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::OutOfMemory,
+                "the samples are too large to copy together",
+            )
+        })?;
 
-    let mut data = Vec::with_capacity(total_length);
+    let mut data = crate::vec_with_capacity(total_length)?;
 
     // Copy every sample to a big chunk of memory
     data.extend(samples.iter().flat_map(|s| s.as_ref()).cloned());
@@ -380,5 +390,17 @@ mod tests {
         let data = [0u8; 100];
         let sizes = [usize::MAX - 99, 200];
         assert!(super::from_continuous(&data, &sizes, 4000).is_err());
+    }
+
+    #[test]
+    fn test_impossible_max_size() {
+        use std::io::ErrorKind::OutOfMemory;
+
+        // A dictionary buffer that cannot be allocated is an error, not an
+        // abort or a panic.
+        let error = super::from_continuous(&[], &[], usize::MAX).unwrap_err();
+        assert_eq!(error.kind(), OutOfMemory);
+        let error = super::from_samples::<&[u8]>(&[], usize::MAX).unwrap_err();
+        assert_eq!(error.kind(), OutOfMemory);
     }
 }

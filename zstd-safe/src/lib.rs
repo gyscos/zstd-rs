@@ -1888,8 +1888,12 @@ pub unsafe trait WriteBuf {
     where
         F: FnOnce(*mut c_void, usize) -> SafeResult,
     {
-        let res = f(ptr_mut_void(self), self.capacity());
+        let capacity = self.capacity();
+        let res = f(ptr_mut_void(self), capacity);
         if let Ok(n) = res {
+            // Nothing can have been written past the end of the buffer; a
+            // larger count would mark memory we do not own as initialized.
+            assert!(n <= capacity, "zstd reported writing past the buffer");
             self.filled_until(n);
         }
         res

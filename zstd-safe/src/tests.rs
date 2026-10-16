@@ -192,6 +192,14 @@ fn test_seekable_cycle() {
         seekable.decompress(dst, offset)
     });
 
+    // A `Vec` takes its length from the result
+    #[cfg(feature = "std")]
+    {
+        let mut buffer = Vec::with_capacity(64);
+        assert_eq!(seekable.decompress(&mut buffer, 4096), Ok(0));
+        assert!(buffer.is_empty());
+    }
+
     // Check that the archive can also be decompressed by a regular function
     let mut buffer = std::vec![0u8; 256];
     let written = zstd_safe::decompress(&mut buffer[..], &seekable_archive)
@@ -337,6 +345,19 @@ where
         .unwrap();
     let decompressed = &buffer[..written];
     assert_eq!(INPUT, decompressed);
+
+    // Stop at the end of the data
+    let end = INPUT.len() as u64;
+    let written = decompress(&mut buffer[..], end - 10)
+        .map_err(zstd_safe::get_error_name)
+        .unwrap();
+    assert_eq!(&INPUT[INPUT.len() - 10..], &buffer[..written]);
+
+    // There is nothing to decompress from there on, no matter how far
+    for offset in [end, end + 1, end + 4096, u64::MAX - 9, u64::MAX] {
+        assert_eq!(decompress(&mut buffer[..], offset), Ok(0));
+        assert_eq!(decompress(&mut buffer[..30], offset), Ok(0));
+    }
 }
 
 /// An error can leave a context in a state zstd calls undefined, and says it is

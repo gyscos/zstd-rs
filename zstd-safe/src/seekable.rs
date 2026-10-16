@@ -322,22 +322,63 @@ impl<'a> Seekable<'a> {
     /// range of data, it will efficiently retain the decompressor object and avoid
     /// redecompressing frame prefixes.
     ///
-    /// Returns the number of bytes decompressed, or an error code.
+    /// Returns the number of bytes decompressed, or an error code. This is less than the length
+    /// of `dst` if the data ends first, and `0` if `offset` is at or past the end of the data.
     pub fn decompress<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
         offset: u64,
     ) -> SafeResult {
+        // `ZSTD_seekable_decompress()` does cut the length down to what is left
+        // of the data, but with unchecked arithmetic: for an `offset` past the
+        // end it wraps around and either claims to have written bytes it did
+        // not write (possibly far more than `dst` can hold), or never returns.
+        // So only ever ask it for a range that lies within the data.
+        let remaining = self.decompressed_size().saturating_sub(offset);
         unsafe {
             dst.write_from(|buffer, capacity| {
+                if remaining == 0 {
+                    return Ok(0);
+                }
                 parse_code(zstd_sys::ZSTD_seekable_decompress(
                     self.0.as_ptr(),
                     buffer,
-                    capacity,
+                    // No more than `capacity`, so this fits a `usize`.
+                    remaining.min(capacity as u64) as usize,
                     offset,
                 ))
             })
         }
+    }
+
+    /// Get the decompressed size of all the frames together, i.e. the end of
+    /// the data as the seek table describes it.
+    ///
+    /// Returns `0` if the seekable is not initialized.
+    fn decompressed_size(&self) -> u64 {
+        let last_frame = match self.num_frames().checked_sub(1) {
+            Some(last_frame) => last_frame,
+            None => return 0,
+        };
+
+        // Safety: Just FFI. `last_frame` is in range, so neither is an error.
+        let offset = unsafe {
+            zstd_sys::ZSTD_seekable_getFrameDecompressedOffset(
+                self.0.as_ptr(),
+                last_frame,
+            )
+        };
+        let size = unsafe {
+            zstd_sys::ZSTD_seekable_getFrameDecompressedSize(
+                self.0.as_ptr(),
+                last_frame,
+            )
+        };
+
+        // The seek table stores cumulative offsets in wrapping `u64`
+        // arithmetic, so this gives exactly the end-of-stream value zstd
+        // compares against, even for a table whose sizes do not add up.
+        offset.wrapping_add(size as u64)
     }
 
     /// Decompresses the frame with index `frame_index` into `dst`.

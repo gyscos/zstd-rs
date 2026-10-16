@@ -255,12 +255,77 @@ fn test_seekable_seek_table() {
         seek_table.frame_decompressed_size(2).unwrap()
     );
 
+    // zstd itself would read past the end of the seek table here.
+    let last = seekable.num_frames();
+    assert!(seekable.frame_decompressed_size(last).is_err());
+    assert!(seek_table.frame_decompressed_size(last).is_err());
+    assert!(seekable.frame_compressed_size(last).is_err());
+    assert!(seek_table.frame_compressed_size(last).is_err());
+
     // Trigger FrameIndexTooLargeError
     let frame_index = seekable.num_frames() + 1;
     assert_eq!(
         seek_table.frame_compressed_offset(frame_index).unwrap_err(),
         FrameIndexTooLargeError
     );
+}
+
+/// A seekable has no seek table until it is successfully initialized, and zstd
+/// dereferences a null pointer looking for it.
+#[cfg(feature = "seekable")]
+#[test]
+fn test_seekable_uninitialized() {
+    use crate::seekable::Seekable;
+
+    fn check(seekable: &mut Seekable<'_>, error: &str) {
+        let mut buffer = std::vec![0u8; 64];
+        assert_eq!(
+            seekable
+                .decompress(&mut buffer[..], 0)
+                .map_err(zstd_safe::get_error_name),
+            Err(error)
+        );
+        assert_eq!(
+            seekable
+                .decompress_frame(&mut buffer[..], 0)
+                .map_err(zstd_safe::get_error_name),
+            Err(error)
+        );
+        assert_eq!(
+            seekable
+                .frame_decompressed_size(0)
+                .map_err(zstd_safe::get_error_name),
+            Err(error)
+        );
+        assert_eq!(seekable.offset_to_frame_index(0), 0);
+    }
+
+    let seekable_archive = new_seekable_archive(INPUT);
+    let mut seekable = Seekable::create();
+    check(&mut seekable, "Context should be init first");
+
+    // A failed initialization does not make it usable.
+    let error = seekable
+        .init_buff(b"this is not a seekable archive")
+        .map_err(zstd_safe::get_error_name)
+        .unwrap_err();
+    check(&mut seekable, error);
+
+    // A successful one does...
+    seekable
+        .init_buff(&seekable_archive)
+        .map_err(zstd_safe::get_error_name)
+        .unwrap();
+    check_seekable_decompression(|dst, offset| {
+        seekable.decompress(dst, offset)
+    });
+
+    // ... until the next failure.
+    let error = seekable
+        .init_buff(b"this is not a seekable archive")
+        .map_err(zstd_safe::get_error_name)
+        .unwrap_err();
+    check(&mut seekable, error);
 }
 
 #[cfg(all(feature = "std", feature = "seekable"))]

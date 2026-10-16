@@ -6,9 +6,21 @@
 use core::{marker::PhantomData, ptr::NonNull};
 
 use crate::{
-    parse_code, ptr_mut, ptr_void, CompressionLevel, InBuffer, OutBuffer,
-    SafeResult, WriteBuf, SEEKABLE_FRAMEINDEX_TOOLARGE,
+    parse_code, ptr_mut, ptr_void, CompressionLevel, ErrorCode, InBuffer,
+    OutBuffer, Poison, SafeResult, WriteBuf, SEEKABLE_FRAMEINDEX_TOOLARGE,
 };
+
+/// The error code zstd itself uses for a context that should have been
+/// initialized first (`-ZSTD_error_init_missing` as a `size_t`).
+const INIT_MISSING_ERROR: ErrorCode =
+    (zstd_sys::ZSTD_ErrorCode::ZSTD_error_init_missing as usize)
+        .wrapping_neg();
+
+/// The error code zstd itself returns for a frame index past the last frame
+/// (`-ZSTD_error_frameIndex_tooLarge` as a `size_t`).
+const FRAMEINDEX_TOOLARGE_ERROR: ErrorCode =
+    (zstd_sys::ZSTD_ErrorCode::ZSTD_error_frameIndex_tooLarge as usize)
+        .wrapping_neg();
 
 /// Indicates that the passed frame index is too large.
 ///
@@ -262,7 +274,16 @@ impl Drop for FrameLog {
 /// A seekable decompression object.
 ///
 /// The lifetime references the potential buffer that holds the data of this seekable.
-pub struct Seekable<'a>(NonNull<zstd_sys::ZSTD_seekable>, PhantomData<&'a ()>);
+///
+/// It needs to be initialized, with `init_buff()` or `init_advanced()`, before it can be used.
+// zstd only allocates the seek table when an initialization succeeds, and then
+// reads it without checking that it is there. So this starts out poisoned, and
+// stays so until an initialization succeeds.
+pub struct Seekable<'a>(
+    NonNull<zstd_sys::ZSTD_seekable>,
+    PhantomData<&'a ()>,
+    Poison,
+);
 
 // Safety: as for `SeekableCStream`. Note the decompression methods, which do
 // drive the C context, all take `&mut self`.
@@ -284,6 +305,7 @@ impl<'a> Seekable<'a> {
         Some(Seekable(
             NonNull::new(unsafe { zstd_sys::ZSTD_seekable_create() })?,
             PhantomData,
+            Poison(Some(INIT_MISSING_ERROR)),
         ))
     }
 
@@ -312,7 +334,10 @@ impl<'a> Seekable<'a> {
             )
         };
 
-        parse_code(code)
+        // Only the last initialization counts: a failed one has already
+        // replaced the source, whatever seek table was there before.
+        self.2.clear();
+        self.2.record(parse_code(code))
     }
 
     /// Decompresses the length of `dst` at decompressed offset `offset`.
@@ -329,6 +354,7 @@ impl<'a> Seekable<'a> {
         dst: &mut C,
         offset: u64,
     ) -> SafeResult {
+        self.2.guard()?;
         // `ZSTD_seekable_decompress()` does cut the length down to what is left
         // of the data, but with unchecked arithmetic: for an `offset` past the
         // end it wraps around and either claims to have written bytes it did
@@ -389,6 +415,7 @@ impl<'a> Seekable<'a> {
         dst: &mut C,
         frame_index: u32,
     ) -> SafeResult {
+        self.2.guard()?;
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_seekable_decompressFrame(
@@ -468,6 +495,12 @@ impl<'a> Seekable<'a> {
     ///
     /// Returns an error if `frame_index` is out of range.
     pub fn frame_decompressed_size(&self, frame_index: u32) -> SafeResult {
+        self.2.guard()?;
+        // zstd only rejects `frame_index > num_frames()`, and reads past the
+        // end of the seek table for `frame_index == num_frames()`.
+        if frame_index >= self.num_frames() {
+            return Err(FRAMEINDEX_TOOLARGE_ERROR);
+        }
         let code = unsafe {
             zstd_sys::ZSTD_seekable_getFrameDecompressedSize(
                 self.0.as_ptr(),
@@ -479,7 +512,12 @@ impl<'a> Seekable<'a> {
     }
 
     /// Get the frame at the given offset.
+    ///
+    /// Returns `0` if the seekable is not initialized.
     pub fn offset_to_frame_index(&self, offset: u64) -> u32 {
+        if self.2.guard().is_err() {
+            return 0;
+        }
         unsafe {
             zstd_sys::ZSTD_seekable_offsetToFrameIndex(self.0.as_ptr(), offset)
         }
@@ -570,7 +608,7 @@ impl<'a> Seekable<'a> {
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
     pub fn init_advanced<F>(
-        self,
+        mut self,
         src: std::boxed::Box<F>,
     ) -> Result<AdvancedSeekable<'a, F>, crate::ErrorCode>
     where
@@ -598,6 +636,7 @@ impl<'a> Seekable<'a> {
             return Err(code);
         }
 
+        self.2.clear();
         Ok(AdvancedSeekable {
             inner: self,
             src: opaque,
@@ -770,6 +809,10 @@ impl SeekTable {
     ///
     /// Returns an error if `frame_index` is out of range.
     pub fn frame_decompressed_size(&self, frame_index: u32) -> SafeResult {
+        // See `Seekable::frame_decompressed_size()`.
+        if frame_index >= self.num_frames() {
+            return Err(FRAMEINDEX_TOOLARGE_ERROR);
+        }
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_seekTable_getFrameDecompressedSize(

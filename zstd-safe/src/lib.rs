@@ -81,6 +81,14 @@ const MEMORY_ALLOCATION_ERROR: ErrorCode =
     (zstd_sys::ZSTD_ErrorCode::ZSTD_error_memory_allocation as usize)
         .wrapping_neg();
 
+/// The error code zstd itself returns for a parameter it does not support
+/// (`-ZSTD_error_parameter_unsupported` as a `size_t`), for the parameters
+/// that are refused on the Rust side of a call.
+#[cfg(feature = "experimental")]
+const PARAMETER_UNSUPPORTED_ERROR: ErrorCode =
+    (zstd_sys::ZSTD_ErrorCode::ZSTD_error_parameter_unsupported as usize)
+        .wrapping_neg();
+
 /// Indicates an error happened when parsing the frame content size.
 ///
 /// The stream may be corrupted, or the given frame prefix was too small.
@@ -749,8 +757,13 @@ impl<'a> CCtx<'a> {
             EnableDedicatedDictSearch(enable) => {
                 (ZSTD_c_enableDedicatedDictSearch, enable as c_int)
             }
+            // In stable mode zstd keeps reading from the `InBuffer` of one
+            // call during `flush_stream`/`end_stream`, but the slice is only
+            // borrowed for that one call: the safe API cannot uphold this.
             #[cfg(feature = "experimental")]
-            StableInBuffer(stable) => (ZSTD_c_stableInBuffer, stable as c_int),
+            StableInBuffer(true) => return Err(PARAMETER_UNSUPPORTED_ERROR),
+            #[cfg(feature = "experimental")]
+            StableInBuffer(false) => (ZSTD_c_stableInBuffer, 0),
             #[cfg(feature = "experimental")]
             StableOutBuffer(stable) => {
                 (ZSTD_c_stableOutBuffer, stable as c_int)
@@ -2529,6 +2542,12 @@ pub enum CParameter {
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     EnableDedicatedDictSearch(bool),
 
+    /// Whether zstd may keep referencing the input buffer instead of copying
+    /// it.
+    ///
+    /// This requires the input to stay allocated and unmodified until the
+    /// frame is complete, which a borrowed `InBuffer` cannot guarantee:
+    /// `CCtx::set_parameter` refuses to enable it and returns an error.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     StableInBuffer(bool),

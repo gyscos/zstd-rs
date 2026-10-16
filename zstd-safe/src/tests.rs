@@ -255,6 +255,24 @@ fn test_upper_bound() {
     );
 }
 
+#[cfg(feature = "experimental")]
+#[test]
+fn test_stable_in_buffer_cannot_be_enabled() {
+    use zstd_safe::CParameter::StableInBuffer;
+
+    // Enabling it would let `end_stream` read from an `InBuffer` whose
+    // borrow ended with the `compress_stream` call that received it.
+    let mut cctx = zstd_safe::CCtx::create();
+    let err = cctx
+        .set_parameter(StableInBuffer(true))
+        .map_err(zstd_safe::get_error_name)
+        .unwrap_err();
+    assert!(err.contains("Unsupported parameter"));
+
+    // Asking for the default is still fine.
+    cctx.set_parameter(StableInBuffer(false)).unwrap();
+}
+
 #[cfg(feature = "seekable")]
 #[test]
 fn test_seekable_cycle() {

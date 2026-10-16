@@ -1306,12 +1306,21 @@ impl<'a> DCtx<'a> {
     /// everything up again from the context's own dictionary. So when no
     /// streaming call ran since the last reset, there is nothing to end, and
     /// skipping the reset saves a call per frame - which shows on tiny ones.
+    ///
+    /// Only the check is inlined: it runs once per frame.
+    #[inline]
     fn finish_one_shot(&mut self, res: SafeResult) -> SafeResult {
         if self.3.streamed || self.2.guard().is_err() {
-            self.reset(ResetDirective::SessionOnly).and(res)
+            self.reset_after_one_shot(res)
         } else {
             res
         }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn reset_after_one_shot(&mut self, res: SafeResult) -> SafeResult {
+        self.reset(ResetDirective::SessionOnly).and(res)
     }
 
     /// Fully decompress the given frame.

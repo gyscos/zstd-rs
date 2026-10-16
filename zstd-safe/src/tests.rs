@@ -751,6 +751,73 @@ fn test_cloning_poisoned_contexts_returns_the_original_error() {
 #[cfg(all(feature = "std", feature = "experimental"))]
 #[test]
 #[allow(deprecated)] // Exercises the deprecated context-copying API.
+fn test_cloning_decompression_context_never_shares_what_it_owns() {
+    use crate::{
+        CCtx, DCtx, DDict, DParameter, InBuffer, OutBuffer, ResetDirective,
+    };
+
+    let dict = &LONG_CONTENT.as_bytes()[..1000];
+    let ddict = DDict::create(dict);
+    let mut compressed =
+        Vec::with_capacity(crate::compress_bound(INPUT.len()));
+    CCtx::create()
+        .compress_using_dict(&mut compressed, INPUT, dict, 3)
+        .unwrap();
+
+    // The copy would free these along with the original.
+    let mut dctx = DCtx::create();
+    dctx.load_dictionary(dict).unwrap();
+    assert!(dctx.try_clone().is_err());
+    dctx.ref_prefix(dict).unwrap();
+    assert!(dctx.try_clone().is_err());
+    dctx.init_using_dict(dict).unwrap();
+    assert!(dctx.try_clone().is_err());
+    dctx.disable_dictionary().unwrap();
+    assert!(dctx.try_clone().is_ok());
+
+    // zstd keeps the table of dictionaries even after the parameter is reset.
+    let mut dctx = DCtx::create();
+    dctx.set_parameter(DParameter::RefMultipleDDicts(true))
+        .unwrap();
+    dctx.ref_ddict(&ddict).unwrap();
+    assert!(dctx.try_clone().is_err());
+    dctx.reset(ResetDirective::SessionAndParameters).unwrap();
+    assert!(dctx.try_clone().is_err());
+
+    // A referenced dictionary belongs to neither context.
+    let mut dctx = DCtx::create();
+    dctx.ref_ddict(&ddict).unwrap();
+    // Part of a header leaves the original in the middle of a frame.
+    dctx.decompress_stream(
+        &mut OutBuffer::around(&mut [0; 8][..]),
+        &mut InBuffer::around(&compressed[..3]),
+    )
+    .unwrap();
+    let mut cloned = dctx.try_clone().unwrap();
+    drop(dctx);
+
+    let mut decoded = Vec::with_capacity(INPUT.len());
+    let mut output = OutBuffer::around(&mut decoded);
+    let hint = cloned
+        .decompress_stream(&mut output, &mut InBuffer::around(&compressed))
+        .unwrap();
+    assert_eq!(hint, 0);
+    assert_eq!(decoded, INPUT);
+
+    // Once the streaming buffers exist, data has been decompressed.
+    let mut dctx = DCtx::create();
+    dctx.ref_ddict(&ddict).unwrap();
+    dctx.decompress_stream(
+        &mut OutBuffer::around(&mut [0; 8][..]),
+        &mut InBuffer::around(&compressed),
+    )
+    .unwrap();
+    assert!(dctx.try_clone().is_err());
+}
+
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+#[allow(deprecated)] // Exercises the deprecated context-copying API.
 fn test_cloning_initialized_compression_context() {
     use crate::{parse_code, zstd_sys, CCtx, DCtx};
 
@@ -770,6 +837,47 @@ fn test_cloning_initialized_compression_context() {
         .decompress(&mut decoded, &compressed)
         .unwrap();
     assert_eq!(decoded, INPUT);
+}
+
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+#[allow(deprecated)] // Exercises the deprecated context-copying API.
+fn test_cloning_decompression_context_keeps_streaming_parameters() {
+    use crate::{DCtx, DParameter, InBuffer, OutBuffer};
+
+    // A frame announcing a 128 MiB window, followed by a raw block of 1 byte.
+    let frame = b"\x28\xb5\x2f\xfd\x00\x88\x08\x00\x00\x78";
+    let mut output = [0; 16];
+
+    // The window limit must survive the copy.
+    let mut dctx = DCtx::create();
+    dctx.set_parameter(DParameter::WindowLogMax(20)).unwrap();
+    let mut cloned = dctx.try_clone().unwrap();
+    assert_eq!(
+        cloned
+            .decompress_stream(
+                &mut OutBuffer::around(&mut output[..]),
+                &mut InBuffer::around(frame),
+            )
+            .map_err(zstd_safe::get_error_name),
+        Err("Frame requires too much memory for decoding")
+    );
+    assert!(cloned.sizeof() < 1 << 20);
+
+    // So must the output buffer mode: no window buffer is allocated when
+    // the caller's output buffer is used as the window.
+    let mut dctx = DCtx::create();
+    dctx.set_parameter(DParameter::StableOutBuffer(true))
+        .unwrap();
+    let mut cloned = dctx.try_clone().unwrap();
+    cloned
+        .decompress_stream(
+            &mut OutBuffer::around(&mut output[..]),
+            &mut InBuffer::around(frame),
+        )
+        .unwrap();
+    assert_eq!(output[0], b'x');
+    assert!(cloned.sizeof() < 1 << 20);
 }
 
 #[cfg(all(feature = "std", feature = "with-rust-allocator"))]

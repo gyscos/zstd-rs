@@ -530,14 +530,30 @@ impl<'a> Drop for Seekable<'a> {
 #[cfg(feature = "std")]
 pub struct AdvancedSeekable<'a, F> {
     inner: Seekable<'a>,
-    // We can't use Box<F> since it'd break rust aliasing rules when calling
+    // We can't use a Box since it'd break rust aliasing rules when calling
     // advanced_read/advanced_seek through the C code.
-    src: *mut F,
+    src: *mut AdvancedSource<F>,
     // The context that `init_advanced()` pointed at `src`. `DerefMut` lets
     // safe code swap `inner` for another `Seekable`, so `drop()` compares it
     // against this before freeing `src`.
     // See https://github.com/gyscos/zstd-rs/issues/366.
     ctx: NonNull<zstd_sys::ZSTD_seekable>,
+}
+
+/// What `advanced_read` and `advanced_seek` receive as `opaque`.
+#[cfg(feature = "std")]
+struct AdvancedSource<F> {
+    src: std::boxed::Box<F>,
+    // A panic from `src`, held here until the C code has returned.
+    panic: Option<std::boxed::Box<dyn core::any::Any + Send>>,
+}
+
+// `panic` is always `None` outside of the C calls: it should not prevent an
+// `AdvancedSeekable` from being `UnwindSafe`, which is still up to `F`.
+#[cfg(feature = "std")]
+impl<F> std::panic::RefUnwindSafe for AdvancedSource<F> where
+    F: std::panic::RefUnwindSafe
+{
 }
 
 #[cfg(feature = "std")]
@@ -554,10 +570,76 @@ impl<'a, F> core::ops::Deref for AdvancedSeekable<'a, F> {
     }
 }
 
+/// Calling `decompress()` or `decompress_frame()` through this, rather than on
+/// the `AdvancedSeekable` itself, still reports a panic from the source as an
+/// error, but does not propagate it.
 #[cfg(feature = "std")]
 impl<'a, F> core::ops::DerefMut for AdvancedSeekable<'a, F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
+    }
+}
+
+#[cfg(feature = "std")]
+impl<'a, F> AdvancedSeekable<'a, F> {
+    /// Decompresses the data at `offset` into `dst`.
+    ///
+    /// See [`Seekable::decompress()`].
+    pub fn decompress<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        offset: u64,
+    ) -> SafeResult {
+        self.forget_panic();
+        let result = self.inner.decompress(dst, offset);
+        self.resume_panic();
+        result
+    }
+
+    /// Decompresses the frame with index `frame_index` into `dst`.
+    ///
+    /// See [`Seekable::decompress_frame()`].
+    pub fn decompress_frame<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        frame_index: u32,
+    ) -> SafeResult {
+        self.forget_panic();
+        let result = self.inner.decompress_frame(dst, frame_index);
+        self.resume_panic();
+        result
+    }
+
+    /// Drops a panic left over from a call made through `DerefMut`, which was
+    /// reported as an error then, so it doesn't resurface from this call.
+    fn forget_panic(&mut self) {
+        if self.owns_src() {
+            // Safety: see `resume_panic()`.
+            unsafe { (*self.src).panic = None };
+        }
+    }
+
+    /// Whether the context that calls back into `src` is still `inner`.
+    ///
+    /// If it was swapped out through `DerefMut`, it may be in use elsewhere,
+    /// even on another thread, so `src` must be left alone.
+    fn owns_src(&self) -> bool {
+        self.inner.0 == self.ctx
+    }
+
+    /// Resumes a panic caught in `advanced_read` or `advanced_seek`.
+    ///
+    /// To be called after every C call that may use these callbacks.
+    fn resume_panic(&mut self) {
+        if !self.owns_src() {
+            return;
+        }
+        // Safety: `src` is valid until drop, and only the callbacks access it;
+        // none is running, since the C code has returned, and no other context
+        // calls into it (see `owns_src()`).
+        if let Some(panic) = unsafe { (*self.src).panic.take() } {
+            std::panic::resume_unwind(panic);
+        }
     }
 }
 
@@ -571,10 +653,10 @@ impl<'a, F> Drop for AdvancedSeekable<'a, F> {
         // context is still ours, and leak it otherwise: a leak is safe, a
         // use-after-free is not. Two live contexts never share an address, so
         // finding it in `inner` means nothing else can call into `src`.
-        if self.inner.0 == self.ctx {
+        if self.owns_src() {
             // Safety: `src` comes from `Box::into_raw` in `init_advanced()`,
             // and the only context that knows it is about to be freed.
-            let _: Box<F> = unsafe { Box::from_raw(self.src) };
+            let _: Box<AdvancedSource<F>> = unsafe { Box::from_raw(self.src) };
         }
     }
 }
@@ -585,43 +667,78 @@ impl<'a> Seekable<'a> {
     /// Initializes this seekable without having the complete compressed data in memory,
     /// but seeks and reads `src` as required. Use this function if you are looking for
     /// an alternative to the `ZSTD_seekable_initFile()` function.
+    ///
+    /// If `src` panics, here or in a later decompression, the operation fails and the
+    /// panic is then propagated to the caller.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
     pub fn init_advanced<F>(
-        mut self,
+        self,
         src: std::boxed::Box<F>,
     ) -> Result<AdvancedSeekable<'a, F>, crate::ErrorCode>
     where
         F: std::io::Read + std::io::Seek,
     {
-        let opaque = std::boxed::Box::into_raw(src) as *mut F;
+        let opaque = std::boxed::Box::into_raw(std::boxed::Box::new(
+            AdvancedSource { src, panic: None },
+        ));
         let custom_file = zstd_sys::ZSTD_seekable_customFile {
             opaque: opaque as *mut core::ffi::c_void,
             read: Some(advanced_read::<F>),
             seek: Some(advanced_seek::<F>),
         };
-        // Safety: Just FFI
-        let code = unsafe {
-            zstd_sys::ZSTD_seekable_initAdvanced(self.0.as_ptr(), custom_file)
-        };
-
-        if crate::is_error(code) {
-            // The context was not initialized, so nothing will ever call back
-            // into `opaque`; take the box back rather than leaking it (and
-            // whatever `F` holds, like a file descriptor).
-            // Safety: `opaque` comes from the `Box::into_raw` above, and has
-            // not been handed to anything that outlives this function.
-            let _: std::boxed::Box<F> =
-                unsafe { std::boxed::Box::from_raw(opaque) };
-            return Err(code);
-        }
-
-        self.2.clear();
-        Ok(AdvancedSeekable {
+        // This owns `opaque` from here on: if the initialization fails or
+        // panics, dropping it takes the box back rather than leaking it (and
+        // whatever `F` holds, like a file descriptor).
+        let mut seekable = AdvancedSeekable {
             ctx: self.0,
             inner: self,
             src: opaque,
-        })
+        };
+        // Safety: Just FFI
+        let code = unsafe {
+            zstd_sys::ZSTD_seekable_initAdvanced(
+                seekable.inner.0.as_ptr(),
+                custom_file,
+            )
+        };
+        seekable.resume_panic();
+
+        if crate::is_error(code) {
+            return Err(code);
+        }
+
+        seekable.inner.2.clear();
+        Ok(seekable)
+    }
+}
+
+/// Calls `f` on the source behind `opaque`, on behalf of a C callback.
+///
+/// A panic cannot unwind out of an `extern "C"` function: it aborts the whole
+/// process, and was undefined behaviour before Rust 1.81. So it is caught
+/// here, reported to zstd as a failure, and resumed by
+/// `AdvancedSeekable::resume_panic()` once the C code has returned.
+///
+/// Returns a non-negative value in case of success, and a negative value in case of failure.
+#[cfg(feature = "std")]
+unsafe fn advanced_call<F, T>(
+    opaque: *mut core::ffi::c_void,
+    f: impl FnOnce(&mut F) -> std::io::Result<T>,
+) -> ::core::ffi::c_int {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    // Safety: `init_advanced()` ensures that `opaque` points to an `AdvancedSource<F>`
+    let source = &mut *opaque.cast::<AdvancedSource<F>>();
+    let src = &mut *source.src;
+    // The result is also dropped in there, in case this panics.
+    match catch_unwind(AssertUnwindSafe(|| f(src).is_ok())) {
+        Ok(true) => 0,
+        Ok(false) => -1,
+        Err(panic) => {
+            source.panic = Some(panic);
+            -1
+        }
     }
 }
 
@@ -644,8 +761,6 @@ unsafe extern "C" fn advanced_seek<S: std::io::Seek>(
     const SEEK_CUR: i32 = 1;
     const SEEK_END: i32 = 2;
 
-    // Safety: The trait boundaries in `init_advanced()` ensure that `opaque` points to an S
-    let seeker: &mut S = std::mem::transmute(opaque);
     let pos = match origin {
         SEEK_SET => {
             // `let .. else` would read better, but it needs Rust 1.65.
@@ -661,11 +776,8 @@ unsafe extern "C" fn advanced_seek<S: std::io::Seek>(
         _ => return -1,
     };
 
-    if seeker.seek(pos).is_err() {
-        return -1;
-    }
-
-    0
+    // Safety: The trait boundaries in `init_advanced()` ensure that the source is an S
+    advanced_call(opaque, |seeker: &mut S| seeker.seek(pos))
 }
 
 /// Reads exactly `n` bytes into `buffer`.
@@ -677,15 +789,10 @@ unsafe extern "C" fn advanced_read<R: std::io::Read>(
     buffer: *mut core::ffi::c_void,
     n: usize,
 ) -> ::core::ffi::c_int {
-    // Safety: The trait boundaries in `init_advanced()` ensure that `opaque` points to a R
-    let reader: &mut R = std::mem::transmute(opaque);
     // Safety: zstd ensures the buffer is allocated and safe to use
-    let mut buf = std::slice::from_raw_parts_mut(buffer as *mut u8, n);
-    if reader.read_exact(&mut buf).is_err() {
-        return -1;
-    }
-
-    0
+    let buf = std::slice::from_raw_parts_mut(buffer as *mut u8, n);
+    // Safety: The trait boundaries in `init_advanced()` ensure that the source is a R
+    advanced_call(opaque, |reader: &mut R| reader.read_exact(buf))
 }
 
 /// Indicates that the seek table could not be created.

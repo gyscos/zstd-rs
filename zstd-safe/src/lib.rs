@@ -1928,7 +1928,12 @@ where
     T: WriteBuf,
 {
     fn as_slice(&self) -> &[u8] {
-        &self.get_ref().as_slice()[cursor_position(self)..]
+        // A cursor past the inner buffer's initialized part has nothing
+        // initialized after it yet (see `filled_until` below).
+        self.get_ref()
+            .as_slice()
+            .get(cursor_position(self)..)
+            .unwrap_or(&[])
     }
 
     fn capacity(&self) -> usize {
@@ -2132,12 +2137,30 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
 
     /// Returns a new `OutBuffer` around the given slice, starting at the given position.
     ///
+    /// If `pos` is past the initialized part of `dst` (for example a `Vec`
+    /// whose `len()` is smaller than `pos`), the gap is zero-filled, as a
+    /// `Cursor` would do.
+    ///
     /// # Panics
     ///
     /// If `pos > dst.capacity()`.
     pub fn around_pos(dst: &'a mut C, pos: usize) -> Self {
         if pos > dst.capacity() {
             panic!("Given position outside of the buffer bounds.");
+        }
+
+        let initialized = dst.as_slice().len();
+        if pos > initialized {
+            // Writing to this buffer marks everything before `pos` as
+            // initialized (see `set_pos`), so it has to be before we start.
+            // Safety: `initialized..pos` lies within `capacity()`, which
+            // `WriteBuf` promises is valid to write to.
+            unsafe {
+                dst.as_mut_ptr()
+                    .add(initialized)
+                    .write_bytes(0u8, pos - initialized);
+                dst.filled_until(pos);
+            }
         }
 
         OutBuffer { dst, pos }

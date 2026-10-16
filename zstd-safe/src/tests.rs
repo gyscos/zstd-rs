@@ -48,6 +48,46 @@ fn test_writebuf() {
 
 #[cfg(feature = "std")]
 #[test]
+fn test_around_pos_past_initialized_data() {
+    use zstd_safe::{InBuffer, OutBuffer};
+
+    let end = zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_end;
+    let mut cctx = zstd_safe::CCtx::create();
+
+    // A position past the `Vec`'s length: the gap must be zero-filled, not
+    // left as whatever the allocator handed out.
+    let mut buffer = Vec::with_capacity(256);
+    let mut input = InBuffer::around(INPUT);
+    let mut output = OutBuffer::around_pos(&mut buffer, 16);
+    assert_eq!(output.as_slice(), &[0u8; 16]);
+    while cctx.compress_stream2(&mut output, &mut input, end).unwrap() != 0 {}
+    assert_eq!(&buffer[..16], &[0u8; 16]);
+    assert!(buffer.len() > 16);
+
+    // Same through a `Cursor` that itself sits past the `Vec`'s length.
+    let mut buffer = Vec::with_capacity(256);
+    let mut cursor = std::io::Cursor::new(&mut buffer);
+    cursor.set_position(4);
+    let mut input = InBuffer::around(INPUT);
+    let mut output = OutBuffer::around_pos(&mut cursor, 8);
+    assert_eq!(output.as_slice(), &[0u8; 8]);
+    while cctx.compress_stream2(&mut output, &mut input, end).unwrap() != 0 {}
+    assert_eq!(&buffer[..12], &[0u8; 12]);
+    assert!(buffer.len() > 12);
+
+    // A position inside the initialized part keeps the existing data.
+    let mut buffer = std::vec![7u8; 4];
+    buffer.reserve(256);
+    let mut input = InBuffer::around(INPUT);
+    let mut output = OutBuffer::around_pos(&mut buffer, 2);
+    assert_eq!(output.as_slice(), &[7u8; 2]);
+    while cctx.compress_stream2(&mut output, &mut input, end).unwrap() != 0 {}
+    assert_eq!(&buffer[..2], &[7u8; 2]);
+    assert!(buffer.len() > 2);
+}
+
+#[cfg(feature = "std")]
+#[test]
 fn test_simple_cycle() {
     let mut buffer = std::vec![0u8; 256];
     let written = zstd_safe::compress(&mut buffer, INPUT, 3).unwrap();

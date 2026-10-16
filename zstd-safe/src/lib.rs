@@ -19,8 +19,8 @@
 //! `experimental` feature.
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 
-// TODO: Use alloc feature instead to implement stuff for Vec
-// TODO: What about Cursor?
+#[cfg(feature = "alloc")]
+extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -222,6 +222,16 @@ pub fn compress<C: WriteBuf + ?Sized>(
 /// error will be returned.
 ///
 /// If decompression was a success, the number of bytes written will be returned.
+///
+/// Only that many bytes at the start of `dst` are meaningful: zstd may use the
+/// rest of `dst` as scratch space, so it can be overwritten even if it was
+/// zero-filled beforehand.
+///
+/// With a `Vec`, the output goes into its spare capacity, replacing anything
+/// already in it, and its length is then set to the number of bytes written.
+/// The `Vec` is never re-allocated, so create it with `Vec::with_capacity` (or
+/// `reserve`) for the full decompressed size: its capacity is what bounds the
+/// output.
 pub fn decompress<C: WriteBuf + ?Sized>(
     dst: &mut C,
     src: &[u8],
@@ -1289,6 +1299,11 @@ impl<'a> DCtx<'a> {
     /// This decompress an entire frame in-memory. If you can have enough memory to store both the
     /// input and output buffer, then it may be faster that streaming decompression.
     ///
+    /// Only as many bytes as returned at the start of `dst` are meaningful:
+    /// zstd may overwrite the rest. A `Vec` avoids this, see
+    /// [`crate::decompress()`]: it is never re-allocated, so create it with
+    /// `Vec::with_capacity` for the full decompressed size.
+    ///
     /// Wraps the `ZSTD_decompressDCtx()` function.
     pub fn decompress<C: WriteBuf + ?Sized>(
         &mut self,
@@ -1316,6 +1331,11 @@ impl<'a> DCtx<'a> {
     /// If you plan on using the same dictionary multiple times, it is faster to create a `DDict`
     /// first and use `decompress_using_ddict`.
     ///
+    /// Only as many bytes as returned at the start of `dst` are meaningful:
+    /// zstd may overwrite the rest. A `Vec` avoids this, see
+    /// [`crate::decompress()`]: it is never re-allocated, so create it with
+    /// `Vec::with_capacity` for the full decompressed size.
+    ///
     /// Wraps `ZSTD_decompress_usingDict`
     pub fn decompress_using_dict<C: WriteBuf + ?Sized>(
         &mut self,
@@ -1342,6 +1362,11 @@ impl<'a> DCtx<'a> {
     /// Fully decompress the given frame using a dictionary.
     ///
     /// Dictionary must be identical to the one used during compression.
+    ///
+    /// Only as many bytes as returned at the start of `dst` are meaningful:
+    /// zstd may overwrite the rest. A `Vec` avoids this, see
+    /// [`crate::decompress()`]: it is never re-allocated, so create it with
+    /// `Vec::with_capacity` for the full decompressed size.
     ///
     /// Wraps the `ZSTD_decompress_usingDDict()` function.
     pub fn decompress_using_ddict<C: WriteBuf + ?Sized>(
@@ -1995,6 +2020,9 @@ unsafe impl Send for ThreadPool {}
 unsafe impl Sync for ThreadPool {}
 
 /// Wraps the `ZSTD_decompress_usingDDict()` function.
+///
+/// Only as many bytes as returned at the start of `dst` are meaningful: zstd
+/// may overwrite the rest.
 pub fn decompress_using_ddict(
     dctx: &mut DCtx<'_>,
     dst: &mut [u8],
@@ -2205,29 +2233,29 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
-unsafe impl WriteBuf for &mut std::vec::Vec<u8> {
+#[cfg(feature = "alloc")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "alloc")))]
+unsafe impl WriteBuf for &mut alloc::vec::Vec<u8> {
     fn as_slice(&self) -> &[u8] {
-        std::vec::Vec::as_slice(self)
+        alloc::vec::Vec::as_slice(self)
     }
 
     fn capacity(&self) -> usize {
-        std::vec::Vec::capacity(self)
+        alloc::vec::Vec::capacity(self)
     }
 
     fn as_mut_ptr(&mut self) -> *mut u8 {
-        std::vec::Vec::as_mut_ptr(self)
+        alloc::vec::Vec::as_mut_ptr(self)
     }
 
     unsafe fn filled_until(&mut self, n: usize) {
-        std::vec::Vec::set_len(self, n)
+        alloc::vec::Vec::set_len(self, n)
     }
 }
 
-#[cfg(feature = "std")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
-unsafe impl WriteBuf for std::vec::Vec<u8> {
+#[cfg(feature = "alloc")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "alloc")))]
+unsafe impl WriteBuf for alloc::vec::Vec<u8> {
     fn as_slice(&self) -> &[u8] {
         &self[..]
     }

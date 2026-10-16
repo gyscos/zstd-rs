@@ -36,6 +36,8 @@ jobs:
       run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,with-rust-allocator
     - name: Check zstd-safe Rust allocator without std
       run: cargo check --manifest-path zstd-safe/Cargo.toml --no-default-features --features with-rust-allocator
+    - name: Run zstd-safe tests with alloc but without std
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features alloc
 
     - name: Build zstd-safe with feature seekable
       run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features seekable

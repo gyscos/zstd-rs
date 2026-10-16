@@ -305,7 +305,14 @@ impl Poison {
 ///
 /// It is recommended to allocate a single context per thread and re-use it
 /// for many compression operations.
-pub struct CCtx<'a>(NonNull<zstd_sys::ZSTD_CCtx>, PhantomData<&'a ()>, Poison);
+pub struct CCtx<'a>(
+    NonNull<zstd_sys::ZSTD_CCtx>,
+    PhantomData<&'a ()>,
+    Poison,
+    /// Whether `NbWorkers` was ever set to a non-zero value, see
+    /// `guard_own_tables`.
+    bool,
+);
 
 impl Default for CCtx<'_> {
     fn default() -> Self {
@@ -334,7 +341,12 @@ impl<'a> CCtx<'a> {
         // Safety: zstd returns a newly owned context or null.
         let context = unsafe { zstd_sys::ZSTD_createCCtx() };
 
-        Some(Self(NonNull::new(context)?, PhantomData, Poison::default()))
+        Some(Self(
+            NonNull::new(context)?,
+            PhantomData,
+            Poison::default(),
+            false,
+        ))
     }
 
     /// Wrap `ZSTD_createCCtx`
@@ -839,9 +851,13 @@ impl<'a> CCtx<'a> {
         };
 
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_setParameter(self.0.as_ptr(), param, value)
-        })
+        });
+        if res.is_ok() && matches!(param, ZSTD_c_nbWorkers) && value != 0 {
+            self.3 = true;
+        }
+        res
     }
 
     /// Guarantee that the input size will be this value.
@@ -865,11 +881,32 @@ impl<'a> CCtx<'a> {
         })
     }
 
+    /// Fails if the tables of this context may not be the ones its applied
+    /// parameters describe.
+    ///
+    /// Starting a multi-threaded frame overwrites the applied parameters with
+    /// those of the workers, but leaves the context's own stage and workspace
+    /// as the last single-threaded frame left them. If that frame was
+    /// abandoned before its first block, zstd still accepts the calls that
+    /// work on this context directly, and overruns a workspace that was sized
+    /// for other parameters. The applied parameters cannot be queried, so
+    /// refuse these calls as soon as a multi-threaded frame could have been
+    /// started.
+    #[cfg(feature = "experimental")]
+    fn guard_own_tables(&self) -> Result<(), ErrorCode> {
+        if self.3 {
+            return Err(STAGE_WRONG_ERROR);
+        }
+        Ok(())
+    }
+
     /// Creates a copy of this context.
     ///
     /// This only works before any data has been compressed. An error will be
     /// returned otherwise.
     /// A poisoned context cannot be cloned until its session is reset.
+    /// A context on which `NbWorkers` was ever set to a non-zero value cannot
+    /// be cloned anymore.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated(
@@ -881,6 +918,7 @@ impl<'a> CCtx<'a> {
     ) -> Result<Self, ErrorCode> {
         // An error may leave the C context undefined; do not copy it.
         self.2.guard()?;
+        self.guard_own_tables()?;
         // zstd copies the allocator callbacks from `self` into the new
         // context, so both must be created the same way; `try_create` always
         // picks the same allocator within a build.
@@ -911,6 +949,9 @@ impl<'a> CCtx<'a> {
 
     /// Wraps the `ZSTD_compressBlock()` function.
     ///
+    /// Returns an error once `NbWorkers` was set to a non-zero value on this
+    /// context.
+    ///
     /// # Safety
     ///
     /// `src` becomes this context's history window, so it must stay allocated and unmodified until
@@ -926,6 +967,7 @@ impl<'a> CCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        self.guard_own_tables()?;
         // Safety: ZSTD_compressBlock returns the number of bytes written.
         unsafe {
             dst.write_from(|buffer, capacity| {

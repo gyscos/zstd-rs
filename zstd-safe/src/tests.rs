@@ -880,6 +880,51 @@ fn test_cloning_decompression_context_keeps_streaming_parameters() {
     assert!(cloned.sizeof() < 1 << 20);
 }
 
+#[cfg(all(feature = "std", feature = "experimental", feature = "zstdmt"))]
+#[test]
+#[allow(deprecated)] // Exercises the deprecated copy and block APIs.
+fn test_multithreaded_context_refuses_copy_and_block_apis() {
+    use crate::{CCtx, CParameter, InBuffer, OutBuffer, ResetDirective};
+
+    let mut output = [0; 1024];
+    let mut start_frame = |cctx: &mut CCtx<'_>| {
+        cctx.compress_stream(
+            &mut OutBuffer::around(&mut output[..]),
+            &mut InBuffer::around(b"abc"),
+        )
+        .unwrap();
+    };
+
+    // Abandon a frame in its initial stage, with a workspace sized for it.
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::CompressionLevel(19)).unwrap();
+    start_frame(&mut cctx);
+    assert!(cctx.try_clone(Some(1000)).is_ok());
+    cctx.reset(ResetDirective::SessionAndParameters).unwrap();
+
+    // The workers' parameters now describe tables of other sizes, but the
+    // context's own stage and workspace are still those of the first frame.
+    cctx.set_parameter(CParameter::NbWorkers(1)).unwrap();
+    start_frame(&mut cctx);
+    assert!(cctx.try_clone(Some(1000)).is_err());
+    let block = std::vec![0u8; cctx.get_block_size()];
+    let mut compressed = Vec::with_capacity(block.len());
+    assert!(unsafe { cctx.compress_block(&mut compressed, &block) }.is_err());
+
+    // Resetting the requested parameters does not touch the applied ones.
+    cctx.reset(ResetDirective::SessionAndParameters).unwrap();
+    assert!(cctx.try_clone(Some(1000)).is_err());
+
+    // The other way round, the copy reads past the source's workspace.
+    let mut cctx = CCtx::create();
+    start_frame(&mut cctx);
+    cctx.reset(ResetDirective::SessionAndParameters).unwrap();
+    cctx.set_parameter(CParameter::CompressionLevel(19)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(1)).unwrap();
+    start_frame(&mut cctx);
+    assert!(cctx.try_clone(None).is_err());
+}
+
 #[cfg(all(feature = "std", feature = "with-rust-allocator"))]
 #[test]
 fn test_custom_allocator_dictionaries_interoperate_with_c_dictionaries() {

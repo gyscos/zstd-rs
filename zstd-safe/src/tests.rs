@@ -1172,3 +1172,55 @@ fn test_unfinished_multithreaded_frame() {
     cctx.compress2(&mut buffer, &long).unwrap();
     cctx.load_dictionary(b"some dictionary").unwrap();
 }
+
+/// One-shot decompressions only reset the session when a stream may be open.
+/// Without one, the next stream must still see nothing of the one-shot call.
+#[cfg(feature = "std")]
+#[test]
+fn test_one_shot_decompression_without_a_stream() {
+    use zstd_safe::{DCtx, DDict, InBuffer, OutBuffer, SafeResult};
+
+    type OneShot = fn(&mut DCtx<'_>, &mut Vec<u8>, &[u8]) -> SafeResult;
+    let one_shots: [OneShot; 3] = [
+        |dctx, dst, src| dctx.decompress(dst, src),
+        |dctx, dst, src| {
+            dctx.decompress_using_dict(dst, src, &std::vec![b'd'; 1000])
+        },
+        |dctx, dst, src| {
+            let ddict = DDict::create(&[b'd'; 1000]);
+            dctx.decompress_using_ddict(dst, src, &ddict)
+        },
+    ];
+
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    zstd_safe::compress(&mut compressed, INPUT, 1).unwrap();
+
+    for one_shot in one_shots {
+        for capacity in [0, INPUT.len()] {
+            let mut dctx = DCtx::create();
+            let res = one_shot(
+                &mut dctx,
+                &mut Vec::with_capacity(capacity),
+                &compressed,
+            );
+            assert_eq!(res.is_ok(), capacity != 0);
+
+            let mut decoded = Vec::with_capacity(INPUT.len() + 1);
+            let hint = dctx
+                .decompress_stream(
+                    &mut OutBuffer::around(&mut decoded),
+                    &mut InBuffer::around(&compressed),
+                )
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            assert_eq!(hint, 0);
+            assert_eq!(decoded, INPUT);
+
+            // And a one-shot call after that stream ended still works.
+            let mut out = Vec::with_capacity(INPUT.len());
+            dctx.decompress(&mut out, &compressed).unwrap();
+            assert_eq!(out, INPUT);
+        }
+    }
+}

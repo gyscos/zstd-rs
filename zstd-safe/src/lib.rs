@@ -1820,6 +1820,13 @@ pub fn init_cstream(
 /// Bytes will be read starting at `src[pos]`.
 ///
 /// `pos` will be updated after reading.
+///
+/// # Invariant
+///
+/// `pos <= src.len()`
+///
+/// Both fields are public, so this is checked (and panics if it does not hold)
+/// whenever the buffer is given to zstd.
 pub struct InBuffer<'a> {
     pub src: &'a [u8],
     pub pos: usize,
@@ -2263,6 +2270,12 @@ impl<'a> InBuffer<'a> {
     }
 
     fn wrap<'b>(&'b mut self) -> InBufferWrapper<'b, 'a> {
+        // The fields are public, so `pos` may not have gone through `set_pos`.
+        // Not all zstd functions check it before reading from `src + pos`.
+        if self.pos > self.src.len() {
+            panic!("Given position outside of the buffer bounds.");
+        }
+
         InBufferWrapper {
             buf: zstd_sys::ZSTD_inBuffer {
                 src: ptr_void(self.src),

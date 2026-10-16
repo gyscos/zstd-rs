@@ -387,6 +387,34 @@ fn new_seekable_archive(input: &[u8]) -> Vec<u8> {
     Vec::from(out_buffer.as_slice())
 }
 
+/// Nothing keeps the public `InBuffer::pos` within `src`, and
+/// `ZSTD_seekable_compressStream()` would read from `src + pos` regardless.
+#[cfg(feature = "seekable")]
+#[test]
+fn test_seekable_cstream_input_pos_out_of_bounds() {
+    use crate::{seekable::SeekableCStream, InBuffer, OutBuffer};
+
+    let mut buffer = std::vec![0u8; 512];
+    let mut cstream = SeekableCStream::create();
+    cstream
+        .init(3, true, 64)
+        .map_err(zstd_safe::get_error_name)
+        .unwrap();
+    let mut in_buffer = InBuffer {
+        src: &INPUT[..16],
+        pos: 32,
+    };
+    let mut out_buffer = OutBuffer::around(&mut buffer[..]);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cstream.compress_stream(&mut out_buffer, &mut in_buffer)
+    }));
+    assert!(result.is_err());
+
+    // A full frame would have been written had the rest of `INPUT` been read.
+    assert_eq!(out_buffer.pos(), 0);
+}
+
 #[cfg(feature = "seekable")]
 fn check_seekable_decompression<F>(mut decompress: F)
 where

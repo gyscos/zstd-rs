@@ -48,9 +48,13 @@ pub fn compress(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
 ///
 /// [`crate::decompressed_size()`] says how big the result will be, when the
 /// frame records it - there is no need to store the size alongside the data
-/// yourself. Passing a `Vec` instead of a slice works too, and then it is the
-/// `Vec`'s *capacity* that bounds the output, so `reserve` what you need
-/// rather than `resize`.
+/// yourself.
+///
+/// Only as many bytes as returned at the start of `destination` are
+/// meaningful: zstd may overwrite the rest, even if it was zero-filled
+/// beforehand. This function only takes a slice; to decompress into a `Vec`
+/// and have its length set to the output size, use
+/// [`Decompressor::decompress_to_buffer`].
 pub fn decompress_to_buffer(
     source: &[u8],
     destination: &mut [u8],

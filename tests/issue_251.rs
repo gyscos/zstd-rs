@@ -84,6 +84,29 @@ fn concatenated_frames_are_not_consumed() {
     );
 }
 
+#[test]
+fn single_frame_stays_finished_after_finish_frame() {
+    let first = frame();
+    let second = zstd::encode_all(&vec![7u8; PAYLOAD_LEN][..], 3).unwrap();
+    let mut stream = first.clone();
+    stream.extend_from_slice(&second);
+
+    let mut decoder = zstd::Decoder::with_buffer(Cursor::new(&stream))
+        .unwrap()
+        .single_frame();
+    read_exactly(&mut decoder, PAYLOAD_LEN);
+    decoder.finish_frame().unwrap();
+
+    // The frame ended in finish_frame() rather than in read(): that is still
+    // the end of a single-frame decoder.
+    let mut surplus = Vec::new();
+    decoder.read_to_end(&mut surplus).unwrap();
+    assert!(surplus.is_empty(), "read() went on to the second frame");
+
+    let reader = decoder.finish();
+    assert_eq!(reader.position() as usize, first.len());
+}
+
 /// A `BufRead` that counts how often it is asked for more data.
 struct Counting<R> {
     inner: R,
@@ -177,4 +200,32 @@ fn finish_does_not_read_ahead_past_a_completed_frame() {
         before,
         "finish() read ahead although the frame was already complete"
     );
+}
+
+#[test]
+fn finish_does_not_start_a_frame_that_was_never_read() {
+    // Nothing was read from the decoder, so there is no frame to complete:
+    // the one waiting in the reader belongs to whoever reads next.
+    let frame = frame();
+
+    let decoder =
+        zstd::Decoder::with_buffer(Counting::new(Cursor::new(&frame)))
+            .unwrap();
+    let reader = decoder.finish();
+    assert_eq!(reader.inner.position(), 0);
+    assert_eq!(reader.fill_buf_calls.get(), 0);
+
+    // An empty read does not start it either.
+    let mut decoder =
+        zstd::Decoder::with_buffer(Counting::new(Cursor::new(&frame)))
+            .unwrap();
+    decoder.read_exact(&mut []).unwrap();
+    decoder.finish_frame().unwrap();
+    assert_eq!(decoder.get_ref().inner.position(), 0);
+    assert_eq!(decoder.get_ref().fill_buf_calls.get(), 0);
+
+    // The decoder is still usable afterwards.
+    let mut decoded = Vec::new();
+    decoder.read_to_end(&mut decoded).unwrap();
+    assert_eq!(decoded, vec![0u8; PAYLOAD_LEN]);
 }

@@ -2,12 +2,12 @@
 
 usage: python3 compare.py LABEL,LABEL[,...] [NAME=]CRITERION_DIR...
 
-Each LABEL must have been saved as two baselines, LABEL1 and LABEL2 (two
-rounds, alternated with the other labels, as `ab.sh` does). The first label
+Each LABEL must have been saved as two baselines, LABEL.r1 and LABEL.r2
+(two rounds, alternated with the other labels, as `ab.sh` does). The first label
 is the reference. Several criterion directories (one per machine, say) can
 be given, optionally named.
 
-For each benchmark and label, the change is (x1 + x2) / (ref1 + ref2) - 1 on
+For each benchmark and label, the change is (r1 + r2) / (ref.r1 + ref.r2) - 1 on
 the medians, and the noise is the largest round-to-round difference of any
 label. A change is flagged with ** when it exceeds both 1% and twice the
 noise: below that, it cannot be told apart from the machine's own drift.
@@ -40,7 +40,8 @@ def main():
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     labels = sys.argv[1].split(",")
-    names = {label + r for label in labels for r in "12"}
+    rounds = (".r1", ".r2")
+    names = {label + r for label in labels for r in rounds}
     machines = []
     for arg in sys.argv[2:]:
         name, _, path = arg.rpartition("=")
@@ -61,14 +62,14 @@ def main():
             medians = results.get(bench, {})
             if len(medians) < len(names):
                 continue
-            ref = medians[reference + "1"] + medians[reference + "2"]
+            ref = sum(medians[reference + r] for r in rounds)
             noise = max(
-                abs(medians[label + "2"] / medians[label + "1"] - 1)
+                abs(medians[label + ".r2"] / medians[label + ".r1"] - 1)
                 for label in labels
             )
             cells = []
             for label in labels[1:]:
-                change = (medians[label + "1"] + medians[label + "2"]) / ref - 1
+                change = sum(medians[label + r] for r in rounds) / ref - 1
                 flag = " **" if abs(change) > max(0.01, 2 * noise) else ""
                 cells.append(f"{change * 100:+.1f}%{flag}")
             print(

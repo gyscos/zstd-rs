@@ -336,6 +336,7 @@ fn seekable(c: &mut Criterion) {
             }
         })
     });
+    group.throughput(Throughput::Bytes(u64::from(FRAME)));
     group.bench_function("sequential_256B_reads_64KiB", |b| {
         let mut buf = [0u8; READ];
         b.iter(|| {

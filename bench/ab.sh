@@ -41,6 +41,15 @@ work="$(cd "$work" && pwd)"
 labels=
 for rev in "$@"; do
     label=$(echo "$rev" | tr -c 'A-Za-z0-9_.\n-' '_')
+    # Different revisions can sanitize to the same label (feature/foo and
+    # feature_foo), and comparing a revision with itself is a useful way to
+    # measure noise: number the repeats so nothing gets overwritten.
+    base=$label
+    n=2
+    while echo ",$labels," | grep -qF ",$label,"; do
+        label="$base-$n"
+        n=$((n + 1))
+    done
     labels="$labels${labels:+,}$label"
     src="$work/src-$label"
     if [ ! -d "$src" ]; then
@@ -73,7 +82,7 @@ while [ $round -le $rounds ]; do
         echo "round $round: $label" >&2
         $AB_PREFIX "$work/bench-$label" --bench --noplot \
             --warm-up-time 1 --measurement-time 3 \
-            --save-baseline "$label$round" ${filter:+"$filter"} > "$work/log-$label$round.txt" 2>&1
+            --save-baseline "$label.r$round" ${filter:+"$filter"} > "$work/log-$label.r$round.txt" 2>&1
     done
     round=$((round + 1))
 done

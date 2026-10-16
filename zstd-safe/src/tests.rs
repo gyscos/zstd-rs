@@ -347,6 +347,85 @@ fn test_seekable_advanced_cycle() {
     });
 }
 
+#[cfg(all(feature = "std", feature = "seekable"))]
+#[test]
+fn test_seekable_advanced_panic() {
+    use crate::seekable::Seekable;
+    use std::io::{Cursor, Read, Result, Seek, SeekFrom};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::{boxed::Box, rc::Rc};
+
+    // Panics on the first read or seek once `calls` of them were made.
+    struct Panicking {
+        inner: Cursor<Vec<u8>>,
+        calls: usize,
+        _alive: Rc<()>,
+    }
+
+    impl Panicking {
+        fn call(&mut self, name: &'static str) {
+            if self.calls == 0 {
+                self.calls = usize::MAX;
+                std::panic::panic_any(name);
+            }
+            self.calls -= 1;
+        }
+    }
+
+    impl Read for Panicking {
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+            self.call("read");
+            self.inner.read(buf)
+        }
+    }
+
+    impl Seek for Panicking {
+        fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+            self.call("seek");
+            self.inner.seek(pos)
+        }
+    }
+
+    let alive = Rc::new(());
+    let source = |calls| {
+        Box::new(Panicking {
+            inner: Cursor::new(new_seekable_archive(INPUT)),
+            calls,
+            _alive: alive.clone(),
+        })
+    };
+
+    // Loading the seek table seeks, reads, seeks and reads.
+    for (calls, name) in [(0, "seek"), (1, "read")] {
+        let panic = catch_unwind(AssertUnwindSafe(|| {
+            Seekable::create().init_advanced(source(calls)).map(|_| ())
+        }))
+        .unwrap_err();
+        assert_eq!(panic.downcast_ref(), Some(&name));
+        // The source was not leaked.
+        assert_eq!(Rc::strong_count(&alive), 1);
+    }
+
+    // Then decompressing seeks and reads.
+    for (calls, name) in [(4, "seek"), (5, "read")] {
+        let mut seekable = Seekable::create()
+            .init_advanced(source(calls))
+            .map_err(zstd_safe::get_error_name)
+            .unwrap();
+        let mut buffer = [0u8; 64];
+        let panic = catch_unwind(AssertUnwindSafe(|| {
+            seekable.decompress_frame(&mut buffer[..], 1)
+        }))
+        .unwrap_err();
+        assert_eq!(panic.downcast_ref(), Some(&name));
+
+        // The panic is only reported once.
+        check_seekable_decompression(|dst, offset| {
+            seekable.decompress(dst, offset)
+        });
+    }
+}
+
 #[cfg(feature = "seekable")]
 fn new_seekable_archive(input: &[u8]) -> Vec<u8> {
     use crate::{seekable::SeekableCStream, InBuffer, OutBuffer};

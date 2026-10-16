@@ -1040,6 +1040,8 @@ fn test_multithreaded_context_refuses_copy_and_block_apis() {
     assert!(unsafe { cctx.compress_block(&mut compressed, &block) }.is_err());
 
     // Resetting the requested parameters does not touch the applied ones.
+    // (The frame was abandoned, so its workers have to be waited for first.)
+    cctx.wait_for_workers().unwrap();
     cctx.reset(ResetDirective::SessionAndParameters).unwrap();
     assert!(cctx.try_clone(Some(1000)).is_err());
 
@@ -1102,4 +1104,65 @@ fn test_custom_allocator_dictionaries_interoperate_with_c_dictionaries() {
             }
         }
     }
+}
+
+/// Worker threads may still be compressing the jobs of an abandoned
+/// multithreaded frame, against the context's dictionary: nothing may unload
+/// it, or change the number of workers, until they are done.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_unfinished_multithreaded_frame() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer, ResetDirective};
+
+    let long = LONG_CONTENT.as_bytes().repeat(64);
+    let start_frame = |cctx: &mut CCtx<'_>| {
+        let mut buffer = Vec::with_capacity(1 << 16);
+        cctx.compress_stream2(
+            &mut OutBuffer::around(&mut buffer),
+            &mut InBuffer::around(&long),
+            ZSTD_e_continue,
+        )
+        .unwrap();
+    };
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.load_dictionary(b"some dictionary").unwrap();
+    start_frame(&mut cctx);
+    cctx.reset(ResetDirective::SessionOnly).unwrap();
+
+    assert!(cctx.load_dictionary(b"another").is_err());
+    assert!(cctx.disable_dictionary().is_err());
+    assert!(cctx.ref_prefix(b"prefix").is_err());
+    assert!(cctx.init(3).is_err());
+    assert!(cctx.reset(ResetDirective::SessionAndParameters).is_err());
+    assert!(cctx.set_parameter(CParameter::NbWorkers(4)).is_err());
+    // Other parameters, and a session reset, are fine.
+    cctx.set_parameter(CParameter::CompressionLevel(5)).unwrap();
+    cctx.reset(ResetDirective::SessionOnly).unwrap();
+
+    cctx.wait_for_workers().unwrap();
+    cctx.load_dictionary(b"another").unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(4)).unwrap();
+    cctx.reset(ResetDirective::SessionAndParameters).unwrap();
+
+    // A frame that was finished leaves nothing to wait for.
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    let mut buffer = Vec::with_capacity(zstd_safe::compress_bound(long.len()));
+    let mut output = OutBuffer::around(&mut buffer);
+    let mut input = InBuffer::around(&long);
+    while cctx
+        .compress_stream2(&mut output, &mut input, ZSTD_e_end)
+        .unwrap()
+        != 0
+    {}
+    cctx.load_dictionary(b"another").unwrap();
+
+    // So does a successful one-shot compression; a failed one does not.
+    cctx.compress2(&mut Vec::with_capacity(0), &long).unwrap_err();
+    assert!(cctx.load_dictionary(b"some dictionary").is_err());
+    cctx.wait_for_workers().unwrap();
+    cctx.compress2(&mut buffer, &long).unwrap();
+    cctx.load_dictionary(b"some dictionary").unwrap();
 }

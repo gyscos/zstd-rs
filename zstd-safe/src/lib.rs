@@ -1173,9 +1173,19 @@ pub struct DCtx<'a>(
     NonNull<zstd_sys::ZSTD_DCtx>,
     PhantomData<&'a ()>,
     Poison,
-    // Whether `RefMultipleDDicts` was ever enabled, see `try_clone`.
-    #[cfg(feature = "experimental")] bool,
+    DState,
 );
+
+/// What a `DCtx` remembers about its own use.
+#[derive(Clone, Copy, Debug, Default)]
+struct DState {
+    /// `RefMultipleDDicts` was ever enabled, see `try_clone`.
+    #[cfg(feature = "experimental")]
+    multiple_ddicts: bool,
+    /// A streaming (or block) call ran since the session was last reset, so
+    /// a stream may be open, see `finish_one_shot`.
+    streamed: bool,
+}
 
 impl Default for DCtx<'_> {
     fn default() -> Self {
@@ -1192,8 +1202,7 @@ impl<'a> DCtx<'a> {
             NonNull::new(unsafe { zstd_sys::ZSTD_createDCtx() })?,
             PhantomData,
             Poison::default(),
-            #[cfg(feature = "experimental")]
-            false,
+            DState::default(),
         ))
     }
 
@@ -1213,8 +1222,17 @@ impl<'a> DCtx<'a> {
     /// alone. A stream they interrupted would then carry on from a state that
     /// still points at buffers and dictionaries borrowed for that one call. So
     /// reset explicitly: the next stream starts from scratch.
+    ///
+    /// Only an open stream can carry on, though: a new one starts by setting
+    /// everything up again from the context's own dictionary. So when no
+    /// streaming call ran since the last reset, there is nothing to end, and
+    /// skipping the reset saves a call per frame - which shows on tiny ones.
     fn finish_one_shot(&mut self, res: SafeResult) -> SafeResult {
-        self.reset(ResetDirective::SessionOnly).and(res)
+        if self.3.streamed || self.2.guard().is_err() {
+            self.reset(ResetDirective::SessionOnly).and(res)
+        } else {
+            res
+        }
     }
 
     /// Fully decompress the given frame.
@@ -1369,6 +1387,7 @@ impl<'a> DCtx<'a> {
         });
         if res.is_ok() && resets_session {
             self.2.clear();
+            self.3.streamed = false;
         }
         res
     }
@@ -1471,7 +1490,7 @@ impl<'a> DCtx<'a> {
             RefMultipleDDicts(value) => {
                 // From now on `ref_ddict` may allocate the table of
                 // dictionaries, which zstd keeps until the context is freed.
-                self.3 |= value;
+                self.3.multiple_ddicts |= value;
                 (ZSTD_d_refMultipleDDicts, value as c_int)
             }
 
@@ -1500,6 +1519,7 @@ impl<'a> DCtx<'a> {
         input: &mut InBuffer<'_>,
     ) -> SafeResult {
         self.2.guard()?;
+        self.3.streamed = true;
         let mut output = output.wrap();
         let mut input = input.wrap();
         let code = unsafe {
@@ -1546,6 +1566,7 @@ impl<'a> DCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        self.3.streamed = true;
         unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompressBlock(
@@ -1569,6 +1590,7 @@ impl<'a> DCtx<'a> {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub unsafe fn insert_block(&mut self, block: &[u8]) -> usize {
+        self.3.streamed = true;
         unsafe {
             zstd_sys::ZSTD_insertBlock(
                 self.0.as_ptr(),
@@ -1608,7 +1630,7 @@ impl<'a> DCtx<'a> {
         // streaming buffers, once data has been decompressed. The table behind
         // `RefMultipleDDicts` is not counted there, and outlives the
         // parameter, hence the flag.
-        if self.3 || self.sizeof() != context.sizeof() {
+        if self.3.multiple_ddicts || self.sizeof() != context.sizeof() {
             return Err(STAGE_WRONG_ERROR);
         }
 

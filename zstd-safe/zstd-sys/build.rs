@@ -436,6 +436,13 @@ fn compile_zstd() {
     set_legacy(&mut config);
     enable_threading(&mut config);
 
+    // Apple's clang, the default on macOS, cannot build for wasm: say how to
+    // fix that, rather than leave it to a cryptic compiler error.
+    let host = env::var("HOST").unwrap_or_default();
+    if target_arch == "wasm32" && host.contains("apple-darwin") {
+        check_macos_wasm_compiler(&config);
+    }
+
     // Compile!
     config.compile("libzstd.a");
 
@@ -489,15 +496,18 @@ fn cargo_print(content: &dyn fmt::Display) {
 /// This happens on macOS, where the default clang (Apple's) has no
 /// WebAssembly backend: it parses the code, but cannot emit an object file.
 #[cfg(not(feature = "cmake"))]
-fn check_macos_wasm_compiler() {
+fn check_macos_wasm_compiler(config: &cc::Build) {
     let target = env::var("TARGET").unwrap_or_default();
-    // Probe the same compiler, and the same target, that cc will use.
-    let compiler = cc::Build::new().get_compiler();
+    // Run the very command the build will: the same compiler, with any
+    // wrapper (`CC="xcrun clang"`), and the same flags - the target, flags
+    // from the environment, and LTO, with which clang only needs to emit
+    // bitcode.
+    let compiler = config.get_compiler();
     let probe = PathBuf::from(env::var_os("OUT_DIR").unwrap())
         .join("wasm_compiler_probe.o");
 
-    let output = std::process::Command::new(compiler.path())
-        .arg(format!("--target={}", target))
+    let output = compiler
+        .to_command()
         // Generating code, not just parsing, is what Apple's clang cannot do.
         .args(["-x", "c", "-c", "-o"])
         .arg(&probe)
@@ -570,13 +580,7 @@ fn main() {
         #[cfg(feature = "cmake")]
         compile_zstd_cmake();
         #[cfg(not(feature = "cmake"))]
-        {
-            let host = env::var("HOST").unwrap_or_default();
-            if target_arch == "wasm32" && host.contains("apple-darwin") {
-                check_macos_wasm_compiler();
-            }
-            compile_zstd();
-        }
+        compile_zstd();
         (vec![], vec![manifest_dir.join("zstd/lib")])
     };
 

@@ -313,9 +313,42 @@ fn test_compress_sized() {
     assert_eq!(super::decompressed_size(&frame), Some(data.len() as u64));
     assert_eq!(super::decode_all(&frame[..]).unwrap(), data);
 
-    // encode_all, for contrast, cannot record it.
-    let streamed = super::encode_all(data, 3).unwrap();
+    // encode_all, for contrast, cannot record it for a long stream.
+    let long = data.repeat(1 + (128 << 10) / data.len());
+    let streamed = super::encode_all(&long[..], 3).unwrap();
     assert_eq!(super::decompressed_size(&streamed), None);
+}
+
+/// encode_all and copy_encode record the size of a source shorter than what
+/// they buffer in one go, whichever way the source hands it out.
+#[test]
+fn test_encode_all_records_short_sizes() {
+    use partial_io::{PartialOp, PartialRead};
+
+    const MAX: usize = 128 << 10;
+    let data: Vec<u8> = (0..MAX + 1).map(|i| (i % 251) as u8).collect();
+
+    for (len, recorded) in [
+        (0, true),
+        (1000, true),
+        (MAX - 1, true),
+        (MAX, false),
+        (MAX + 1, false),
+    ] {
+        let input = &data[..len];
+        let expected = if recorded { Some(len as u64) } else { None };
+
+        let frame = super::encode_all(input, 3).unwrap();
+        assert_eq!(super::decompressed_size(&frame), expected, "{}", len);
+        assert_eq!(super::decode_all(&frame[..]).unwrap(), input);
+
+        // A source that only ever hands out a few bytes at a time.
+        let ops = std::iter::repeat(PartialOp::Limited(7));
+        let frame =
+            super::encode_all(PartialRead::new(input, ops), 3).unwrap();
+        assert_eq!(super::decompressed_size(&frame), expected, "{}", len);
+        assert_eq!(super::decode_all(&frame[..]).unwrap(), input);
+    }
 }
 
 #[test]

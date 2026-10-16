@@ -118,10 +118,10 @@ fn main() {
         "Streaming a slice you already have in memory pays for buffering"
     );
     println!(
-        "it does not need, and encode_all is never told the length, so the"
+        "it does not need, and from 128 KiB on encode_all cannot know the length,"
     );
     println!(
-        "frame cannot record it - which costs whoever reads it, later.\n"
+        "so the frame cannot record it - which costs whoever reads it, later.\n"
     );
 
     let naive = measure("encode_all", data.len(), iterations, || {
@@ -140,7 +140,12 @@ fn main() {
     println!("the length, a streaming compressor records it too.\n");
 
     let sized = zstd::bulk::compress(&data, level).unwrap();
-    let unsized_ = zstd::encode_all(&data[..], level).unwrap();
+    // A streaming encoder that is never told the length cannot record it.
+    let unsized_ = {
+        let mut encoder = zstd::Encoder::new(Vec::new(), level).unwrap();
+        encoder.write_all(&data).unwrap();
+        encoder.finish().unwrap()
+    };
     let streamed_sized =
         zstd::compress_sized(&data[..], level, data.len() as u64).unwrap();
     println!(
@@ -148,7 +153,7 @@ fn main() {
         zstd::decompressed_size(&sized)
     );
     println!(
-        "  (encode_all          header says {:?})",
+        "  (Encoder, no size    header says {:?})",
         zstd::decompressed_size(&unsized_)
     );
     println!(

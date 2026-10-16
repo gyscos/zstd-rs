@@ -2,6 +2,17 @@ use super::{compress, decompress};
 
 const TEXT: &str = include_str!("../../assets/example.txt");
 
+/// Compresses `data` into a frame that does not record its size, as a
+/// streaming encoder that is never told the length produces.
+fn sizeless(data: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+
+    let mut encoder =
+        crate::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+    encoder.write_all(data).unwrap();
+    encoder.finish().unwrap()
+}
+
 #[test]
 fn test_direct() {
     // Can we include_str!("assets/example.txt")?
@@ -55,9 +66,9 @@ fn test_upper_bound_single_frame() {
 
 #[test]
 fn test_upper_bound_without_a_recorded_size() {
-    // A streaming compressor is not told the length, so there is nothing to
-    // read out of the header.
-    let compressed = crate::encode_all(TEXT.as_bytes(), 1).unwrap();
+    // A streaming compressor that is not told the length has nothing to
+    // write in the header.
+    let compressed = sizeless(TEXT.as_bytes());
 
     assert_eq!(
         zstd_safe::get_frame_content_size(&compressed).unwrap(),
@@ -124,7 +135,7 @@ fn test_upper_bound_many_frames() {
 fn test_upper_bound_stops_at_a_frame_without_a_size() {
     // One good frame followed by one that records nothing: no total to give.
     let mut mixed = compress(TEXT.as_bytes(), 1).unwrap();
-    mixed.extend_from_slice(&crate::encode_all(TEXT.as_bytes(), 1).unwrap());
+    mixed.extend_from_slice(&sizeless(TEXT.as_bytes()));
 
     #[cfg(not(feature = "experimental"))]
     assert_eq!(super::Decompressor::upper_bound(&mixed), None);
@@ -179,7 +190,7 @@ fn test_decompress_capacity_below_the_known_size() {
 fn test_decompress_capacity_between_actual_and_bound() {
     // A frame that records nothing: only an over-estimate is available, and
     // refusing on that would reject this, which decompresses perfectly well.
-    let compressed = crate::encode_all(TEXT.as_bytes(), 1).unwrap();
+    let compressed = sizeless(TEXT.as_bytes());
     assert_eq!(
         zstd_safe::get_frame_content_size(&compressed).unwrap(),
         None

@@ -1,7 +1,16 @@
 use std::io;
-use std::io::BufRead;
+use std::io::{BufRead, Read, Write};
 
 use super::{Decoder, Encoder};
+
+/// How much `copy_encode` (and so `encode_all`) buffers in one go, at most,
+/// before it starts compressing.
+///
+/// A source shorter than this is complete before anything is compressed, so
+/// its length is known and can be recorded in the frame header. A longer one
+/// is streamed through, its length unknown. This only bounds the memory held
+/// at once.
+const MAX_BUFFERED: usize = 128 << 10;
 
 /// How much `decode_all` will reserve up front, at most.
 ///
@@ -84,13 +93,13 @@ where
 ///
 /// A level of `0` uses zstd's default (currently `3`).
 ///
-/// Because the source is read as a stream, its length is not known in advance,
-/// so the frame this produces does not record its decompressed size. Whoever
-/// decompresses it cannot size their buffer up front, which costs them about a
-/// factor of two - see [`decompressed_size()`]. Use [`crate::bulk::compress()`]
-/// for a slice you already hold, [`compress_file()`] for a file, or
-/// [`compress_sized()`] when you know the length some other way; all three
-/// record it.
+/// When the source is shorter than 128 KiB, the frame records its
+/// decompressed size, so whoever decompresses it can size their buffer up
+/// front - worth about a factor of two to them, see [`decompressed_size()`].
+/// A longer source is read as a stream, its length unknown in advance, so its
+/// frame does not record it. Use [`crate::bulk::compress()`] for a slice you
+/// already hold, [`compress_file()`] for a file, or [`compress_sized()`] when
+/// you know the length some other way; all three record it at any size.
 pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
     let mut result = Vec::<u8>::new();
     copy_encode(source, &mut result, level)?;
@@ -101,8 +110,8 @@ pub fn encode_all<R: io::Read>(source: R, level: i32) -> io::Result<Vec<u8>> {
 ///
 /// The length is recorded in the frame header, which is what lets whoever
 /// decompresses it size their buffer up front - worth about a factor of two to
-/// them. [`encode_all()`] cannot do this, because it has no way to know how
-/// much is coming.
+/// them. [`encode_all()`] can only do this for a source shorter than 128 KiB,
+/// because it has no other way to know how much is coming.
 ///
 /// `size` must be exactly how many bytes `source` yields; zstd fails the frame
 /// if it turns out to be wrong.
@@ -134,9 +143,9 @@ pub fn compress_sized<R: io::Read>(
 /// Compress everything from `source`, whose length you already know, into
 /// `destination`.
 ///
-/// Like [`copy_encode()`], but the length is recorded in the frame header, so
-/// whoever decompresses it can size their buffer up front - worth about a
-/// factor of two to them.
+/// Like [`copy_encode()`], but the length is recorded in the frame header
+/// whatever the size, so whoever decompresses it can size their buffer up
+/// front - worth about a factor of two to them.
 ///
 /// Nothing larger than the compressor's own buffers is held in memory, so this
 /// is the one to reach for when the data is too big to want a `Vec` of it.
@@ -235,6 +244,9 @@ where
 /// Compressed data will be appended to `destination`.
 ///
 /// A level of `0` uses zstd's default (currently `3`).
+///
+/// As with [`encode_all()`], the frame records the decompressed size when the
+/// source is shorter than 128 KiB.
 pub fn copy_encode<R, W>(
     mut source: R,
     destination: W,
@@ -245,7 +257,25 @@ where
     W: io::Write,
 {
     let mut encoder = Encoder::new(destination, level)?;
-    io::copy(&mut source, &mut encoder)?;
+
+    // Read the beginning first: if the source ends there, we know its length,
+    // and pledging it is what gets the frame to record it.
+    let mut head = Vec::new();
+    source
+        .by_ref()
+        .take(MAX_BUFFERED as u64)
+        .read_to_end(&mut head)?;
+    let complete = head.len() < MAX_BUFFERED;
+    if complete {
+        encoder.set_pledged_src_size(Some(head.len() as u64))?;
+    }
+
+    encoder.write_all(&head)?;
+    // Past its end, a source should not be read again: a terminal, for one,
+    // would wait for more input instead of reporting the end a second time.
+    if !complete {
+        io::copy(&mut source, &mut encoder)?;
+    }
     encoder.finish()?;
     Ok(())
 }

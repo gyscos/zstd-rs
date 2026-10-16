@@ -74,9 +74,11 @@ up front can record it:
 | a slice or a `Vec` | `bulk::compress` | `compress_sized_into` |
 | a file | `compress_file` | `compress_file_into` |
 | a `Read` whose length you know | `compress_sized` | `compress_sized_into` |
-| any other `Read` | `encode_all` *(no size)* | `copy_encode` *(no size)* |
+| any other `Read` | `encode_all` | `copy_encode` |
 
-Everything but the last row records the size. Reach for the `Write` column
+Everything but the last row records the size, whatever it is. The last row
+records it when the source turns out to be shorter than 128 KiB, and leaves it
+out beyond that. Reach for the `Write` column
 when the data is large enough that you would rather not hold a `Vec` of it -
 these stream straight through, so only the compressor's own buffers are in
 memory. For a source that is neither a file nor a slice, its length is the

@@ -252,7 +252,9 @@ where
 
             // Support writing concatenated frames by re-initializing the
             // context.
-            if self.finished_frame {
+            // We don't want empty input to cause a frame re-initialization:
+            // it would forget that the stream ended on a complete frame.
+            if self.finished_frame && !buf.is_empty() {
                 self.operation.reinit()?;
                 self.finished_frame = false;
             }

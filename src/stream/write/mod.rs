@@ -31,9 +31,14 @@ pub struct Encoder<'a, W: Write> {
 
 /// A decoder that decompress and forward data to another writer.
 ///
-/// Note that you probably want to `flush()` after writing your stream content.
-/// You can use [`auto_flush()`] to automatically flush the writer on drop.
+/// Don't forget to call [`finish()`] after writing your stream content: it
+/// flushes the decompressed data, and is the only way to know whether the
+/// input stopped in the middle of a frame.
 ///
+/// You can also use [`auto_flush()`] to automatically flush the writer on
+/// drop; note that this does not check for an incomplete frame.
+///
+/// [`finish()`]: Decoder::finish
 /// [`auto_flush()`]: Decoder::auto_flush
 pub struct Decoder<'a, W: Write> {
     // output writer (decompressed data)
@@ -428,8 +433,34 @@ impl<'a, W: Write> Decoder<'a, W> {
     }
 
     /// Returns the inner `Write`.
+    ///
+    /// Careful: this neither flushes the decompressed data nor checks that
+    /// the input ended on a complete frame.
+    /// Use [`finish(self)`](#method.finish) for that.
     pub fn into_inner(self) -> W {
         self.writer.into_inner().0
+    }
+
+    /// Finishes the stream.
+    ///
+    /// This flushes all the decompressed data, and returns an `UnexpectedEof`
+    /// error if the data written so far does not end on a complete frame.
+    ///
+    /// This returns the inner writer in case you need it.
+    pub fn finish(mut self) -> io::Result<W> {
+        self.do_finish()?;
+        Ok(self.into_inner())
+    }
+
+    /// Attempts to finish the stream.
+    ///
+    /// Same as [`finish(self)`](#method.finish), but does not consume `self`.
+    ///
+    /// `write` on this object will fail after `do_finish` has succeeded.
+    pub fn do_finish(&mut self) -> io::Result<()> {
+        // Unlike when encoding, finishing does not flush anything by itself.
+        self.writer.flush()?;
+        self.writer.finish()
     }
 
     /// Return a recommendation for the size of data to write at once.

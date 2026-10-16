@@ -92,7 +92,8 @@ pub use crate::stream::{
 ///     .get_ref()
 ///     .and_then(|e| e.downcast_ref::<zstd::Error>())
 ///     .unwrap();
-/// assert!(zstd_err.is(zstd::zstd_safe::ZSTD_ErrorCode::ZSTD_error_dstSize_tooSmall));
+/// use zstd::zstd_safe::zstd_sys::ZSTD_ErrorCode;
+/// assert!(zstd_err.is(ZSTD_ErrorCode::ZSTD_error_dstSize_tooSmall));
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Error {
@@ -103,7 +104,7 @@ impl Error {
     /// Returns whether this is an error of the given kind.
     ///
     /// See [`zstd_safe::is_error_kind()`].
-    pub fn is(&self, kind: zstd_safe::ZSTD_ErrorCode) -> bool {
+    pub fn is(&self, kind: zstd_safe::zstd_sys::ZSTD_ErrorCode) -> bool {
         zstd_safe::is_error_kind(self.code, kind)
     }
 }

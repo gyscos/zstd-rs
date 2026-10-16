@@ -1074,7 +1074,7 @@ fn test_one_shot_decompression_without_a_stream() {
 /// `is_error_kind` tells error kinds apart, and never matches a success.
 #[test]
 fn test_is_error_kind() {
-    use zstd_safe::ZSTD_ErrorCode::*;
+    use zstd_safe::zstd_sys::ZSTD_ErrorCode::*;
 
     let mut small = [0u8; 4];
     let code = zstd_safe::compress(&mut small[..], INPUT, 3).unwrap_err();

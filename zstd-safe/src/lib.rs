@@ -533,10 +533,22 @@ impl<'a> CCtx<'a> {
     }
 
     /// Wraps the `ZSTD_initCStream_usingCDict()` function.
+    ///
+    /// Dictionary must outlive the context.
+    ///
+    /// ```compile_fail,E0515
+    /// # #![allow(deprecated)]
+    /// fn compressor() -> zstd_safe::CCtx<'static> {
+    ///     let cdict = zstd_safe::CDict::create(b"dictionary", 3);
+    ///     let mut cctx = zstd_safe::CCtx::create();
+    ///     cctx.init_using_cdict(&cdict).unwrap();
+    ///     cctx // `cdict` would be dropped while `cctx` still points at it.
+    /// }
+    /// ```
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated(note = "Use reset and ref_cdict instead.")]
-    pub fn init_using_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
+    pub fn init_using_cdict<'b>(&mut self, cdict: &'a CDict<'b>) -> SafeResult
     where
         'b: 'a, // Dictionary outlives the stream.
     {
@@ -1278,10 +1290,22 @@ impl<'a> DCtx<'a> {
     }
 
     /// Wraps the `ZSTD_initDStream_usingDDict()` function.
+    ///
+    /// Dictionary must outlive the context.
+    ///
+    /// ```compile_fail,E0515
+    /// # #![allow(deprecated)]
+    /// fn decompressor() -> zstd_safe::DCtx<'static> {
+    ///     let ddict = zstd_safe::DDict::create(b"dictionary");
+    ///     let mut dctx = zstd_safe::DCtx::create();
+    ///     dctx.init_using_ddict(&ddict).unwrap();
+    ///     dctx // `ddict` would be dropped while `dctx` still points at it.
+    /// }
+    /// ```
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated(note = "Use reset and ref_ddict instead.")]
-    pub fn init_using_ddict<'b>(&mut self, ddict: &DDict<'b>) -> SafeResult
+    pub fn init_using_ddict<'b>(&mut self, ddict: &'a DDict<'b>) -> SafeResult
     where
         'b: 'a,
     {

@@ -396,6 +396,27 @@ fn test_context_poisoned_by_an_error() {
     assert_eq!(&buffer[..written], INPUT);
 }
 
+/// The legacy decoders report both buffers as fully processed when they fail,
+/// although nothing was written. A failed call must not move the positions,
+/// or a `Vec` ends up with a length covering uninitialized capacity.
+#[cfg(all(feature = "std", feature = "legacy"))]
+#[test]
+fn test_failed_legacy_stream_reports_no_output() {
+    use zstd_safe::{DCtx, InBuffer, OutBuffer};
+
+    // zstd v0.7 magic, then a frame header descriptor with a reserved bit set.
+    let corrupt_legacy_frame = [0x27u8, 0xB5, 0x2F, 0xFD, 0x08, 0x00];
+
+    let mut dctx = DCtx::create();
+    let mut buffer = Vec::with_capacity(1024);
+    let mut input = InBuffer::around(&corrupt_legacy_frame[..]);
+    let mut output = OutBuffer::around(&mut buffer);
+    dctx.decompress_stream(&mut output, &mut input).unwrap_err();
+    assert_eq!(output.pos(), 0, "a failed call reported output");
+    assert_eq!(input.pos(), 0, "a failed call reported consumed input");
+    assert_eq!(buffer.len(), 0);
+}
+
 #[test]
 fn test_poison_tracking() {
     use crate::Poison;

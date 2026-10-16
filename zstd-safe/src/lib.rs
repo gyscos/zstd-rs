@@ -598,7 +598,8 @@ impl<'a> CCtx<'a> {
                 ptr_mut(&mut input),
             )
         };
-        self.2.record(parse_code(code))
+        let res = output.check(parse_code(code));
+        self.2.record(input.check(res))
     }
 
     /// Performs a step of a streaming compression operation.
@@ -634,7 +635,8 @@ impl<'a> CCtx<'a> {
                 end_op,
             )
         };
-        self.2.record(parse_code(code))
+        let res = output.check(parse_code(code));
+        self.2.record(input.check(res))
     }
 
     /// Flush any intermediate buffer.
@@ -652,7 +654,7 @@ impl<'a> CCtx<'a> {
         let code = unsafe {
             zstd_sys::ZSTD_flushStream(self.0.as_ptr(), ptr_mut(&mut output))
         };
-        self.2.record(parse_code(code))
+        self.2.record(output.check(parse_code(code)))
     }
 
     /// Ends the stream.
@@ -670,7 +672,7 @@ impl<'a> CCtx<'a> {
         let code = unsafe {
             zstd_sys::ZSTD_endStream(self.0.as_ptr(), ptr_mut(&mut output))
         };
-        self.2.record(parse_code(code))
+        self.2.record(output.check(parse_code(code)))
     }
 
     /// Returns the size currently used by this context.
@@ -1340,7 +1342,8 @@ impl<'a> DCtx<'a> {
                 ptr_mut(&mut input),
             )
         };
-        self.2.record(parse_code(code))
+        let res = output.check(parse_code(code));
+        self.2.record(input.check(res))
     }
 
     /// Wraps the `ZSTD_DStreamInSize()` function.
@@ -2187,9 +2190,26 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
     }
 }
 
+impl<'a, 'b, C: WriteBuf + ?Sized> OutBufferWrapper<'a, 'b, C> {
+    /// Passes `res` through, and forgets the position reported by zstd if it
+    /// is an error, so the parent keeps the one from before the call.
+    ///
+    /// zstd.h makes no promise about `pos` after a failed call, and the legacy
+    /// decoders report the whole output buffer as written when they fail; only
+    /// a successful call vouches for the bytes up to `pos` being initialized.
+    fn check(&mut self, res: SafeResult) -> SafeResult {
+        if res.is_err() {
+            self.buf.pos = self.parent.pos;
+        }
+        res
+    }
+}
+
 impl<'a, 'b, C: WriteBuf + ?Sized> Drop for OutBufferWrapper<'a, 'b, C> {
     fn drop(&mut self) {
-        // Safe because we guarantee that data until `self.buf.pos` has been written.
+        // Safe because `self.buf.pos` either comes from a successful call,
+        // which guarantees that data until there has been written, or was put
+        // back to the parent's position by `check()`.
         unsafe { self.parent.set_pos(self.buf.pos) };
     }
 }
@@ -2247,6 +2267,20 @@ impl<'a> InBuffer<'a> {
             },
             parent: self,
         }
+    }
+}
+
+impl<'a, 'b> InBufferWrapper<'a, 'b> {
+    /// Passes `res` through, and forgets the position reported by zstd if it
+    /// is an error, so the parent keeps the one from before the call.
+    ///
+    /// See `OutBufferWrapper::check()`: a failed call consumed nothing usable,
+    /// and the legacy decoders report the whole input as read.
+    fn check(&mut self, res: SafeResult) -> SafeResult {
+        if res.is_err() {
+            self.buf.pos = self.parent.pos;
+        }
+        res
     }
 }
 

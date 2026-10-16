@@ -195,6 +195,17 @@ fn test_dictionary() {
 }
 
 #[test]
+#[should_panic(expected = "sample sizes don't add up")]
+fn test_train_from_buffer_overflowing_sizes() {
+    // These sizes only add up to the buffer length by wrapping around.
+    let samples = [0u8; 100];
+    let sizes = [usize::MAX - 99, 200];
+    let mut dict_buffer = std::vec![0u8; 1024];
+    let _ =
+        zstd_safe::train_from_buffer(&mut dict_buffer[..], &samples, &sizes);
+}
+
+#[test]
 fn test_checksum() {
     let mut buffer = std::vec![0u8; 256];
     let mut cctx = zstd_safe::CCtx::default();

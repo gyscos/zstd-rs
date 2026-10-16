@@ -2684,7 +2684,16 @@ pub fn train_from_buffer<C: WriteBuf + ?Sized>(
     samples_buffer: &[u8],
     samples_sizes: &[usize],
 ) -> SafeResult {
-    assert_eq!(samples_buffer.len(), samples_sizes.iter().sum());
+    // A plain `sum()` wraps around when overflow checks are disabled, and
+    // would accept sizes reaching far outside of `samples_buffer`.
+    let total_size = samples_sizes
+        .iter()
+        .try_fold(0usize, |total, &size| total.checked_add(size));
+    assert_eq!(
+        Some(samples_buffer.len()),
+        total_size,
+        "sample sizes don't add up to the samples buffer length"
+    );
 
     unsafe {
         dict_buffer.write_from(|buffer, capacity| {

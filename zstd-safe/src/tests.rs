@@ -46,6 +46,23 @@ fn test_writebuf() {
     assert_eq!(data.as_slice(), &[0, 1, 2, 3, 0, 0, 4, 5, 6, 7]);
 }
 
+/// `Vec` is a `WriteBuf` with just `alloc`. Decompressing into one leaves
+/// its length at the decompressed size, even with plenty of spare capacity:
+/// zstd may scribble past the output, but only in that spare capacity.
+#[cfg(feature = "alloc")]
+#[test]
+fn test_vec_round_trip_without_std() {
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    zstd_safe::compress(&mut compressed, INPUT, 3).unwrap();
+
+    let mut decompressed = Vec::with_capacity(1 << 20);
+    let written =
+        zstd_safe::decompress(&mut decompressed, &compressed).unwrap();
+    assert_eq!(written, INPUT.len());
+    assert_eq!(decompressed, INPUT);
+}
+
 /// Writing nothing after a cursor truncates there, like writing something
 /// does: it must not leave the previous result in place.
 #[cfg(feature = "std")]

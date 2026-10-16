@@ -19,8 +19,8 @@
 //! `experimental` feature.
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 
-// TODO: Use alloc feature instead to implement stuff for Vec
-// TODO: What about Cursor?
+#[cfg(feature = "alloc")]
+extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -2205,29 +2205,29 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
-unsafe impl WriteBuf for &mut std::vec::Vec<u8> {
+#[cfg(feature = "alloc")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "alloc")))]
+unsafe impl WriteBuf for &mut alloc::vec::Vec<u8> {
     fn as_slice(&self) -> &[u8] {
-        std::vec::Vec::as_slice(self)
+        alloc::vec::Vec::as_slice(self)
     }
 
     fn capacity(&self) -> usize {
-        std::vec::Vec::capacity(self)
+        alloc::vec::Vec::capacity(self)
     }
 
     fn as_mut_ptr(&mut self) -> *mut u8 {
-        std::vec::Vec::as_mut_ptr(self)
+        alloc::vec::Vec::as_mut_ptr(self)
     }
 
     unsafe fn filled_until(&mut self, n: usize) {
-        std::vec::Vec::set_len(self, n)
+        alloc::vec::Vec::set_len(self, n)
     }
 }
 
-#[cfg(feature = "std")]
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "std")))]
-unsafe impl WriteBuf for std::vec::Vec<u8> {
+#[cfg(feature = "alloc")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "alloc")))]
+unsafe impl WriteBuf for alloc::vec::Vec<u8> {
     fn as_slice(&self) -> &[u8] {
         &self[..]
     }

@@ -174,7 +174,8 @@ impl<'a> DecoderDictionary<'a> {
 /// * `sample_data` is the concatenation of all sample data.
 /// * `sample_sizes` is the size of each sample in `sample_data`.
 ///   The sum of all `sample_sizes` should equal the length of `sample_data`.
-/// * `max_size` is the maximum size of the dictionary to generate.
+/// * `max_size` is the maximum size of the dictionary to generate. A buffer of
+///   that size is allocated up front, for zstd to write the dictionary into.
 ///
 /// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].
 #[cfg(feature = "zdict_builder")]
@@ -216,7 +217,8 @@ pub fn from_continuous(
 /// [`from_continuous`]: ./fn.from_continuous.html
 ///
 /// * `samples` is a list of individual samples to train on.
-/// * `max_size` is the maximum size of the dictionary to generate.
+/// * `max_size` is the maximum size of the dictionary to generate. A buffer of
+///   that size is allocated up front, for zstd to write the dictionary into.
 ///
 /// The result is the dictionary data. You can, for example, feed it to [`CDict::create`].
 #[cfg(feature = "zdict_builder")]

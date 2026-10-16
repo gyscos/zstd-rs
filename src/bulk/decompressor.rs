@@ -100,6 +100,9 @@ impl<'a> Decompressor<'a> {
     ///
     /// The decompressed data should be at most `capacity` bytes,
     /// or an error will be returned.
+    ///
+    /// The output buffer is allocated up front, and can be as large as
+    /// `capacity`: see [`crate::bulk::decompress()`] for its size.
     pub fn decompress(
         &mut self,
         data: &[u8],

@@ -104,3 +104,58 @@ fn test_auto_wrappers_panicking_writer() {
     })
     .unwrap_err();
 }
+
+/// Test that an input which stops in the middle of a frame is reported by
+/// `finish()`, like it is when reading.
+#[test]
+fn test_decoder_finish_incomplete_frame() {
+    use std::io::ErrorKind::UnexpectedEof;
+
+    let input = b"Abcdefghabcdefgh";
+    let frame = crate::encode_all(&input[..], 1).unwrap();
+    // Concatenated frames: only a cut at a frame boundary is complete.
+    let encoded = [&frame[..], &frame[..]].concat();
+
+    for cut in 0..=encoded.len() {
+        let complete = cut != 0 && cut % frame.len() == 0;
+
+        let mut decoder = Decoder::new(Vec::new()).unwrap();
+        decoder.write_all(&encoded[..cut]).unwrap();
+        match decoder.finish() {
+            Ok(decoded) => {
+                assert!(complete, "cut at {} accepted", cut);
+                assert_eq!(decoded, input.repeat(cut / frame.len()));
+            }
+            Err(e) => {
+                assert!(!complete, "cut at {} rejected: {}", cut, e);
+                assert_eq!(e.kind(), UnexpectedEof);
+            }
+        }
+    }
+}
+
+/// Test that what could be decoded is flushed, and that the stream can be
+/// resumed, when `do_finish()` finds an incomplete frame.
+#[test]
+fn test_decoder_do_finish_resume() {
+    // Larger than the 32KB output buffer.
+    let input = vec![b'b'; 128 * 1024];
+    let encoded = crate::encode_all(&input[..], 1).unwrap();
+    let (head, tail) = encoded.split_at(encoded.len() - 1);
+
+    let mut flushed = Decoder::new(Vec::new()).unwrap();
+    flushed.write_all(head).unwrap();
+    flushed.flush().unwrap();
+
+    let mut decoder = Decoder::new(Vec::new()).unwrap();
+    decoder.write_all(head).unwrap();
+    decoder.do_finish().unwrap_err();
+    assert_eq!(decoder.get_ref(), flushed.get_ref());
+
+    decoder.write_all(tail).unwrap();
+    // An empty write must not start a new frame.
+    assert_eq!(decoder.write(&[]).unwrap(), 0);
+    decoder.do_finish().unwrap();
+    decoder.write_all(&encoded).unwrap_err();
+    assert_eq!(decoder.finish().unwrap(), input);
+}

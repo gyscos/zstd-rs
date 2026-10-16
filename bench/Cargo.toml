@@ -1,0 +1,24 @@
+[package]
+name = "zstd-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Benchmarks for the zstd and zstd-safe bindings (not part of the published crates)."
+
+# Kept out of the main crates so criterion never becomes one of their
+# (dev-)dependencies, and so their MSRV is unaffected.
+[workspace]
+
+[dependencies]
+zstd = { path = "..", features = ["experimental", "zstdmt"] }
+zstd-safe = { path = "../zstd-safe", features = ["std", "seekable", "experimental", "zstdmt"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "zstd"
+harness = false
+
+[profile.bench]
+debug = true

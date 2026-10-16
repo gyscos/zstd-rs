@@ -100,11 +100,6 @@ pub struct Error {
 }
 
 impl Error {
-    /// The raw error code returned by zstd.
-    pub fn code(&self) -> zstd_safe::ErrorCode {
-        self.code
-    }
-
     /// Returns whether this is an error of the given kind.
     ///
     /// See [`zstd_safe::is_error_kind()`].
@@ -115,9 +110,8 @@ impl Error {
 
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Error")
-            .field("code", &self.code)
-            .field("message", &zstd_safe::get_error_name(self.code))
+        f.debug_tuple("Error")
+            .field(&zstd_safe::get_error_name(self.code))
             .finish()
     }
 }

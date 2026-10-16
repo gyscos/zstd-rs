@@ -359,6 +359,18 @@ impl<'a> CCtx<'a> {
             .expect("zstd returned null pointer when creating new context")
     }
 
+    /// Ends the session of a one-shot compression, and passes `res` through.
+    ///
+    /// zstd.h has these calls imply a reset, but most of them leave the stream
+    /// stage alone (and their source size behind as the pledged one), while
+    /// `ZSTD_compress2()` stays mid-frame when it fails. A later stream call
+    /// would then carry on from a state that still points at buffers and
+    /// dictionaries borrowed for that one call. So reset explicitly: the next
+    /// stream starts from scratch.
+    fn finish_one_shot(&mut self, res: SafeResult) -> SafeResult {
+        self.reset(ResetDirective::SessionOnly).and(res)
+    }
+
     /// Wraps the `ZSTD_compressCCtx()` function
     pub fn compress<C: WriteBuf + ?Sized>(
         &mut self,
@@ -366,9 +378,8 @@ impl<'a> CCtx<'a> {
         src: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
-        self.2.clear();
         // Safety: ZSTD_compressCCtx returns how many bytes were written.
-        unsafe {
+        let res = unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compressCCtx(
                     self.0.as_ptr(),
@@ -379,7 +390,8 @@ impl<'a> CCtx<'a> {
                     compression_level,
                 ))
             })
-        }
+        };
+        self.finish_one_shot(res)
     }
 
     /// Wraps the `ZSTD_compress2()` function.
@@ -388,9 +400,8 @@ impl<'a> CCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
-        self.2.clear();
         // Safety: ZSTD_compress2 returns how many bytes were written.
-        unsafe {
+        let res = unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress2(
                     self.0.as_ptr(),
@@ -400,7 +411,14 @@ impl<'a> CCtx<'a> {
                     src.len(),
                 ))
             })
-        }
+        };
+        // Unlike the others, this starts by resetting the session, and
+        // ends it when it succeeds. When it fails, it stays mid-frame,
+        // possibly with worker threads still running: leave it so (zstd then
+        // refuses to change the dictionary they read from), and make
+        // streaming calls wait for an explicit reset.
+        self.2.clear();
+        self.2.record(res)
     }
 
     /// Wraps the `ZSTD_compress_usingDict()` function.
@@ -411,9 +429,8 @@ impl<'a> CCtx<'a> {
         dict: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
-        self.2.clear();
         // Safety: ZSTD_compress_usingDict returns how many bytes were written.
-        unsafe {
+        let res = unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress_usingDict(
                     self.0.as_ptr(),
@@ -426,7 +443,8 @@ impl<'a> CCtx<'a> {
                     compression_level,
                 ))
             })
-        }
+        };
+        self.finish_one_shot(res)
     }
 
     /// Wraps the `ZSTD_compress_usingCDict()` function.
@@ -436,9 +454,8 @@ impl<'a> CCtx<'a> {
         src: &[u8],
         cdict: &CDict<'_>,
     ) -> SafeResult {
-        self.2.clear();
         // Safety: ZSTD_compress_usingCDict returns how many bytes were written.
-        unsafe {
+        let res = unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_compress_usingCDict(
                     self.0.as_ptr(),
@@ -449,7 +466,8 @@ impl<'a> CCtx<'a> {
                     cdict.0.as_ptr(),
                 ))
             })
-        }
+        };
+        self.finish_one_shot(res)
     }
 
     /// Initializes the context with the given compression level.
@@ -1138,6 +1156,16 @@ impl<'a> DCtx<'a> {
             .expect("zstd returned null pointer when creating new context")
     }
 
+    /// Ends the session of a one-shot decompression, and passes `res` through.
+    ///
+    /// zstd.h has these calls imply a reset, but they leave the stream stage
+    /// alone. A stream they interrupted would then carry on from a state that
+    /// still points at buffers and dictionaries borrowed for that one call. So
+    /// reset explicitly: the next stream starts from scratch.
+    fn finish_one_shot(&mut self, res: SafeResult) -> SafeResult {
+        self.reset(ResetDirective::SessionOnly).and(res)
+    }
+
     /// Fully decompress the given frame.
     ///
     /// This decompress an entire frame in-memory. If you can have enough memory to store both the
@@ -1149,8 +1177,7 @@ impl<'a> DCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
-        self.2.clear();
-        unsafe {
+        let res = unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompressDCtx(
                     self.0.as_ptr(),
@@ -1160,7 +1187,8 @@ impl<'a> DCtx<'a> {
                     src.len(),
                 ))
             })
-        }
+        };
+        self.finish_one_shot(res)
     }
 
     /// Fully decompress the given frame using a dictionary.
@@ -1177,8 +1205,7 @@ impl<'a> DCtx<'a> {
         src: &[u8],
         dict: &[u8],
     ) -> SafeResult {
-        self.2.clear();
-        unsafe {
+        let res = unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompress_usingDict(
                     self.0.as_ptr(),
@@ -1190,7 +1217,8 @@ impl<'a> DCtx<'a> {
                     dict.len(),
                 ))
             })
-        }
+        };
+        self.finish_one_shot(res)
     }
 
     /// Fully decompress the given frame using a dictionary.
@@ -1204,8 +1232,7 @@ impl<'a> DCtx<'a> {
         src: &[u8],
         ddict: &DDict<'_>,
     ) -> SafeResult {
-        self.2.clear();
-        unsafe {
+        let res = unsafe {
             dst.write_from(|buffer, capacity| {
                 parse_code(zstd_sys::ZSTD_decompress_usingDDict(
                     self.0.as_ptr(),
@@ -1216,7 +1243,8 @@ impl<'a> DCtx<'a> {
                     ddict.0.as_ptr(),
                 ))
             })
-        }
+        };
+        self.finish_one_shot(res)
     }
 
     /// Initializes an existing `DStream` for decompression.

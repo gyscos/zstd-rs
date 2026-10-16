@@ -705,6 +705,134 @@ fn test_failed_legacy_stream_reports_no_output() {
     assert_eq!(buffer.len(), 0);
 }
 
+/// The one-shot calls start a new job without resetting the stream stage in C,
+/// so a stream they interrupted used to carry on afterwards - decoding against
+/// the dictionary of the one-shot call, which may be long gone.
+#[cfg(feature = "std")]
+#[test]
+fn test_one_shot_decompression_resets_the_stream() {
+    use zstd_safe::{DCtx, DDict, InBuffer, OutBuffer, SafeResult};
+
+    type OneShot = fn(&mut DCtx<'_>, &mut Vec<u8>, &[u8]) -> SafeResult;
+    let one_shots: [OneShot; 3] = [
+        |dctx, dst, src| dctx.decompress(dst, src),
+        |dctx, dst, src| {
+            dctx.decompress_using_dict(dst, src, &std::vec![b'd'; 1000])
+        },
+        |dctx, dst, src| {
+            let ddict = DDict::create(&[b'd'; 1000]);
+            dctx.decompress_using_ddict(dst, src, &ddict)
+        },
+    ];
+
+    let long = LONG_CONTENT.as_bytes();
+    let mut abandoned =
+        Vec::with_capacity(zstd_safe::compress_bound(long.len()));
+    zstd_safe::compress(&mut abandoned, long, 1).unwrap();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    zstd_safe::compress(&mut compressed, INPUT, 1).unwrap();
+
+    for one_shot in one_shots {
+        let mut dctx = DCtx::create();
+
+        // A stream that is abandoned with output still buffered...
+        let mut head = [0u8; 16];
+        dctx.decompress_stream(
+            &mut OutBuffer::around(&mut head[..]),
+            &mut InBuffer::around(&abandoned),
+        )
+        .unwrap();
+
+        // ... a one-shot job on the same context, with no room for output...
+        one_shot(&mut dctx, &mut Vec::new(), &compressed).unwrap_err();
+
+        // ... and a new stream, which must see nothing of either.
+        let mut decoded = Vec::with_capacity(INPUT.len() + 1);
+        let hint = dctx
+            .decompress_stream(
+                &mut OutBuffer::around(&mut decoded),
+                &mut InBuffer::around(&compressed),
+            )
+            .map_err(zstd_safe::get_error_name)
+            .unwrap();
+        assert_eq!(hint, 0);
+        assert_eq!(decoded, INPUT);
+    }
+}
+
+/// Same on the compression side, whether or not the one-shot call succeeds.
+#[cfg(feature = "std")]
+#[test]
+fn test_one_shot_compression_resets_the_stream() {
+    use zstd_safe::{CCtx, CDict, InBuffer, OutBuffer, SafeResult};
+
+    type OneShot = fn(&mut CCtx<'_>, &mut Vec<u8>, &[u8]) -> SafeResult;
+    let one_shots: [OneShot; 4] = [
+        |cctx, dst, src| cctx.compress(dst, src, 1),
+        |cctx, dst, src| cctx.compress2(dst, src),
+        |cctx, dst, src| {
+            cctx.compress_using_dict(dst, src, &std::vec![b'd'; 1000], 1)
+        },
+        |cctx, dst, src| {
+            let cdict = CDict::create(&[b'd'; 1000], 1);
+            cctx.compress_using_cdict(dst, src, &cdict)
+        },
+    ];
+
+    let long = LONG_CONTENT.as_bytes();
+    let bound = zstd_safe::compress_bound(long.len());
+
+    for (i, one_shot) in one_shots.iter().enumerate() {
+        for capacity in [0, bound] {
+            let mut cctx = CCtx::create();
+            let mut compressed = Vec::with_capacity(bound);
+
+            // A stream that is abandoned with input still buffered...
+            cctx.compress_stream(
+                &mut OutBuffer::around(&mut compressed),
+                &mut InBuffer::around(INPUT),
+            )
+            .unwrap();
+            compressed.clear();
+
+            // ... a one-shot job on the same context...
+            let res =
+                one_shot(&mut cctx, &mut Vec::with_capacity(capacity), INPUT);
+            assert_eq!(res.is_ok(), capacity != 0);
+
+            // A failed `compress2` is left mid-frame (it may have worker
+            // threads still running), so streaming waits for a reset.
+            if i == 1 && res.is_err() {
+                cctx.compress_stream(
+                    &mut OutBuffer::around(&mut compressed),
+                    &mut InBuffer::around(long),
+                )
+                .unwrap_err();
+                assert!(compressed.is_empty());
+                cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+            }
+
+            // ... and a new stream, which must see nothing of either.
+            let mut output = OutBuffer::around(&mut compressed);
+            cctx.compress_stream(&mut output, &mut InBuffer::around(long))
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            let remaining = cctx
+                .end_stream(&mut output)
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            assert_eq!(remaining, 0);
+
+            let mut decoded = Vec::with_capacity(long.len());
+            zstd_safe::decompress(&mut decoded, &compressed)
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            assert_eq!(decoded, long);
+        }
+    }
+}
+
 #[test]
 fn test_poison_tracking() {
     use crate::Poison;

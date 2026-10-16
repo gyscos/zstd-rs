@@ -79,10 +79,60 @@ pub use crate::stream::{
     decode_all, decompressed_size, encode_all, Decoder, Encoder,
 };
 
-/// Returns the error message as io::Error based on error_code.
+/// An error reported by the zstd library.
+///
+/// When zstd itself fails, the `io::Error` this crate returns carries one of
+/// these, so you can tell what went wrong without matching on the message:
+///
+/// ```
+/// let mut small = [0u8; 4];
+/// let err = zstd::bulk::compress_to_buffer(&[42u8; 1000], &mut small[..], 3)
+///     .unwrap_err();
+/// let zstd_err = err
+///     .get_ref()
+///     .and_then(|e| e.downcast_ref::<zstd::Error>())
+///     .unwrap();
+/// assert!(zstd_err.is(zstd::zstd_safe::ZSTD_ErrorCode::ZSTD_error_dstSize_tooSmall));
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Error {
+    code: zstd_safe::ErrorCode,
+}
+
+impl Error {
+    /// The raw error code returned by zstd.
+    pub fn code(&self) -> zstd_safe::ErrorCode {
+        self.code
+    }
+
+    /// Returns whether this is an error of the given kind.
+    ///
+    /// See [`zstd_safe::is_error_kind()`].
+    pub fn is(&self, kind: zstd_safe::ZSTD_ErrorCode) -> bool {
+        zstd_safe::is_error_kind(self.code, kind)
+    }
+}
+
+impl std::fmt::Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Error")
+            .field("code", &self.code)
+            .field("message", &zstd_safe::get_error_name(self.code))
+            .finish()
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(zstd_safe::get_error_name(self.code))
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Wraps a zstd error code in an `io::Error`, as an [`Error`].
 fn map_error_code(code: usize) -> io::Error {
-    let msg = zstd_safe::get_error_name(code);
-    io::Error::new(io::ErrorKind::Other, msg.to_string())
+    io::Error::new(io::ErrorKind::Other, Error { code })
 }
 
 /// Returns an empty `Vec` with room for exactly `capacity` bytes.

@@ -563,7 +563,15 @@ fn main() {
     }
 
     // println!("cargo:rustc-link-lib=zstd");
-    let (defs, headerpaths) = if (cfg!(feature = "pkg-config")
+    let (defs, headerpaths) = if cfg!(feature = "rust-backend") {
+        // libzstd-rs-sys provides the symbols; the vendored headers still
+        // describe the API our bindings are generated from.
+        let manifest_dir = PathBuf::from(
+            env::var_os("CARGO_MANIFEST_DIR")
+                .expect("Manifest dir is always set by cargo"),
+        );
+        (vec![], vec![manifest_dir.join("zstd/lib")])
+    } else if (cfg!(feature = "pkg-config")
         && !cfg!(feature = "vendored"))
         || env::var_os("ZSTD_SYS_USE_PKG_CONFIG").is_some()
     {

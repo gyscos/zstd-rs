@@ -74,8 +74,15 @@ features = ["parallel"]
 version = "0.1"
 optional = true
 
+[dependencies.libzstd-rs-sys]
+version = "=0.0.1-prerelease.2"
+optional = true
+features = ["export-symbols"]
+
 [features]
 default = ["legacy", "zdict_builder"]
+
+rust-backend = ["dep:libzstd-rs-sys"] # Use the libzstd-rs-sys Rust port instead of building the C library.
 
 cmake = ["dep:cmake"] # Build zstd with CMake instead of cc (improves cross-compilation support)
 debug = [] # Enable zstd debug logs

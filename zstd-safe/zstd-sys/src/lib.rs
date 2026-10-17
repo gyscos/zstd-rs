@@ -9,6 +9,10 @@
 #[cfg(target_family = "wasm")]
 extern crate alloc;
 
+// Linked for the `ZSTD_*` symbols it exports, which our bindings call.
+#[cfg(feature = "rust-backend")]
+extern crate libzstd_rs_sys;
+
 #[cfg(target_family = "wasm")]
 mod wasm_shim;
 

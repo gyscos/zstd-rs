@@ -38,6 +38,7 @@ no_asm = ["zstd-sys/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-sys/zdict_builder"]
 seekable = ["zstd-sys/seekable"]
+rust-backend = ["zstd-sys/rust-backend"]
 # Route every allocation zstd makes for contexts and dictionaries through
 # Rust's global allocator instead of the C runtime's malloc/free.
 # Needs the `_advanced` constructors, hence `experimental`.

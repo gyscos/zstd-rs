@@ -440,7 +440,7 @@ fn compile_zstd() {
     // Apple's clang, the default on macOS, cannot build for wasm: say how to
     // fix that, rather than leave it to a cryptic compiler error.
     let host = env::var("HOST").unwrap_or_default();
-    if target_arch == "wasm32" && host.contains("apple-darwin") {
+    if target_arch.starts_with("wasm") && host.contains("apple-darwin") {
         check_macos_wasm_compiler(&config);
     }
 
@@ -554,11 +554,11 @@ fn main() {
     cargo_print(&"rerun-if-env-changed=ZSTD_SYS_USE_PKG_CONFIG");
     cargo_print(&"rerun-if-env-changed=ZSTD_SYS_NO_HIDE_SYMBOLS");
 
-    let target_family =
-        std::env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
+    let target_arch =
+        std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
-    if target_family == "wasm" || target_os == "hermit" {
+    if target_arch.starts_with("wasm") || target_os == "hermit" {
         cargo_print(&"rustc-cfg=feature=\"std\"");
     }
 

@@ -221,7 +221,9 @@ This implementation is largely inspired by bozaro's [lz4-rs].
 
 # License
 
-* The zstd C library is under a dual BSD/GPLv2 license.
+* The zstd C library is under a dual BSD/GPLv2 license. Its decoders for
+  legacy formats (the `legacy` feature, on by default) also include code under
+  the BSD-2-Clause license.
 * This zstd-rs binding library is under a [BSD-3-Clause](LICENSE) license.
 
 [zstd]: https://github.com/facebook/zstd

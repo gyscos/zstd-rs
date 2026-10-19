@@ -11,7 +11,7 @@ keywords = [
     "zstandard",
     "compression",
 ]
-license = "BSD-3-Clause"
+license = "BSD-3-Clause AND BSD-2-Clause"
 links = "zstd"
 name = "zstd-sys"
 readme = "Readme.md"

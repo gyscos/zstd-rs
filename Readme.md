@@ -145,6 +145,7 @@ The following change how the C library is obtained or built:
 | `pkg-config` | | Link against a system-installed libzstd instead of building the bundled source. |
 | `vendored` | | Always build the bundled source, even when `pkg-config` is also enabled. Useful to force a static build from a dependent crate. |
 | `cmake` | | Build the C library with zstd's own CMake files instead of the `cc` crate, which handles cross-compilation better. Needs `cmake`. |
+| `rust-backend` | | Use [libzstd-rs-sys], a Rust port of zstd, instead of the C library. Experimental, see [below](#using-the-rust-port-of-zstd). |
 
 The [zstd-sys readme] also covers the build-time environment variables, and
 what to do if the linker complains about a hidden zstd symbol being
@@ -198,6 +199,40 @@ adjustments based on the input size. Compressed output remains interoperable,
 but enabling this feature can change compression ratio, speed, and memory
 usage for prepared dictionaries, especially with large inputs and small
 dictionaries.
+
+# Using the Rust port of zstd
+
+The `rust-backend` feature replaces the C library with [libzstd-rs-sys], the
+Trifecta Tech Foundation's port of zstd to Rust. Nothing else changes: the port
+exports the same `ZSTD_*` functions that `zstd-sys` binds to, and this crate
+calls them the same way.
+
+```toml
+zstd = { version = "0.14", features = ["rust-backend"] }
+```
+
+Like the port itself, still a 0.0.1 prerelease, this is experimental:
+
+* The `seekable` format is not ported. Enabling both features is a compile
+  error.
+* The features that configure the C build (`thin`, `debug`, `no_asm`,
+  `fat-lto`, `thin-lto`, `cmake`, `pkg-config` and `vendored`) have no effect,
+  and neither does `ZSTD_SYS_USE_PKG_CONFIG`.
+* Multithreading and legacy decoding are always built into the port: `zstdmt`
+  only controls whether this crate exposes the multithreading API. The port
+  decodes legacy frames from zstd 0.5 to 0.7, whether or not `legacy` is
+  enabled, but not older ones.
+* The port allocates through Rust's global allocator, as `with-rust-allocator`
+  does for the C library.
+* It still needs a C compiler on x86-64 Unix, where the port assembles one
+  file, and it does not build for `wasm32-unknown-unknown`.
+* It needs Rust 1.89 or newer.
+* It is slower than the C library in most benchmarks: [the pull request that
+  added it][#389] has a chart. `bench/backends.sh` runs the same comparison on
+  your machine.
+
+[libzstd-rs-sys]: https://github.com/trifectatechfoundation/libzstd-rs-sys
+[#389]: https://github.com/gyscos/zstd-rs/pull/389
 
 # Build-time bindgen
 

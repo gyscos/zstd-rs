@@ -12,7 +12,9 @@ env:
 jobs:
   build:
 
-    runs-on: self-hosted
+    # GitHub's runner, unless the LINUX_RUNNER repository variable names
+    # another (`self-hosted`, to save Actions minutes). Forks don't see it.
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
 
     steps:
     - name: Wasm target
@@ -28,7 +30,7 @@ jobs:
 
   wasm64:
 
-    runs-on: self-hosted
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     # A tier-3 target, on nightly: don't let a nightly regression block PRs.
     continue-on-error: true
 

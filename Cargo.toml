@@ -42,6 +42,8 @@ cmake = ["zstd-safe/cmake"]
 no_asm = ["zstd-safe/no_asm"]
 doc-cfg = []
 zdict_builder = ["zstd-safe/zdict_builder"]
+# Use the libzstd-rs-sys Rust port instead of the C library. Experimental, see
+# the readme.
 rust-backend = ["zstd-safe/rust-backend"]
 # Route every allocation zstd makes for contexts and dictionaries through
 # Rust's global allocator instead of the C runtime's malloc/free.

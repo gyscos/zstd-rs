@@ -47,3 +47,28 @@ jobs:
       run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable
     - name: Run zstd-safe tests with features std and seekable
       run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable
+
+  # The libzstd-rs-sys Rust port, in place of the C library.
+  rust-backend:
+
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        submodules: recursive
+    - name: Run tests
+      run: cargo test --verbose --features rust-backend
+    - name: Run tests without default features
+      run: cargo test --verbose --no-default-features --features rust-backend
+    - name: Run tests with features experimental, zstdmt and with-rust-allocator
+      run: cargo test --verbose --features rust-backend,experimental,zstdmt,with-rust-allocator
+    - name: Run zstd-safe tests
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features rust-backend,std,experimental
+    # Only zstd-safe's own tests cover these, not the zstd runs above.
+    - name: Run zstd-safe tests with features zstdmt and with-rust-allocator
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features rust-backend,std,zstdmt,with-rust-allocator
+    - name: Refuse the seekable feature
+      run: |
+        ! cargo check --manifest-path zstd-safe/Cargo.toml --features rust-backend,seekable 2> seekable.log
+        grep -F 'is not supported with `rust-backend`' seekable.log

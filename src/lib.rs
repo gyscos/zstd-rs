@@ -36,11 +36,13 @@
 //! | `pkg-config` | | Link against a system-installed libzstd instead of building the bundled source. |
 //! | `vendored` | | Always build the bundled source, even when `pkg-config` is also enabled. |
 //! | `cmake` | | Build the C library with zstd's own CMake files instead of the `cc` crate. |
+//! | `rust-backend` | | Use [libzstd-rs-sys], a Rust port of zstd, instead of the C library. Experimental. |
 //!
 //! See the [readme] for more about the build-related ones.
 //!
 //! [zstd]: https://github.com/facebook/zstd
 //! [readme]: https://github.com/gyscos/zstd-rs#cargo-features
+//! [libzstd-rs-sys]: https://github.com/trifectatechfoundation/libzstd-rs-sys
 #![deny(missing_docs)]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 

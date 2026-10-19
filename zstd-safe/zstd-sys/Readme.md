@@ -22,6 +22,7 @@ Enabled by default: `legacy`, `zdict_builder`.
 | `pkg-config` | | Link against a system-installed libzstd instead of building the bundled source. |
 | `vendored` | | Always build the bundled source, even when `pkg-config` is also enabled. |
 | `cmake` | | Build the C library with zstd's own CMake files instead of the `cc` crate, which handles cross-compilation better. Needs `cmake`. |
+| `rust-backend` | | Link [libzstd-rs-sys], a Rust port of zstd, instead of building the C library. The bindings stay the same. Experimental, and incompatible with `seekable`: see the [zstd readme](https://github.com/gyscos/zstd-rs#using-the-rust-port-of-zstd). |
 | `no_wasm_shim` | | Do not build the bundled wasm shims, for a wasm toolchain that already provides a C standard library. |
 | `non-cargo` | | Do not print cargo directives, for use from another build system. |
 | `std` | | Deprecated, and does nothing: this crate never uses types from `std`. |
@@ -95,5 +96,6 @@ cargo build --features bindgen
 ```
 
 [zstd]: https://github.com/facebook/zstd
+[libzstd-rs-sys]: https://github.com/trifectatechfoundation/libzstd-rs-sys
 [zstd-rs]: https://github.com/gyscos/zstd-rs
 [zstd-safe]: https://github.com/gyscos/zstd-rs/tree/main/zstd-safe

@@ -3,7 +3,8 @@
 //! format, zstdmt.
 //!
 //! zstd's own speed is not the point here (use zstd's `fullbench` for that),
-//! so most inputs are small, where per-call overhead shows the most.
+//! so most inputs are small, where per-call overhead shows the most. The
+//! exception is `levels`, which compares backends (see `backends.sh`).
 //!
 //! Run with `cargo bench` from this directory; `ab.sh` compares revisions.
 //! See README.md.
@@ -297,7 +298,12 @@ fn safe_stream(c: &mut Criterion) {
     group.finish();
 }
 
+/// Without the `seekable` feature (for a backend that lacks it).
+#[cfg(not(feature = "seekable"))]
+fn seekable(_: &mut Criterion) {}
+
 /// Short reads at scattered offsets of a seekable archive.
+#[cfg(feature = "seekable")]
 fn seekable(c: &mut Criterion) {
     use zstd_safe::seekable::{Seekable, SeekableCStream};
 
@@ -502,6 +508,44 @@ fn records(c: &mut Criterion) {
     group.finish();
 }
 
+/// zstd's own speed: one-shot compression of a real file at several levels.
+///
+/// Reads the file named by `ZSTD_BENCH_CORPUS`, and is skipped when unset.
+fn levels(c: &mut Criterion) {
+    let path = match std::env::var_os("ZSTD_BENCH_CORPUS") {
+        Some(path) => path,
+        None => return,
+    };
+    let input = std::fs::read(path).expect("could not read ZSTD_BENCH_CORPUS");
+    let mut group = c.benchmark_group("levels");
+    group.sample_size(10);
+    group.throughput(Throughput::Bytes(input.len() as u64));
+    for level in [-5, 1, 3, 9, 19] {
+        let compressed = zstd::bulk::compress(&input, level).unwrap();
+        eprintln!(
+            "levels/{}: ratio {:.3}",
+            level,
+            input.len() as f64 / compressed.len() as f64
+        );
+        let mut compressor = zstd::bulk::Compressor::new(level).unwrap();
+        let mut out =
+            Vec::with_capacity(zstd_safe::compress_bound(input.len()));
+        group.bench_function(BenchmarkId::new("compress", level), |b| {
+            b.iter(|| compressor.compress_to_buffer(&input, &mut out).unwrap())
+        });
+        let mut decompressor = zstd::bulk::Decompressor::new().unwrap();
+        let mut out = Vec::with_capacity(input.len());
+        group.bench_function(BenchmarkId::new("decompress", level), |b| {
+            b.iter(|| {
+                decompressor
+                    .decompress_to_buffer(&compressed, &mut out)
+                    .unwrap()
+            })
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bulk,
@@ -510,6 +554,7 @@ criterion_group!(
     safe_stream,
     seekable,
     zstdmt,
-    records
+    records,
+    levels
 );
 criterion_main!(benches);

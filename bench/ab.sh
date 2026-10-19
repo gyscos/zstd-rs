@@ -1,13 +1,18 @@
 #!/bin/sh
 # Benchmarks several git revisions against each other on this machine.
 #
-# usage: ./ab.sh [-r ROUNDS] [-f FILTER] REV REV...
+# usage: ./ab.sh [-r ROUNDS] [-f FILTER] REV[:FEATURES] REV[:FEATURES]...
 #
 # Each revision is checked out in its own worktree, with this directory's
 # copy of the suite (so every revision runs the same benchmarks), and built
 # once. The builds then run in alternation, round after round, so that the
 # machine drifting over time shows up as noise between rounds instead of as
 # a difference between revisions. The first revision is the reference.
+#
+# A revision can be built with other features, given after a colon: they
+# replace the suite's defaults, as with `--no-default-features --features`.
+# The same revision can then be compared with itself, for example with
+# another backend: `main main:seekable,zstd/with-rust-allocator`.
 #
 #   -r ROUNDS   rounds to run (default 2; compare.py reads the first two)
 #   -f FILTER   only run the benchmarks matching this regex
@@ -30,7 +35,7 @@ while getopts r:f: opt; do
     esac
 done
 shift $((OPTIND - 1))
-[ $# -ge 2 ] || { echo "usage: $0 [-r ROUNDS] [-f FILTER] REV REV..." >&2; exit 1; }
+[ $# -ge 2 ] || { echo "usage: $0 [-r ROUNDS] [-f FILTER] REV[:FEATURES] REV[:FEATURES]..." >&2; exit 1; }
 
 bench="$(cd "$(dirname "$0")" && pwd)"
 repo="$(git -C "$bench" rev-parse --show-toplevel)"
@@ -39,8 +44,13 @@ mkdir -p "$work"
 work="$(cd "$work" && pwd)"
 
 labels=
-for rev in "$@"; do
-    label=$(echo "$rev" | tr -c 'A-Za-z0-9_.\n-' '_')
+for spec in "$@"; do
+    rev=${spec%%:*}
+    # Even an empty list after the colon turns the defaults off.
+    no_defaults=
+    features=
+    case $spec in *:*) no_defaults=--no-default-features features=${spec#*:} ;; esac
+    label=$(echo "$spec" | tr -c 'A-Za-z0-9_.\n-' '_')
     # Different revisions can sanitize to the same label (feature/foo and
     # feature_foo), and comparing a revision with itself is a useful way to
     # measure noise: number the repeats so nothing gets overwritten.
@@ -63,9 +73,9 @@ for rev in "$@"; do
     mkdir -p "$src/bench"
     (cd "$bench" && tar cf - --exclude ./target --exclude ./Cargo.lock --exclude ./data/stackexchange .) |
         (cd "$src/bench" && tar xf -)
-    echo "building $rev" >&2
+    echo "building $spec" >&2
     exe=$(cd "$src/bench" &&
-        CARGO_TARGET_DIR="$work/target-$label" cargo bench --no-run --message-format=json |
+        CARGO_TARGET_DIR="$work/target-$label" cargo bench --no-run $no_defaults ${features:+--features "$features"} --message-format=json |
         python3 -c 'import json, sys
 for line in sys.stdin:
     m = json.loads(line)

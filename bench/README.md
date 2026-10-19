@@ -4,8 +4,9 @@ Criterion benchmarks for the code the bindings add around zstd: buffer
 plumbing (`WriteBuf`, `InBuffer`/`OutBuffer`), the `Read`/`Write` wrappers,
 context reuse with `with_context`, dictionaries, the seekable format and
 zstdmt. zstd's own speed is not what this measures - zstd's `fullbench` and
-`zstd -b` do that. Most inputs are small, where the wrappers' per-call cost
-shows the most.
+`zstd -b` do that - except in the `levels` group, which is there to compare
+backends. Most inputs are small, where the wrappers' per-call cost shows the
+most.
 
 This is a standalone crate, outside the published packages, so criterion never
 becomes a dependency of `zstd` or `zstd-safe` and their MSRV is unaffected.
@@ -27,6 +28,7 @@ cargo bench -- '^bulk/'            # one group
 | `seekable` | Short reads at random and sequential offsets of a seekable archive |
 | `zstdmt` | Multithreaded compression, streaming and one-shot |
 | `records` | Real database rows, one at a time, without a dictionary and with raw and prepared dictionaries (needs data, see below) |
+| `levels` | One-shot compression and decompression of a whole file at levels -5, 1, 3, 9 and 19 (needs data, see below) |
 
 The built-in data is synthetic but deterministic. The `records` group runs
 on real rows, from the `*.jsonl` files (one record per line) in the directory
@@ -42,6 +44,16 @@ JSON, one row per line: votes (about 85 B per row), comments (300 B), users
 (400 B) and posts (1.2 KB). Any other directory of `.jsonl` files works too,
 such as samples of your own messages. Do not commit the data here.
 
+The `levels` group runs on the file named by `ZSTD_BENCH_CORPUS`, and is
+skipped when that is unset. The posts of the same dump make a good one:
+
+```sh
+ZSTD_BENCH_CORPUS=data/stackexchange/coffee/coffee-posts.jsonl cargo bench -- '^levels/'
+```
+
+The `seekable` feature, on by default, can be turned off for a backend that
+lacks the seekable format.
+
 ## Comparing revisions
 
 `ab.sh` builds several git revisions with this copy of the suite, then runs
@@ -53,6 +65,14 @@ them in alternation and prints a comparison:
 AB_PREFIX="taskset -c 4" ./ab.sh main my-branch # pinned to one core
 ```
 
+Features can be given after a colon, to build a revision with them instead
+of the suite's defaults (as `--no-default-features --features` would). This
+compares the same revision with different features:
+
+```sh
+./ab.sh main main:seekable,zstd/with-rust-allocator
+```
+
 The suite has to compile against every revision compared, so it should only
 use APIs they all have.
 
@@ -61,6 +81,12 @@ machine's `target/ab/criterion` over first):
 
 ```sh
 python3 compare.py main,my-branch njord=results/njord shiny=results/shiny
+```
+
+`plot.py` draws the results as a bar chart with error bars, in SVG:
+
+```sh
+python3 plot.py target/ab/criterion chart.svg main=main my-branch="My branch"
 ```
 
 ### Reading the results
@@ -97,3 +123,17 @@ went from ±4-13% to ±0.1-2% with:
   idle (`AB_PREFIX="taskset -c 4"`). The `zstdmt` group needs 4 cores.
 
 Remember to restore the settings afterwards.
+
+## Comparing backends
+
+`backends.sh` runs every group against the C library, the C library with
+Rust's allocator, and the libzstd-rs-sys Rust port (`rust-backend`), all at
+one revision, then writes the table and the chart to `target/backends`. It
+is how the report in the PR adding `rust-backend` was made, and refreshes it:
+
+```sh
+./backends.sh                                # at HEAD
+AB_PREFIX="taskset -c 1-3,5-7" ./backends.sh # pinned, away from core 0
+```
+
+The machine setup above applies too.

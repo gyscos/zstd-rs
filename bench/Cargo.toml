@@ -11,7 +11,13 @@ description = "Benchmarks for the zstd and zstd-safe bindings (not part of the p
 
 [dependencies]
 zstd = { path = "..", features = ["experimental", "zstdmt"] }
-zstd-safe = { path = "../zstd-safe", features = ["std", "seekable", "experimental", "zstdmt"] }
+zstd-safe = { path = "../zstd-safe", features = ["std", "experimental", "zstdmt"] }
+
+[features]
+default = ["seekable"]
+# Turned off to benchmark a backend without the seekable format, such as
+# `--no-default-features --features zstd/rust-backend`.
+seekable = ["zstd-safe/seekable"]
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }

@@ -267,6 +267,62 @@ fn test_seekable_advanced_cycle() {
     decompress_seekable(&mut seekable);
 }
 
+#[cfg(all(feature = "std", feature = "seekable"))]
+#[test]
+fn test_seekable_advanced_swapped_out() {
+    use crate::seekable::Seekable;
+    use std::{
+        boxed::Box,
+        io::Cursor,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+    };
+
+    // A reader that records when it is dropped.
+    struct Tracked(Cursor<Vec<u8>>, Arc<AtomicBool>);
+    impl std::io::Read for Tracked {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.0.read(buf)
+        }
+    }
+    impl std::io::Seek for Tracked {
+        fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.0.seek(pos)
+        }
+    }
+    impl Drop for Tracked {
+        fn drop(&mut self) {
+            self.1.store(true, Ordering::SeqCst);
+        }
+    }
+
+    let archive = new_seekable_archive(INPUT);
+    let open = |dropped: &Arc<AtomicBool>| {
+        let src = Tracked(Cursor::new(archive.clone()), Arc::clone(dropped));
+        Seekable::create()
+            .init_advanced(Box::new(src))
+            .map_err(zstd_safe::get_error_name)
+            .unwrap()
+    };
+
+    // Left in place, the reader goes away with the AdvancedSeekable.
+    let dropped = Arc::new(AtomicBool::new(false));
+    drop(open(&dropped));
+    assert!(dropped.load(Ordering::SeqCst));
+
+    // Swapped out, the context outlives the AdvancedSeekable and still reads
+    // through the reader, which must therefore stay alive (#366).
+    let dropped = Arc::new(AtomicBool::new(false));
+    let mut advanced = open(&dropped);
+    let mut seekable = Seekable::create();
+    std::mem::swap(&mut *advanced, &mut seekable);
+    drop(advanced);
+    assert!(!dropped.load(Ordering::SeqCst));
+    decompress_seekable(&mut seekable);
+}
+
 #[cfg(feature = "seekable")]
 fn new_seekable_archive(input: &[u8]) -> Vec<u8> {
     use crate::{seekable::SeekableCStream, InBuffer, OutBuffer};

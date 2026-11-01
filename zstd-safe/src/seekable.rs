@@ -453,6 +453,11 @@ pub struct AdvancedSeekable<'a, F> {
     // We can't use Box<F> since it'd break rust aliasing rules when calling
     // advanced_read/advanced_seek through the C code.
     src: *mut F,
+    // The context that `init_advanced()` pointed at `src`. `DerefMut` lets
+    // safe code swap `inner` for another `Seekable`, so `drop()` compares it
+    // against this before freeing `src`.
+    // See https://github.com/gyscos/zstd-rs/issues/366.
+    ctx: NonNull<zstd_sys::ZSTD_seekable>,
 }
 
 #[cfg(feature = "std")]
@@ -480,8 +485,17 @@ impl<'a, F> core::ops::DerefMut for AdvancedSeekable<'a, F> {
 impl<'a, F> Drop for AdvancedSeekable<'a, F> {
     fn drop(&mut self) {
         use std::boxed::Box;
-        // this drops the box
-        let _: Box<F> = unsafe { Box::from_raw(self.src) };
+        // `DerefMut` hands out a `&mut Seekable`, so safe code may have
+        // swapped the context that calls back into `src` out of `inner`; it
+        // would then still be alive somewhere else. Only free `src` if that
+        // context is still ours, and leak it otherwise: a leak is safe, a
+        // use-after-free is not. Two live contexts never share an address, so
+        // finding it in `inner` means nothing else can call into `src`.
+        if self.inner.0 == self.ctx {
+            // Safety: `src` comes from `Box::into_raw` in `init_advanced()`,
+            // and the only context that knows it is about to be freed.
+            let _: Box<F> = unsafe { Box::from_raw(self.src) };
+        }
     }
 }
 
@@ -512,10 +526,18 @@ impl<'a> Seekable<'a> {
         };
 
         if crate::is_error(code) {
+            // The context was not initialized, so nothing will ever call back
+            // into `opaque`; take the box back rather than leaking it (and
+            // whatever `F` holds, like a file descriptor).
+            // Safety: `opaque` comes from the `Box::into_raw` above, and has
+            // not been handed to anything that outlives this function.
+            let _: std::boxed::Box<F> =
+                unsafe { std::boxed::Box::from_raw(opaque) };
             return Err(code);
         }
 
         Ok(AdvancedSeekable {
+            ctx: self.0,
             inner: self,
             src: opaque,
         })

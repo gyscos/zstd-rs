@@ -690,6 +690,11 @@ impl<'a> Seekable<'a> {
 /// here, reported to zstd as a failure, and resumed by
 /// `AdvancedSeekable::resume_panic()` once the C code has returned.
 ///
+/// Only the first panic is kept: if zstd called back again after a failure,
+/// within the same call, one would still be pending, and any later one is
+/// leaked. Dropping a payload runs arbitrary code, which could
+/// panic too, and nothing may unwind from here.
+///
 /// Returns a non-negative value in case of success, and a negative value in case of failure.
 #[cfg(feature = "std")]
 unsafe fn advanced_call<F, T>(
@@ -706,7 +711,11 @@ unsafe fn advanced_call<F, T>(
         Ok(true) => 0,
         Ok(false) => -1,
         Err(panic) => {
-            source.panic = Some(panic);
+            if source.panic.is_none() {
+                source.panic = Some(panic);
+            } else {
+                core::mem::forget(panic);
+            }
             -1
         }
     }
@@ -900,5 +909,68 @@ impl Drop for SeekTable {
         unsafe {
             zstd_sys::ZSTD_seekTable_free(self.0.as_ptr());
         }
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+mod tests {
+    use super::{advanced_read, AdvancedSource};
+    use std::boxed::Box;
+    use std::io::{Read, Result};
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
+    /// zstd stops at the first failed callback, but nothing in the callback
+    /// relies on that: a second panic must not drop the pending payload in
+    /// there, since its destructor could panic and abort the process.
+    #[test]
+    fn second_panic_in_one_call_does_not_drop_the_first() {
+        // A panic payload that panics when dropped, while armed.
+        struct Bomb(Arc<AtomicBool>);
+        impl Drop for Bomb {
+            fn drop(&mut self) {
+                if self.0.load(Ordering::SeqCst) {
+                    panic!("payload dropped");
+                }
+            }
+        }
+
+        struct Reader(Arc<AtomicBool>);
+        impl Read for Reader {
+            fn read(&mut self, _: &mut [u8]) -> Result<usize> {
+                std::panic::panic_any(Bomb(self.0.clone()))
+            }
+        }
+
+        let armed = Arc::new(AtomicBool::new(true));
+        let source = Box::into_raw(Box::new(AdvancedSource {
+            src: Box::new(Reader(armed.clone())),
+            panic: None,
+        }));
+        let mut buffer = [0u8; 8];
+        for _ in 0..2 {
+            // Safety: `source` points to an `AdvancedSource<Reader>`, and
+            // `buffer` is valid for its length.
+            let code = unsafe {
+                advanced_read::<Reader>(
+                    source.cast(),
+                    buffer.as_mut_ptr().cast(),
+                    buffer.len(),
+                )
+            };
+            assert!(code < 0);
+        }
+
+        // Safety: from `Box::into_raw` above, and no longer used by anything.
+        let source = unsafe { Box::from_raw(source) };
+        armed.store(false, Ordering::SeqCst);
+        assert!(source
+            .panic
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<Bomb>()
+            .is_some());
     }
 }

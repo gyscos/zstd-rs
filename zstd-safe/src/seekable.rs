@@ -722,6 +722,11 @@ impl<'a> Seekable<'a> {
 /// here, reported to zstd as a failure, and resumed by
 /// `AdvancedSeekable::resume_panic()` once the C code has returned.
 ///
+/// Only the first panic is kept: one may still be pending, from a call made
+/// through `DerefMut` or from an earlier callback in the same call, and any
+/// later one is leaked. Dropping a payload runs arbitrary code, which could
+/// panic too, and nothing may unwind from here.
+///
 /// Returns a non-negative value in case of success, and a negative value in case of failure.
 #[cfg(feature = "std")]
 unsafe fn advanced_call<F, T>(
@@ -738,7 +743,11 @@ unsafe fn advanced_call<F, T>(
         Ok(true) => 0,
         Ok(false) => -1,
         Err(panic) => {
-            source.panic = Some(panic);
+            if source.panic.is_none() {
+                source.panic = Some(panic);
+            } else {
+                core::mem::forget(panic);
+            }
             -1
         }
     }

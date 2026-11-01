@@ -569,6 +569,79 @@ fn test_seekable_advanced_panic() {
     }
 }
 
+/// A panic left pending by a call through `DerefMut` must not be dropped inside
+/// the C callback when the reader panics again: its destructor could panic,
+/// and that would abort the process.
+#[cfg(all(feature = "std", feature = "seekable"))]
+#[test]
+fn test_seekable_advanced_panic_through_deref_mut() {
+    use crate::seekable::Seekable;
+    use std::boxed::Box;
+    use std::io::{Cursor, Read, Result, Seek, SeekFrom};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    };
+
+    // A panic payload that panics when dropped, while armed.
+    struct Bomb(Arc<AtomicBool>);
+    impl Drop for Bomb {
+        fn drop(&mut self) {
+            if self.0.load(Ordering::SeqCst) {
+                panic!("payload dropped");
+            }
+        }
+    }
+
+    // Lets the seek table load, then panics on every read.
+    struct Reader {
+        inner: Cursor<Vec<u8>>,
+        armed: Arc<AtomicBool>,
+        reads: Arc<AtomicUsize>,
+    }
+    impl Read for Reader {
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+            if self.reads.fetch_add(1, Ordering::SeqCst) >= 2 {
+                std::panic::panic_any(Bomb(self.armed.clone()));
+            }
+            self.inner.read(buf)
+        }
+    }
+    impl Seek for Reader {
+        fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+            self.inner.seek(pos)
+        }
+    }
+
+    let armed = Arc::new(AtomicBool::new(true));
+    let reads = Arc::new(AtomicUsize::new(0));
+    let mut seekable = Seekable::create()
+        .init_advanced(Box::new(Reader {
+            inner: Cursor::new(new_seekable_archive(INPUT)),
+            armed: armed.clone(),
+            reads: reads.clone(),
+        }))
+        .map_err(zstd_safe::get_error_name)
+        .unwrap();
+
+    // Through `DerefMut`, the panic is reported as an error and stays pending.
+    let mut buffer = [0u8; 64];
+    for _ in 0..3 {
+        let inner: &mut Seekable<'_> = &mut seekable;
+        assert!(inner.decompress(&mut buffer[..], 0).is_err());
+    }
+    assert!(reads.load(Ordering::SeqCst) >= 5);
+
+    // Through the `AdvancedSeekable`, the pending panic is resumed.
+    armed.store(false, Ordering::SeqCst);
+    let panic = catch_unwind(AssertUnwindSafe(|| {
+        seekable.decompress(&mut buffer[..], 0)
+    }))
+    .unwrap_err();
+    assert!(panic.downcast_ref::<Bomb>().is_some());
+}
+
 #[cfg(feature = "seekable")]
 fn new_seekable_archive(input: &[u8]) -> Vec<u8> {
     use crate::{seekable::SeekableCStream, InBuffer, OutBuffer};

@@ -642,6 +642,56 @@ fn test_seekable_advanced_panic_through_deref_mut() {
     assert!(panic.downcast_ref::<Bomb>().is_some());
 }
 
+/// The `init*` family starts a new session, so it recovers a poisoned context.
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+#[allow(deprecated)]
+fn test_init_using_dictionaries_clears_the_poison() {
+    use crate::{CCtx, CDict, DCtx, DDict, InBuffer, OutBuffer};
+
+    let dict = &LONG_CONTENT.as_bytes()[..1000];
+    let mut buffer = std::vec![0u8; 1024];
+
+    let cdict = CDict::create(dict, 3);
+    let mut cctx = CCtx::create();
+    let error = cctx.2.record(Err(1usize.wrapping_neg())).unwrap_err();
+    let mut compressed = Vec::with_capacity(1024);
+    assert_eq!(
+        cctx.compress_stream(
+            &mut OutBuffer::around(&mut compressed),
+            &mut InBuffer::around(INPUT),
+        ),
+        Err(error)
+    );
+    cctx.init_using_cdict(&cdict).unwrap();
+    cctx.compress_stream(
+        &mut OutBuffer::around(&mut compressed),
+        &mut InBuffer::around(INPUT),
+    )
+    .unwrap();
+
+    let ddict = DDict::create(dict);
+    let mut dctx = DCtx::create();
+    let garbage = [0xFFu8; 64];
+    dctx.decompress_stream(
+        &mut OutBuffer::around(&mut buffer[..]),
+        &mut InBuffer::around(&garbage[..]),
+    )
+    .unwrap_err();
+    dctx.init_using_ddict(&ddict).unwrap();
+    let mut decoded = Vec::with_capacity(INPUT.len());
+    let mut frame = Vec::with_capacity(crate::compress_bound(INPUT.len()));
+    CCtx::create()
+        .compress_using_dict(&mut frame, INPUT, dict, 3)
+        .unwrap();
+    dctx.decompress_stream(
+        &mut OutBuffer::around(&mut decoded),
+        &mut InBuffer::around(&frame),
+    )
+    .unwrap();
+    assert_eq!(decoded, INPUT);
+}
+
 #[cfg(feature = "seekable")]
 fn new_seekable_archive(input: &[u8]) -> Vec<u8> {
     use crate::{seekable::SeekableCStream, InBuffer, OutBuffer};

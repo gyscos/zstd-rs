@@ -2,9 +2,9 @@ name: macOS
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 0.13.x ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 0.13.x ]
 
 env:
   CARGO_TERM_COLOR: always

@@ -2,9 +2,9 @@ name: Linux
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 0.13.x ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 0.13.x ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,3 +36,9 @@ jobs:
       run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable
     - name: Run zstd-safe tests with features std and seekable
       run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable
+
+    # Most of the safety checks are on experimental or zstdmt APIs.
+    - name: Run tests with features experimental and zstdmt
+      run: cargo test --verbose --features experimental,zstdmt
+    - name: Run zstd-safe tests with all the features that have tests
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,experimental,seekable,zstdmt,zdict_builder

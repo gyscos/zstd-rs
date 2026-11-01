@@ -531,6 +531,7 @@ impl<'a> CCtx<'a> {
         'b: 'a, // Dictionary outlives the stream.
     {
         self.guard_workers()?;
+        self.2.clear();
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingCDict(
@@ -538,7 +539,7 @@ impl<'a> CCtx<'a> {
                 cdict.0.as_ptr(),
             )
         };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Tries to load a dictionary.
@@ -1344,7 +1345,6 @@ impl<'a> DCtx<'a> {
     #[deprecated]
     pub fn init_using_dict(&mut self, dict: &[u8]) -> SafeResult {
         self.2.clear();
-        self.2.clear();
         let code = unsafe {
             zstd_sys::ZSTD_initDStream_usingDict(
                 self.0.as_ptr(),
@@ -1375,13 +1375,15 @@ impl<'a> DCtx<'a> {
     where
         'b: 'a,
     {
+        self.2.clear();
+        // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initDStream_usingDDict(
                 self.0.as_ptr(),
                 ddict.0.as_ptr(),
             )
         };
-        parse_code(code)
+        self.2.record(parse_code(code))
     }
 
     /// Resets the state of the context.

@@ -323,8 +323,7 @@ fn test_seekable_seek_table() {
         .unwrap();
 
     // Try to create a seek table from the seekable
-    let seek_table =
-        { SeekTable::try_from_seekable(&seekable).unwrap() };
+    let seek_table = { SeekTable::try_from_seekable(&seekable).unwrap() };
 
     // Seekable and seek table should return the same results
     assert_eq!(seekable.num_frames(), seek_table.num_frames());
@@ -629,9 +628,10 @@ fn test_seekable_cstream_input_pos_out_of_bounds() {
     };
     let mut out_buffer = OutBuffer::around(&mut buffer[..]);
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        cstream.compress_stream(&mut out_buffer, &mut in_buffer)
-    }));
+    let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            cstream.compress_stream(&mut out_buffer, &mut in_buffer)
+        }));
     assert!(result.is_err());
 
     // A full frame would have been written had the rest of `INPUT` been read.
@@ -640,7 +640,9 @@ fn test_seekable_cstream_input_pos_out_of_bounds() {
 
 #[cfg(feature = "seekable")]
 fn decompress_seekable(seekable: &mut crate::seekable::Seekable<'_>) {
-    check_seekable_decompression(|dst, offset| seekable.decompress(dst, offset));
+    check_seekable_decompression(|dst, offset| {
+        seekable.decompress(dst, offset)
+    });
 }
 
 #[cfg(feature = "seekable")]
@@ -701,7 +703,8 @@ fn test_context_poisoned_by_an_error() {
         dctx.decompress_stream(&mut output, &mut input).unwrap_err()
     };
 
-    let mut compressed = Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
     zstd_safe::compress(&mut compressed, INPUT, 3)
         .map_err(zstd_safe::get_error_name)
         .unwrap();
@@ -711,9 +714,7 @@ fn test_context_poisoned_by_an_error() {
     let second = {
         let mut input = InBuffer::around(&compressed[..]);
         let mut output = OutBuffer::around(&mut buffer[..]);
-        let err = dctx
-            .decompress_stream(&mut output, &mut input)
-            .unwrap_err();
+        let err = dctx.decompress_stream(&mut output, &mut input).unwrap_err();
         assert_eq!(input.pos(), 0, "the poisoned context consumed input");
         assert_eq!(output.pos(), 0, "the poisoned context produced output");
         err
@@ -1033,7 +1034,8 @@ fn test_multithreaded_context_refuses_copy_and_block_apis() {
 
     // Abandon a frame in its initial stage, with a workspace sized for it.
     let mut cctx = CCtx::create();
-    cctx.set_parameter(CParameter::CompressionLevel(19)).unwrap();
+    cctx.set_parameter(CParameter::CompressionLevel(19))
+        .unwrap();
     start_frame(&mut cctx);
     assert!(cctx.try_clone(Some(1000)).is_ok());
     cctx.reset(ResetDirective::SessionAndParameters).unwrap();
@@ -1057,7 +1059,8 @@ fn test_multithreaded_context_refuses_copy_and_block_apis() {
     let mut cctx = CCtx::create();
     start_frame(&mut cctx);
     cctx.reset(ResetDirective::SessionAndParameters).unwrap();
-    cctx.set_parameter(CParameter::CompressionLevel(19)).unwrap();
+    cctx.set_parameter(CParameter::CompressionLevel(19))
+        .unwrap();
     cctx.set_parameter(CParameter::NbWorkers(1)).unwrap();
     start_frame(&mut cctx);
     assert!(cctx.try_clone(None).is_err());
@@ -1066,7 +1069,9 @@ fn test_multithreaded_context_refuses_copy_and_block_apis() {
 #[cfg(all(feature = "std", feature = "zstdmt"))]
 #[test]
 fn test_unfinished_multithreaded_frame() {
-    use zstd_safe::zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::{
+        ZSTD_e_continue, ZSTD_e_end,
+    };
     use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer, ResetDirective};
 
     let long = LONG_CONTENT.as_bytes().repeat(64);
@@ -1114,7 +1119,8 @@ fn test_unfinished_multithreaded_frame() {
     cctx.load_dictionary(b"another").unwrap();
 
     // So does a successful one-shot compression; a failed one does not.
-    cctx.compress2(&mut Vec::with_capacity(0), &long).unwrap_err();
+    cctx.compress2(&mut Vec::with_capacity(0), &long)
+        .unwrap_err();
     assert!(cctx.load_dictionary(b"some dictionary").is_err());
     cctx.wait_for_workers().unwrap();
     cctx.compress2(&mut buffer, &long).unwrap();

@@ -438,13 +438,6 @@ fn compile_zstd() {
     set_legacy(&mut config);
     enable_threading(&mut config);
 
-    // Apple's clang, the default on macOS, cannot build for wasm: say how to
-    // fix that, rather than leave it to a cryptic compiler error.
-    let host = env::var("HOST").unwrap_or_default();
-    if target_arch.starts_with("wasm") && host.contains("apple-darwin") {
-        check_macos_wasm_compiler(&config);
-    }
-
     // Compile!
     config.compile("libzstd.a");
 
@@ -490,65 +483,6 @@ fn cargo_print(content: &dyn fmt::Display) {
     if cfg!(not(feature = "non-cargo")) {
         println!("cargo:{}", content);
     }
-}
-
-/// Fails with an explanation when the C compiler cannot build for a wasm
-/// target, instead of letting cc fail with a cryptic error.
-///
-/// This happens on macOS, where the default clang (Apple's) has no
-/// WebAssembly backend: it parses the code, but cannot emit an object file.
-#[cfg(not(feature = "cmake"))]
-fn check_macos_wasm_compiler(config: &cc::Build) {
-    let target = env::var("TARGET").unwrap_or_default();
-    // Run the very command the build will: the same compiler, with any
-    // wrapper (`CC="xcrun clang"`), and the same flags - the target, flags
-    // from the environment, and LTO, with which clang only needs to emit
-    // bitcode.
-    let compiler = config.get_compiler();
-    let probe = PathBuf::from(env::var_os("OUT_DIR").unwrap())
-        .join("wasm_compiler_probe.o");
-
-    let output = compiler
-        .to_command()
-        // Generating code, not just parsing, is what Apple's clang cannot do.
-        .args(["-x", "c", "-c", "-o"])
-        .arg(&probe)
-        .arg("-")
-        .stdin(std::process::Stdio::null())
-        .output();
-    let _ = fs::remove_file(&probe);
-
-    let problem = match output {
-        Err(e) => format!(
-            "Could not run the C compiler `{}`: {}.",
-            compiler.path().display(),
-            e
-        ),
-        Ok(out)
-            if String::from_utf8_lossy(&out.stderr).contains(
-                "No available targets are compatible with triple",
-            ) =>
-        {
-            format!(
-                "The C compiler `{}` cannot build for `{}`. Apple's clang, the \
-                 default on macOS, has no WebAssembly backend.",
-                compiler.path().display(),
-                target
-            )
-        }
-        // Anything else is left for cc to report.
-        Ok(_) => return,
-    };
-
-    panic!(
-        "\n\n{}\n\n\
-         Install LLVM's clang, which can, and build with it:\n\n\
-         \x20   brew install llvm\n\
-         \x20   export CC_{}=\"$(brew --prefix llvm)/bin/clang\"\n\n\
-         or put \"$(brew --prefix llvm)/bin\" first in your PATH.\n",
-        problem,
-        target.replace('-', "_")
-    );
 }
 
 fn main() {

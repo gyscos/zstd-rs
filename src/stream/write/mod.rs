@@ -321,8 +321,9 @@ impl<'a, W: Write> Encoder<'a, W> {
     /// This returns the inner writer if the finish was successful, or the
     /// object plus an error if it wasn't.
     ///
-    /// `write` on this object will panic after `try_finish` has been called,
-    /// even if it fails.
+    /// Do not write more data after calling `try_finish`, even if it failed:
+    /// call it again instead. Once the end of the frame is being written,
+    /// `write` returns an error.
     pub fn try_finish(mut self) -> Result<W, (Self, io::Error)> {
         match self.writer.finish() {
             // Return the writer, because why not

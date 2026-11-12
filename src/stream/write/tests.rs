@@ -105,6 +105,68 @@ fn test_auto_wrappers_panicking_writer() {
     .unwrap_err();
 }
 
+/// Test that a panic from somewhere else can be caught when the writer, or the
+/// callback, panics as the wrappers use it on drop: a panic that leaves
+/// `drop()` while another one is unwinding aborts the process.
+#[test]
+fn test_auto_wrappers_panic_while_unwinding() {
+    struct Panicking;
+
+    impl Write for Panicking {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            panic!("this writer panics");
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            panic!("this writer panics");
+        }
+    }
+
+    let input = b"Abcdefghabcdefgh";
+    let encoded = crate::encode_all(&input[..], 1).unwrap();
+
+    // The data stays in zstd's buffers: the writer is only called on drop.
+    std::panic::catch_unwind(|| {
+        let mut decoder = Decoder::new(Panicking).unwrap().auto_flush();
+        decoder.write_all(&encoded).unwrap();
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    std::panic::catch_unwind(|| {
+        let mut encoder = Encoder::new(Panicking, 1).unwrap().auto_finish();
+        encoder.write_all(input).unwrap();
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    std::panic::catch_unwind(|| {
+        let _decoder = Decoder::new(Vec::new())
+            .unwrap()
+            .on_flush(|_| panic!("this callback panics"));
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    std::panic::catch_unwind(|| {
+        let _encoder = Encoder::new(Vec::new(), 1)
+            .unwrap()
+            .on_finish(|_| panic!("this callback panics"));
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    // A healthy writer still gets the end of the stream during a panic.
+    let mut output = Vec::new();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut encoder = Encoder::new(&mut output, 1).unwrap().auto_finish();
+        encoder.write_all(input).unwrap();
+        panic!("something else panics");
+    }))
+    .unwrap_err();
+    assert_eq!(decode_all(&output[..]).unwrap(), input);
+}
+
 /// Test that an input which stops in the middle of a frame is reported by
 /// `finish()`, like it is when reading.
 #[test]
@@ -176,4 +238,47 @@ fn test_drop_unfinished_multithreaded_encoder() {
         encoder.write_all(&input).unwrap();
         drop(encoder);
     }
+}
+
+/// Test that a flush between two attempts at finishing does not complete the
+/// frame behind the back of `do_finish()`, which would then write another.
+#[test]
+fn test_flush_between_finish_attempts() {
+    use std::io::ErrorKind::{Other, WouldBlock};
+
+    // Not compressible, and larger than the 32KB output buffer: the end of
+    // the frame takes several rounds to write out.
+    let mut seed = 1u32;
+    let input: Vec<u8> = (0..100_000)
+        .map(|_| {
+            seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+            (seed >> 16) as u8
+        })
+        .collect();
+    // The writer blocks in the first round, and is still blocked later.
+    let blocked_encoder = || {
+        let ops = [
+            PartialOp::Limited(10_000),
+            PartialOp::Err(WouldBlock),
+            PartialOp::Err(WouldBlock),
+        ];
+        let buf = PartialWrite::new(Vec::new(), ops);
+        let mut encoder = Encoder::new(buf, 1).unwrap();
+        encoder.write_all(&input).unwrap();
+        assert_eq!(encoder.do_finish().unwrap_err().kind(), WouldBlock);
+        encoder
+    };
+
+    // Flushing reports that the writer is blocked, then writes the rest.
+    let mut encoder = blocked_encoder();
+    assert_eq!(encoder.flush().unwrap_err().kind(), WouldBlock);
+    encoder.flush().unwrap();
+    encoder.do_finish().unwrap();
+    let buf = encoder.get_ref().get_ref();
+    assert_eq!(zstd_safe::find_frame_compressed_size(buf), Ok(buf.len()));
+    assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
+
+    // The frame is ending: it takes no more input.
+    let mut encoder = blocked_encoder();
+    assert_eq!(encoder.write(b"more").unwrap_err().kind(), Other);
 }

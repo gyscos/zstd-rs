@@ -31,6 +31,14 @@ pub struct Writer<W, D> {
     // All that's left if to empty the buffer.
     finished: bool,
 
+    /// When `true`, `finish()` asked the operation to end the stream, and the
+    /// operation still has some of that end to hand out.
+    ///
+    /// Until it is all out, only `finish()` may call the operation: anything
+    /// else could let it complete the stream without `finished` being set,
+    /// and the next `finish()` would then end a stream that was never begun.
+    finishing: bool,
+
     /// When `true`, the operation just finished a frame.
     ///
     /// Only happens when decompressing.
@@ -91,6 +99,7 @@ where
             buffer: output_buffer,
 
             finished: false,
+            finishing: false,
             finished_frame: false,
             panicked: false,
         }
@@ -139,6 +148,7 @@ where
             // println!("Finishing {}, {}", bytes_written, hint);
 
             self.finished = hint == 0;
+            self.finishing = !self.finished;
         }
     }
 
@@ -235,7 +245,7 @@ where
     D: Operation,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if self.finished {
+        if self.finished || self.finishing {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "encoder is finished",
@@ -284,6 +294,12 @@ where
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        if self.finishing {
+            // The end of the stream is all that is left to flush, and only
+            // `finish()` can tell when it is complete.
+            self.finish()?;
+        }
+
         let mut finished = self.finished;
         loop {
             // If the output is blocked or has an error, return now.

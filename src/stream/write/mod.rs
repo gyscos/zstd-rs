@@ -52,6 +52,9 @@ pub struct Decoder<'a, W: Write> {
 /// If it is dropped because the wrapped writer panicked, the stream is left
 /// unfinished and the writer is not used again.
 ///
+/// If it is dropped by any other panic, the stream is still finished; should
+/// the writer or the callback panic in turn, that second panic is discarded.
+///
 /// [`auto_finish()`]: Encoder::auto_finish
 /// [`Encoder`]: Encoder
 pub struct AutoFinishEncoder<
@@ -72,6 +75,9 @@ pub struct AutoFinishEncoder<
 /// If it is dropped because the wrapped writer panicked, nothing is flushed
 /// and the writer is not used again.
 ///
+/// If it is dropped by any other panic, the stream is still flushed; should
+/// the writer or the callback panic in turn, that second panic is discarded.
+///
 /// [`auto_flush()`]: Decoder::auto_flush
 /// [`Decoder`]: Decoder
 pub struct AutoFlushDecoder<
@@ -83,6 +89,22 @@ pub struct AutoFlushDecoder<
     decoder: Option<Decoder<'a, W>>,
 
     on_flush: Option<F>,
+}
+
+/// Runs the work that a wrapper does when it is dropped.
+///
+/// This work calls the wrapped writer and the callback, which may panic. If
+/// the wrapper is being dropped by a panic that unwinds the stack, a second
+/// panic leaving `drop()` would abort the process: it stops here instead.
+fn run_on_drop<F: FnOnce()>(f: F) {
+    if !std::thread::panicking() {
+        return f();
+    }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    if let Err(panic) = result {
+        // Dropping a payload runs arbitrary code, which could panic too.
+        std::mem::forget(panic);
+    }
 }
 
 impl<'a, W: Write, F: FnMut(io::Result<()>)> AutoFlushDecoder<'a, W, F> {
@@ -122,10 +144,13 @@ where
         if decoder.writer.panicked() {
             return;
         }
-        let result = decoder.flush();
-        if let Some(mut on_finish) = self.on_flush.take() {
-            on_finish(result);
-        }
+        let on_flush = self.on_flush.take();
+        run_on_drop(move || {
+            let result = decoder.flush();
+            if let Some(mut on_flush) = on_flush {
+                on_flush(result);
+            }
+        });
     }
 }
 
@@ -172,10 +197,13 @@ impl<W: Write, F: FnMut(io::Result<W>)> Drop for AutoFinishEncoder<'_, W, F> {
         if encoder.writer.panicked() {
             return;
         }
-        let result = encoder.finish();
-        if let Some(mut on_finish) = self.on_finish.take() {
-            on_finish(result);
-        }
+        let on_finish = self.on_finish.take();
+        run_on_drop(move || {
+            let result = encoder.finish();
+            if let Some(mut on_finish) = on_finish {
+                on_finish(result);
+            }
+        });
     }
 }
 
@@ -321,8 +349,9 @@ impl<'a, W: Write> Encoder<'a, W> {
     /// This returns the inner writer if the finish was successful, or the
     /// object plus an error if it wasn't.
     ///
-    /// `write` on this object will panic after `try_finish` has been called,
-    /// even if it fails.
+    /// Do not write more data after calling `try_finish`, even if it failed:
+    /// call it again instead. Once the end of the frame is being written,
+    /// `write` returns an error.
     pub fn try_finish(mut self) -> Result<W, (Self, io::Error)> {
         match self.writer.finish() {
             // Return the writer, because why not

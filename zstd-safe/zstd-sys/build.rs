@@ -355,10 +355,11 @@ fn compile_zstd() {
 
     config.define("ZSTD_LIB_DEPRECATED", Some("0"));
 
+    // No -fmerge-all-constants: it saves a few hundred bytes, and with GCC 13
+    // it makes AddressSanitizer report a false stack-use-after-scope (#398).
     config
         .flag_if_supported("-ffunction-sections")
-        .flag_if_supported("-fdata-sections")
-        .flag_if_supported("-fmerge-all-constants");
+        .flag_if_supported("-fdata-sections");
     // The default RISC-V targets (riscv64gc) do not assume the vector
     // extension, and code using it would not run on CPUs without it: only use
     // it when the Rust code is built for it too.

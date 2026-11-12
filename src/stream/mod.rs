@@ -102,6 +102,11 @@ macro_rules! encoder_parameters {
         /// So even `n_workers = 1` may increase performance by separating
         /// IO and compression.
         ///
+        /// With a dictionary or prefix that is only borrowed (a prepared
+        /// dictionary, or a prefix), do not leak this (with `mem::forget`,
+        /// say) in the middle of a frame: the worker threads could then read
+        /// it after it is dropped. See `zstd_safe::CCtx`.
+        ///
         /// Note: This is only available if the `zstdmt` cargo feature is activated.
         #[cfg(feature = "zstdmt")]
         #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "zstdmt")))]

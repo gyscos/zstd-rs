@@ -65,6 +65,9 @@ them in alternation and prints a comparison:
 AB_PREFIX="taskset -c 4" ./ab.sh main my-branch # pinned to one core
 ```
 
+The table names the machine after `uname -n`; set `AB_MACHINE` to name it
+otherwise, after its CPU for instance.
+
 Features can be given after a colon, to build a revision with them instead
 of the suite's defaults (as `--no-default-features --features` would). This
 compares the same revision with different features:
@@ -81,6 +84,14 @@ machine's `target/ab/criterion` over first):
 
 ```sh
 python3 compare.py main,my-branch njord=results/njord shiny=results/shiny
+```
+
+`revisions.sh` runs every group that way, with the record data, then writes
+the table and the chart to `target/revisions`. It is how the performance
+reports of fixes are made, and refreshes them:
+
+```sh
+AB_MACHINE="Xeon E3-1270 v6" ./revisions.sh BASE REV
 ```
 
 `plot.py` draws the results as a bar chart with error bars, in SVG:
@@ -112,15 +123,22 @@ A few things to keep in mind:
 ### Machine setup
 
 Laptop and desktop CPUs drift a lot by default. On one, round-to-round noise
-went from ±4-13% to ±0.1-2% with:
+went from ±4-13% to ±0.1-2% with these together:
 
 - the `performance` CPU governor
   (`echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor`),
 - turbo boost off (`echo 0 | sudo tee /sys/devices/system/cpu/cpufreq/boost`
-  with `amd-pstate`, `intel_pstate/no_turbo` with Intel's driver),
-- background services stopped,
-- the benchmark pinned to one core, away from core 0 and with its SMT sibling
-  idle (`AB_PREFIX="taskset -c 4"`). The `zstdmt` group needs 4 cores.
+  with `amd-pstate`, `echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo`
+  with Intel's driver),
+- background services stopped, and nothing else running: a CI job, or a
+  local service answering requests, shows up as noise right away.
+
+Pinning the benchmark to some cores (`AB_PREFIX="taskset -c ..."`) is
+optional, and was not measured on its own. If you do, leave out the cores
+that take device interrupts (the busy columns of `/proc/interrupts`: network
+cards and disks, not necessarily core 0), keep their SMT siblings idle, and
+leave the `zstdmt` group 4 cores. The noise column of the results says
+whether it helped.
 
 Remember to restore the settings afterwards.
 
@@ -133,7 +151,7 @@ is how the report in the PR adding `rust-backend` was made, and refreshes it:
 
 ```sh
 ./backends.sh                                # at HEAD
-AB_PREFIX="taskset -c 1-3,5-7" ./backends.sh # pinned, away from core 0
+AB_MACHINE="Xeon E3-1270 v6" ./backends.sh   # named after its CPU
 ```
 
 The machine setup above applies too.

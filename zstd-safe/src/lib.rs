@@ -1093,15 +1093,29 @@ impl<'a> CCtx<'a> {
     /// Decides whether a streaming call may reach zstd, see `Workers`.
     ///
     /// Returns what the call should return instead when it may not.
+    ///
+    /// Without `NbWorkers`, this is one test, inlined in every streaming
+    /// call: the rest is kept out of line.
+    #[inline]
     fn before_stream(
         &mut self,
         no_input: bool,
         end_op: zstd_sys::ZSTD_EndDirective,
     ) -> Option<SafeResult> {
-        use zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
         if self.3.count == 0 {
             return None;
         }
+        self.before_stream_with_workers(no_input, end_op)
+    }
+
+    /// `before_stream()` while `NbWorkers` is set.
+    #[inline(never)]
+    fn before_stream_with_workers(
+        &mut self,
+        no_input: bool,
+        end_op: zstd_sys::ZSTD_EndDirective,
+    ) -> Option<SafeResult> {
+        use zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
         if !self.3.pending {
             // This call starts a frame. A streaming frame can be left in
             // progress, so it only gets the workers without borrowed data.
@@ -1166,6 +1180,10 @@ impl<'a> CCtx<'a> {
     ///
     /// `given` is how much input the call was given, and `taken` how much of
     /// it zstd took.
+    ///
+    /// Inlined like `before_stream()`, with the work for `NbWorkers` out of
+    /// line.
+    #[inline]
     fn track_frame(
         &mut self,
         res: SafeResult,
@@ -1173,17 +1191,33 @@ impl<'a> CCtx<'a> {
         given: usize,
         taken: usize,
     ) {
-        use zstd_sys::ZSTD_EndDirective::ZSTD_e_end;
-        if res.is_ok() {
-            // zstd started a frame by now, which consumed the prefix, if any.
-            // (A failed call may not have: the prefix then stays counted.)
-            self.3.prefix_borrowed = false;
-        }
+        // zstd started a frame by now, which consumed the prefix, if any. (A
+        // failed call may not have: the prefix then stays counted.)
+        self.3.prefix_borrowed &= res.is_err();
         // A pledged size is for the frame this call started or continued.
         let pledged_short = core::mem::take(&mut self.3.pledged_short);
-        if self.3.count == 0 {
-            return;
+        if self.3.count != 0 {
+            self.track_frame_with_workers(
+                res,
+                end_op,
+                given,
+                taken,
+                pledged_short,
+            );
         }
+    }
+
+    /// `track_frame()` while `NbWorkers` is set.
+    #[inline(never)]
+    fn track_frame_with_workers(
+        &mut self,
+        res: SafeResult,
+        end_op: zstd_sys::ZSTD_EndDirective,
+        given: usize,
+        taken: usize,
+        pledged_short: bool,
+    ) {
+        use zstd_sys::ZSTD_EndDirective::ZSTD_e_end;
         // From here on, frames are tracked even when they run on the calling
         // thread: `NbWorkers` may only change between frames.
         if !self.3.pending {

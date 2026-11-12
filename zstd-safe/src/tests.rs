@@ -1173,7 +1173,7 @@ fn test_multithreaded_context_refuses_copy_and_block_apis() {
     assert!(unsafe { cctx.compress_block(&mut compressed, &block) }.is_err());
 
     // Resetting the requested parameters does not touch the applied ones.
-    // (The frame was abandoned, so its workers have to be waited for first.)
+    // (Abandoning the frame waits for its workers.)
     cctx.wait_for_workers().unwrap();
     cctx.reset(ResetDirective::SessionAndParameters).unwrap();
     assert!(cctx.try_clone(Some(1000)).is_err());
@@ -1189,65 +1189,495 @@ fn test_multithreaded_context_refuses_copy_and_block_apis() {
     assert!(cctx.try_clone(None).is_err());
 }
 
+/// Compressible data, `len` bytes, different for each seed.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+fn words(len: usize, seed: u64) -> Vec<u8> {
+    let words: [&[u8]; 6] =
+        [b"lorem ", b"ipsum ", b"dolor ", b"sit ", b"amet ", b"elit "];
+    let mut x = seed | 1;
+    let mut data = Vec::with_capacity(len + 8);
+    while data.len() < len {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        data.extend_from_slice(words[(x % 6) as usize]);
+    }
+    data.truncate(len);
+    data
+}
+
+/// Starts a multithreaded frame with enough input for its jobs to still be
+/// running on the worker threads when the call returns, against a 1 MiB
+/// dictionary. Freeing that dictionary under them crashes a worker.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+fn start_multithreaded_frame(cctx: &mut zstd_safe::CCtx<'_>, input: &[u8]) {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush;
+    use zstd_safe::{CParameter, InBuffer, OutBuffer};
+
+    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.load_dictionary(&words(1 << 20, 1)).unwrap();
+    // With no room for output, this returns as soon as the first job, the
+    // one that reads the dictionary, was handed out.
+    let mut empty: [u8; 0] = [];
+    let mut output = OutBuffer::around(&mut empty[..]);
+    let mut input = InBuffer::around(input);
+    assert_ne!(
+        cctx.compress_stream2(&mut output, &mut input, ZSTD_e_flush)
+            .unwrap(),
+        0
+    );
+}
+
+/// Compresses `input` in one multithreaded frame with `dictionary`, and
+/// checks that it decompresses back.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+fn check_round_trip(
+    cctx: &mut zstd_safe::CCtx<'_>,
+    input: &[u8],
+    dictionary: &[u8],
+) {
+    use zstd_safe::CParameter;
+
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.load_dictionary(dictionary).unwrap();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(input.len()));
+    cctx.compress2(&mut compressed, input).unwrap();
+
+    let mut dctx = zstd_safe::DCtx::create();
+    dctx.load_dictionary(dictionary).unwrap();
+    let mut decompressed = Vec::with_capacity(input.len());
+    dctx.decompress(&mut decompressed, &compressed).unwrap();
+    assert!(decompressed == input);
+}
+
+/// Every way of abandoning a multithreaded frame waits for its jobs, so the
+/// dictionary can be replaced right after.
 #[cfg(all(feature = "std", feature = "zstdmt"))]
 #[test]
-fn test_unfinished_multithreaded_frame() {
+fn test_abandoned_multithreaded_frame() {
+    use zstd_safe::{CCtx, ResetDirective};
+
+    let input = words(24 << 20, 2);
+    let small = words(1000, 3);
+    let another = words(64 << 10, 4);
+    type Abandon = fn(&mut CCtx<'_>, &[u8]);
+    let ways: [(&str, Abandon); 10] = [
+        ("reset(SessionOnly)", |cctx, _| {
+            cctx.reset(ResetDirective::SessionOnly).unwrap();
+        }),
+        ("reset(SessionAndParameters)", |cctx, _| {
+            cctx.reset(ResetDirective::SessionAndParameters).unwrap();
+        }),
+        ("wait_for_workers()", |cctx, _| {
+            cctx.wait_for_workers().unwrap();
+        }),
+        ("init()", |cctx, _| {
+            cctx.init(1).unwrap();
+        }),
+        ("compress_using_dict()", |cctx, small| {
+            let mut buffer =
+                Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+            cctx.compress_using_dict(&mut buffer, small, b"dictionary", 1)
+                .unwrap();
+        }),
+        ("compress_using_cdict()", |cctx, small| {
+            let cdict = zstd_safe::CDict::create(b"dictionary", 1);
+            let mut buffer =
+                Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+            cctx.compress_using_cdict(&mut buffer, small, &cdict)
+                .unwrap();
+        }),
+        ("compress()", |cctx, small| {
+            let mut buffer =
+                Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+            cctx.compress(&mut buffer, small, 1).unwrap();
+        }),
+        // The way the scanner found: a short frame is compressed on the
+        // calling thread, without zstd waiting for the workers.
+        ("compress2() of a short source", |cctx, small| {
+            let mut buffer =
+                Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+            cctx.compress2(&mut buffer, small).unwrap();
+        }),
+        ("a failed compress2(), then a short one", |cctx, small| {
+            cctx.reset(ResetDirective::SessionOnly).unwrap();
+            let input = words(24 << 20, 5);
+            cctx.compress2(&mut Vec::with_capacity(16), &input)
+                .unwrap_err();
+            let mut buffer =
+                Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+            cctx.compress2(&mut buffer, small).unwrap();
+        }),
+        ("a short frame with ZSTD_e_end", |cctx, small| {
+            use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_end;
+            use zstd_safe::{InBuffer, OutBuffer};
+            cctx.reset(ResetDirective::SessionOnly).unwrap();
+            let mut buffer =
+                Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+            let mut output = OutBuffer::around(&mut buffer);
+            let mut input = InBuffer::around(small);
+            assert_eq!(
+                cctx.compress_stream2(&mut output, &mut input, ZSTD_e_end),
+                Ok(0)
+            );
+        }),
+    ];
+    for (name, abandon) in ways {
+        std::eprintln!("{name}");
+        let mut cctx = CCtx::create();
+        start_multithreaded_frame(&mut cctx, &input);
+        abandon(&mut cctx, &small);
+        check_round_trip(&mut cctx, &input, &another);
+    }
+}
+
+/// Dropping a context in the middle of a multithreaded frame waits for its
+/// jobs before freeing the dictionary. (A borrowed one was already safe with
+/// the context's own workers, which freeing the context joins: see
+/// `test_shared_thread_pool` for the case that was not.)
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_dropped_multithreaded_frame() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush;
+    use zstd_safe::{CCtx, CDict, CParameter, InBuffer, OutBuffer};
+
+    let input = words(24 << 20, 2);
+    for _ in 0..3 {
+        let mut cctx = CCtx::create();
+        start_multithreaded_frame(&mut cctx, &input);
+        drop(cctx);
+    }
+
+    let dictionary = words(1 << 20, 1);
+    for _ in 0..3 {
+        let cdict = CDict::create(&dictionary, 1);
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+        cctx.ref_cdict(&cdict).unwrap();
+        let mut empty: [u8; 0] = [];
+        let mut output = OutBuffer::around(&mut empty[..]);
+        cctx.compress_stream2(
+            &mut output,
+            &mut InBuffer::around(&input),
+            ZSTD_e_flush,
+        )
+        .unwrap();
+        drop(cctx);
+        drop(cdict);
+    }
+}
+
+/// zstd up to 1.5.7 cannot wait for the job of an empty multithreaded
+/// frame: no such frame is started.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_empty_multithreaded_frame() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::{
+        ZSTD_e_continue, ZSTD_e_end, ZSTD_e_flush,
+    };
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+
+    let dictionary = words(1 << 20, 1);
+    for _ in 0..3 {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+        cctx.load_dictionary(&dictionary).unwrap();
+        let mut empty: [u8; 0] = [];
+        let mut output = OutBuffer::around(&mut empty[..]);
+        let mut input = InBuffer::around(&[]);
+        assert_eq!(
+            cctx.compress_stream2(&mut output, &mut input, ZSTD_e_continue),
+            Ok(0)
+        );
+        assert_eq!(
+            cctx.compress_stream2(&mut output, &mut input, ZSTD_e_flush),
+            Ok(0)
+        );
+        assert_eq!(cctx.flush_stream(&mut output), Ok(0));
+        // The frame header does not fit: the frame stays in progress.
+        assert_ne!(
+            cctx.compress_stream2(&mut output, &mut input, ZSTD_e_end),
+            Ok(0)
+        );
+        cctx.wait_for_workers().unwrap();
+        cctx.load_dictionary(b"another").unwrap();
+    }
+
+    // It is still a valid, empty frame.
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    let mut buffer = Vec::with_capacity(64);
+    let mut output = OutBuffer::around(&mut buffer);
+    let mut input = InBuffer::around(&[]);
+    assert_eq!(
+        cctx.compress_stream2(&mut output, &mut input, ZSTD_e_continue),
+        Ok(0)
+    );
+    assert_eq!(cctx.end_stream(&mut output), Ok(0));
+    let mut decompressed = Vec::with_capacity(16);
+    assert_eq!(zstd_safe::decompress(&mut decompressed, &buffer), Ok(0));
+}
+
+/// zstd resets the session without waiting for the jobs when a frame it was
+/// asked to end is given more input: that is refused first.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_continue_after_end() {
     use zstd_safe::zstd_sys::ZSTD_EndDirective::{
         ZSTD_e_continue, ZSTD_e_end,
     };
-    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer, ResetDirective};
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
 
-    let long = LONG_CONTENT.as_bytes().repeat(64);
-    let start_frame = |cctx: &mut CCtx<'_>| {
-        let mut buffer = Vec::with_capacity(1 << 16);
-        cctx.compress_stream2(
-            &mut OutBuffer::around(&mut buffer),
-            &mut InBuffer::around(&long),
-            ZSTD_e_continue,
-        )
-        .unwrap();
-    };
-
+    let data = words(24 << 20, 2);
     let mut cctx = CCtx::create();
     cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
-    cctx.load_dictionary(b"some dictionary").unwrap();
-    start_frame(&mut cctx);
-    cctx.reset(ResetDirective::SessionOnly).unwrap();
-
-    assert!(cctx.load_dictionary(b"another").is_err());
-    assert!(cctx.disable_dictionary().is_err());
-    assert!(cctx.ref_prefix(b"prefix").is_err());
-    assert!(cctx.init(3).is_err());
-    assert!(cctx.reset(ResetDirective::SessionAndParameters).is_err());
-    assert!(cctx.set_parameter(CParameter::NbWorkers(4)).is_err());
-    // Other parameters, and a session reset, are fine.
-    cctx.set_parameter(CParameter::CompressionLevel(5)).unwrap();
-    cctx.reset(ResetDirective::SessionOnly).unwrap();
-
-    cctx.wait_for_workers().unwrap();
-    cctx.load_dictionary(b"another").unwrap();
-    cctx.set_parameter(CParameter::NbWorkers(4)).unwrap();
-    cctx.reset(ResetDirective::SessionAndParameters).unwrap();
-
-    // A frame that was finished leaves nothing to wait for.
-    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
-    let mut buffer = Vec::with_capacity(zstd_safe::compress_bound(long.len()));
-    let mut output = OutBuffer::around(&mut buffer);
-    let mut input = InBuffer::around(&long);
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(data.len()));
+    let mut small = Vec::with_capacity(16);
+    let mut input = InBuffer::around(&data);
+    assert_ne!(
+        cctx.compress_stream2(
+            &mut OutBuffer::around(&mut small),
+            &mut input,
+            ZSTD_e_end
+        ),
+        Ok(0)
+    );
+    assert!(cctx
+        .compress_stream2(
+            &mut OutBuffer::around(&mut small),
+            &mut input,
+            ZSTD_e_continue
+        )
+        .is_err());
+    // The frame can still be finished.
+    compressed.extend_from_slice(&small);
+    let written = compressed.len();
+    let mut output = OutBuffer::around_pos(&mut compressed, written);
     while cctx
         .compress_stream2(&mut output, &mut input, ZSTD_e_end)
         .unwrap()
         != 0
     {}
-    cctx.load_dictionary(b"another").unwrap();
+    let mut decompressed = Vec::with_capacity(data.len());
+    zstd_safe::decompress(&mut decompressed, &compressed).unwrap();
+    assert!(decompressed == data);
+}
 
-    // So does a successful one-shot compression; a failed one does not.
-    cctx.compress2(&mut Vec::with_capacity(0), &long)
-        .unwrap_err();
-    assert!(cctx.load_dictionary(b"some dictionary").is_err());
-    cctx.wait_for_workers().unwrap();
-    cctx.compress2(&mut buffer, &long).unwrap();
-    cctx.load_dictionary(b"some dictionary").unwrap();
+/// After a job failed, zstd up to 1.5.7 can leave a cleared job behind that
+/// the next multithreaded frame would hand to a worker: none is started.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_failed_multithreaded_job() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::{
+        ZSTD_e_continue, ZSTD_e_end,
+    };
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+
+    let data = words(24 << 20, 2);
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    // A job fails when it is given more than the pledged size.
+    cctx.set_pledged_src_size(Some(1 << 20)).unwrap();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(data.len()));
+    let mut output = OutBuffer::around(&mut compressed);
+    let mut input = InBuffer::around(&data);
+    // (Starting with `ZSTD_e_end` would pledge the size of the input.)
+    let mut end_op = ZSTD_e_continue;
+    loop {
+        match cctx.compress_stream2(&mut output, &mut input, end_op) {
+            Ok(0) if end_op == ZSTD_e_end => {
+                panic!("the frame should have failed")
+            }
+            Ok(_) => end_op = ZSTD_e_end,
+            Err(_) => break,
+        }
+    }
+
+    let mut buffer = Vec::with_capacity(64);
+    assert!(cctx.compress2(&mut buffer, b"hello").is_err());
+    assert!(cctx.set_parameter(CParameter::NbWorkers(4)).is_err());
+    cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+    assert!(cctx.compress2(&mut buffer, b"hello").is_err());
+    // Without workers, the context still works.
+    cctx.set_parameter(CParameter::NbWorkers(0)).unwrap();
+    cctx.compress2(&mut buffer, b"hello").unwrap();
+}
+
+/// A job can also fail while `compress2()` waits for the frame it abandons:
+/// it does not start a multithreaded frame then either.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_failed_multithreaded_job_found_by_compress2() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_continue;
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+
+    let data = words(24 << 20, 2);
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.set_pledged_src_size(Some(1 << 20)).unwrap();
+    // With no room for output, this returns while the first job, which
+    // takes more than the pledged size, still runs.
+    let mut empty: [u8; 0] = [];
+    cctx.compress_stream2(
+        &mut OutBuffer::around(&mut empty[..]),
+        &mut InBuffer::around(&data),
+        ZSTD_e_continue,
+    )
+    .unwrap();
+
+    let mut buffer = Vec::with_capacity(64);
+    assert!(cctx.compress2(&mut buffer, b"hello").is_err());
+    assert!(cctx.compress2(&mut buffer, b"hello").is_err());
+    cctx.set_parameter(CParameter::NbWorkers(0)).unwrap();
+    cctx.compress2(&mut buffer, b"hello").unwrap();
+}
+
+/// An error before any job was handed out leaves the workers usable.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_multithreaded_error_without_jobs() {
+    use zstd_safe::{CCtx, CParameter};
+
+    let data = words(24 << 20, 2);
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    // A dictionary with zstd's magic number but nothing valid after it is
+    // only rejected when a frame starts.
+    let mut corrupted = 0xEC30A437u32.to_le_bytes().to_vec();
+    corrupted.extend_from_slice(&[0xff; 64]);
+    cctx.load_dictionary(&corrupted).unwrap();
+    let mut buffer = Vec::with_capacity(zstd_safe::compress_bound(data.len()));
+    assert!(cctx.compress2(&mut buffer, &data).is_err());
+
+    cctx.load_dictionary(b"").unwrap();
+    buffer.clear();
+    cctx.compress2(&mut buffer, &data).unwrap();
+}
+
+/// Once a `ZSTD_e_end` call took all of its input, zstd made the frame's
+/// last job: new input would wait forever behind it, so it is refused.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_input_after_last_job() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::{
+        ZSTD_e_continue, ZSTD_e_end, ZSTD_e_flush,
+    };
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+
+    let data = words(12 << 20, 2);
+    let more = words(1000, 3);
+
+    // Ended with no input left.
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(data.len()));
+    let mut output = OutBuffer::around(&mut compressed);
+    let mut input = InBuffer::around(&data);
+    while input.pos() < data.len() {
+        cctx.compress_stream2(&mut output, &mut input, ZSTD_e_continue)
+            .unwrap();
+    }
+    let mut empty: [u8; 0] = [];
+    assert_ne!(
+        cctx.compress_stream2(
+            &mut OutBuffer::around(&mut empty[..]),
+            &mut InBuffer::around(&[]),
+            ZSTD_e_end
+        ),
+        Ok(0)
+    );
+    for end_op in [ZSTD_e_end, ZSTD_e_flush] {
+        assert!(cctx
+            .compress_stream2(
+                &mut output,
+                &mut InBuffer::around(&more),
+                end_op
+            )
+            .is_err());
+    }
+    // The frame can still be finished.
+    while cctx.end_stream(&mut output).unwrap() != 0 {}
+    let mut decompressed = Vec::with_capacity(data.len());
+    zstd_safe::decompress(&mut decompressed, &compressed).unwrap();
+    assert!(decompressed == data);
+
+    // Ended once its input was all taken, by `end_stream()`.
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    let mut input = InBuffer::around(&data);
+    assert_ne!(
+        cctx.compress_stream2(
+            &mut OutBuffer::around(&mut empty[..]),
+            &mut input,
+            ZSTD_e_end
+        ),
+        Ok(0)
+    );
+    // (The rest of the input is dropped: the frame ends without it.)
+    assert_ne!(
+        cctx.end_stream(&mut OutBuffer::around(&mut empty[..])),
+        Ok(0)
+    );
+    assert!(cctx
+        .compress_stream2(
+            &mut OutBuffer::around(&mut empty[..]),
+            &mut InBuffer::around(&more),
+            ZSTD_e_end
+        )
+        .is_err());
+    cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+    drop(cctx);
+}
+
+/// With a shared thread pool, zstd up to 1.5.7 never waits for the workers
+/// when the context is freed.
+#[cfg(all(feature = "std", feature = "experimental", feature = "zstdmt"))]
+#[test]
+fn test_shared_thread_pool() {
+    use zstd_safe::{CCtx, ThreadPool};
+
+    let input = words(24 << 20, 2);
+    let pool = ThreadPool::new(2);
+    for _ in 0..3 {
+        let mut cctx = CCtx::create();
+        cctx.ref_thread_pool(&pool).unwrap();
+        start_multithreaded_frame(&mut cctx, &input);
+        drop(cctx);
+    }
+    let mut cctx = CCtx::create();
+    cctx.ref_thread_pool(&pool).unwrap();
+    start_multithreaded_frame(&mut cctx, &input);
+    cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+    check_round_trip(&mut cctx, &input, &words(64 << 10, 4));
+}
+
+/// Waiting for the workers needs an output buffer of its own, which zstd
+/// refuses with `StableOutBuffer`.
+#[cfg(all(feature = "experimental", feature = "zstdmt"))]
+#[test]
+fn test_stable_output_with_workers() {
+    use zstd_safe::{CCtx, CParameter};
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    assert!(cctx
+        .set_parameter(CParameter::StableOutBuffer(true))
+        .is_err());
+    cctx.set_parameter(CParameter::StableOutBuffer(false))
+        .unwrap();
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::StableOutBuffer(true))
+        .unwrap();
+    assert!(cctx.set_parameter(CParameter::NbWorkers(2)).is_err());
+    cctx.set_parameter(CParameter::StableOutBuffer(false))
+        .unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
 }
 
 /// One-shot decompressions only reset the session when a stream may be open.

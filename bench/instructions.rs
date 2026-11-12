@@ -132,7 +132,7 @@ fn main() {
             let with_prefix = |i: usize| match frames {
                 "frames_workers" => false,
                 "frames_workers_prefix" => true,
-                _ => i % 2 == 0,
+                _ => i.is_multiple_of(2),
             };
             let messages = messages();
             let prefix = data(1 << 10, 5);

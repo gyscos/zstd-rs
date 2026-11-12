@@ -429,7 +429,7 @@ fn frames(c: &mut Criterion) {
         ("no_workers", 0, |_| false),
         ("2_workers", 2, |_| false),
         ("2_workers_prefix", 2, |_| true),
-        ("2_workers_alternating_prefix", 2, |i| i % 2 == 0),
+        ("2_workers_alternating_prefix", 2, |i| i.is_multiple_of(2)),
     ];
     for (name, workers, with_prefix) in cases {
         let mut cctx = CCtx::create();

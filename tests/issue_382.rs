@@ -243,4 +243,57 @@ mod allocation_failure {
         });
         check_recovered_reader(recover(result), dropped);
     }
+
+    /// The constructors that make a compression context, and the `bulk`
+    /// ones, return the error as well: they used to panic.
+    #[test]
+    fn context_allocation_errors_are_returned_by_the_other_constructors() {
+        use zstd::stream::raw;
+
+        fn check<T>(result: io::Result<T>, expected: &str) {
+            let error = result.err().expect("constructor should fail");
+            assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
+            assert_eq!(error.to_string(), expected);
+        }
+        let compression = "zstd could not allocate a compression context";
+        let decompression = "zstd could not allocate a decompression context";
+
+        let dictionary = b"a raw-content dictionary";
+        let encoder_dictionary =
+            zstd::dict::EncoderDictionary::try_copy(dictionary, 3).unwrap();
+        let decoder_dictionary =
+            zstd::dict::DecoderDictionary::try_copy(dictionary).unwrap();
+
+        let result =
+            fail_next_allocation(|| zstd::Encoder::new(io::sink(), 3));
+        check(result, compression);
+        let result = fail_next_allocation(|| raw::Encoder::new(3));
+        check(result, compression);
+        let result = fail_next_allocation(|| {
+            raw::Encoder::with_prepared_dictionary(&encoder_dictionary)
+        });
+        check(result, compression);
+        let result = fail_next_allocation(|| {
+            raw::Encoder::with_ref_prefix(3, dictionary)
+        });
+        check(result, compression);
+
+        let result = fail_next_allocation(|| zstd::bulk::Compressor::new(3));
+        check(result, compression);
+        let result = fail_next_allocation(|| {
+            zstd::bulk::Compressor::with_prepared_dictionary(
+                &encoder_dictionary,
+            )
+        });
+        check(result, compression);
+
+        let result = fail_next_allocation(zstd::bulk::Decompressor::new);
+        check(result, decompression);
+        let result = fail_next_allocation(|| {
+            zstd::bulk::Decompressor::with_prepared_dictionary(
+                &decoder_dictionary,
+            )
+        });
+        check(result, decompression);
+    }
 }

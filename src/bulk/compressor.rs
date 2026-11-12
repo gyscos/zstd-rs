@@ -28,7 +28,9 @@ impl Compressor<'static> {
     /// Note that using a dictionary means that decompression will need to use
     /// the same dictionary.
     pub fn with_dictionary(level: i32, dictionary: &[u8]) -> io::Result<Self> {
-        let mut compressor = Self::default();
+        let mut compressor = Compressor {
+            context: crate::create_cctx()?,
+        };
 
         compressor.set_dictionary(level, dictionary)?;
 
@@ -49,7 +51,9 @@ impl<'a> Compressor<'a> {
     where
         'b: 'a,
     {
-        let mut compressor = Self::default();
+        let mut compressor = Compressor {
+            context: crate::create_cctx()?,
+        };
 
         compressor.set_prepared_dictionary(dictionary)?;
 

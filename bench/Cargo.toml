@@ -29,5 +29,10 @@ criterion = { version = "0.5", default-features = false, features = ["cargo_benc
 name = "zstd"
 harness = false
 
+# The per-call workloads of instructions.sh, which counts their instructions.
+[[bin]]
+name = "instructions"
+path = "instructions.rs"
+
 [profile.bench]
 debug = true

@@ -15,7 +15,22 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
 };
 use zstd_safe::zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
-use zstd_safe::{CCtx, DCtx, InBuffer, OutBuffer};
+use zstd_safe::{CCtx, DCtx, InBuffer, OutBuffer, WriteBuf};
+
+/// `CCtx::compress_stream()`, named `compress_stream2()` before zstd-safe 9:
+/// the `zstd-safe-8` feature picks the old name, so the suite also compiles
+/// against older revisions (see `ab.sh`'s `REV:FEATURES`).
+fn compress_stream<C: WriteBuf + ?Sized>(
+    cctx: &mut CCtx<'_>,
+    output: &mut OutBuffer<'_, C>,
+    input: &mut InBuffer<'_>,
+    end_op: zstd_safe::zstd_sys::ZSTD_EndDirective,
+) -> zstd_safe::SafeResult {
+    #[cfg(not(feature = "zstd-safe-8"))]
+    return cctx.compress_stream(output, input, end_op);
+    #[cfg(feature = "zstd-safe-8")]
+    return cctx.compress_stream2(output, input, end_op);
+}
 
 const LEVEL: i32 = 3;
 const SIZES: [usize; 4] = [64, 4 << 10, 128 << 10, 4 << 20];
@@ -262,7 +277,8 @@ fn safe_stream(c: &mut Criterion) {
             for chunk in input.chunks(CHUNK) {
                 let mut src = InBuffer::around(chunk);
                 while src.pos() < chunk.len() {
-                    cctx.compress_stream2(
+                    compress_stream(
+                        &mut cctx,
                         &mut output,
                         &mut src,
                         ZSTD_e_continue,
@@ -271,8 +287,7 @@ fn safe_stream(c: &mut Criterion) {
                 }
             }
             let mut src = InBuffer::around(&[]);
-            while cctx
-                .compress_stream2(&mut output, &mut src, ZSTD_e_end)
+            while compress_stream(&mut cctx, &mut output, &mut src, ZSTD_e_end)
                 .unwrap()
                 != 0
             {}
@@ -408,7 +423,9 @@ fn frames(c: &mut Criterion) {
     let mut group = c.benchmark_group("frames");
     group.throughput(Throughput::Bytes((FRAMES * FRAME) as u64));
     let mut out = vec![0u8; zstd_safe::compress_bound(FRAME + FRAMES)];
-    let cases: [(&str, u32, fn(usize) -> bool); 4] = [
+    // A name, `NbWorkers`, and which frames get a prefix.
+    type Case = (&'static str, u32, fn(usize) -> bool);
+    let cases: [Case; 4] = [
         ("no_workers", 0, |_| false),
         ("2_workers", 2, |_| false),
         ("2_workers_prefix", 2, |_| true),
@@ -429,9 +446,13 @@ fn frames(c: &mut Criterion) {
                     }
                     let mut output = OutBuffer::around(&mut out[..]);
                     let mut src = InBuffer::around(m);
-                    while cctx
-                        .compress_stream2(&mut output, &mut src, ZSTD_e_end)
-                        .unwrap()
+                    while compress_stream(
+                        &mut cctx,
+                        &mut output,
+                        &mut src,
+                        ZSTD_e_end,
+                    )
+                    .unwrap()
                         != 0
                     {}
                     total += output.pos();

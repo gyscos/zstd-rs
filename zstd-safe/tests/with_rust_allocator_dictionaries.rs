@@ -38,7 +38,7 @@ fn dictionaries_use_global_allocator() {
         );
 
         let mut cctx = CCtx::create();
-        cctx.compress_using_cdict(&mut compressed, &input, &cdict)
+        cctx.compress_with_cdict(&mut compressed, &input, &cdict)
             .expect("compression failed");
         drop(cdict_ref);
     }

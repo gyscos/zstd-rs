@@ -22,7 +22,9 @@ fn default_contexts_use_global_allocator() {
     let before = LIVE_BYTES.load(Relaxed);
     {
         let mut cctx = CCtx::create();
-        cctx.compress(&mut compressed, &input, 3)
+        cctx.set_parameter(zstd_safe::CParameter::CompressionLevel(3))
+            .unwrap();
+        cctx.compress(&mut compressed, &input)
             .expect("compression failed");
         assert!(
             LIVE_BYTES.load(Relaxed) - before > 1024,

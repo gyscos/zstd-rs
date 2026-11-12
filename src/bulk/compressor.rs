@@ -123,7 +123,7 @@ impl<'a> Compressor<'a> {
         source: &[u8],
         destination: &mut C,
     ) -> io::Result<usize> {
-        let result = self.context.compress2(destination, source);
+        let result = self.context.compress(destination, source);
         if result.is_err() {
             // `compress2` leaves a failed frame open, and zstd refuses most
             // setters mid-frame. Abandon it, so the compressor can be set up

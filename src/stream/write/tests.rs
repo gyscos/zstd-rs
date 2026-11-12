@@ -177,3 +177,46 @@ fn test_drop_unfinished_multithreaded_encoder() {
         drop(encoder);
     }
 }
+
+/// Test that a flush between two attempts at finishing does not complete the
+/// frame behind the back of `do_finish()`, which would then write another.
+#[test]
+fn test_flush_between_finish_attempts() {
+    use std::io::ErrorKind::{Other, WouldBlock};
+
+    // Not compressible, and larger than the 32KB output buffer: the end of
+    // the frame takes several rounds to write out.
+    let mut seed = 1u32;
+    let input: Vec<u8> = (0..100_000)
+        .map(|_| {
+            seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+            (seed >> 16) as u8
+        })
+        .collect();
+    // The writer blocks in the first round, and is still blocked later.
+    let blocked_encoder = || {
+        let ops = [
+            PartialOp::Limited(10_000),
+            PartialOp::Err(WouldBlock),
+            PartialOp::Err(WouldBlock),
+        ];
+        let buf = PartialWrite::new(Vec::new(), ops);
+        let mut encoder = Encoder::new(buf, 1).unwrap();
+        encoder.write_all(&input).unwrap();
+        assert_eq!(encoder.do_finish().unwrap_err().kind(), WouldBlock);
+        encoder
+    };
+
+    // Flushing reports that the writer is blocked, then writes the rest.
+    let mut encoder = blocked_encoder();
+    assert_eq!(encoder.flush().unwrap_err().kind(), WouldBlock);
+    encoder.flush().unwrap();
+    encoder.do_finish().unwrap();
+    let buf = encoder.get_ref().get_ref();
+    assert_eq!(zstd_safe::find_frame_compressed_size(buf), Ok(buf.len()));
+    assert_eq!(&decode_all(&buf[..]).unwrap(), &input);
+
+    // The frame is ending: it takes no more input.
+    let mut encoder = blocked_encoder();
+    assert_eq!(encoder.write(b"more").unwrap_err().kind(), Other);
+}

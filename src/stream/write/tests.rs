@@ -159,3 +159,21 @@ fn test_decoder_do_finish_resume() {
     decoder.write_all(&encoded).unwrap_err();
     assert_eq!(decoder.finish().unwrap(), input);
 }
+
+/// Dropping a multithreaded encoder without finishing it waits for the
+/// worker threads before freeing the dictionary they read.
+#[cfg(feature = "zstdmt")]
+#[test]
+fn test_drop_unfinished_multithreaded_encoder() {
+    use crate::test_words as words;
+
+    let dictionary = words(1 << 20, 1);
+    let input = words(24 << 20, 2);
+    for _ in 0..3 {
+        let mut encoder =
+            Encoder::with_dictionary(Vec::new(), 3, &dictionary).unwrap();
+        encoder.multithread(2).unwrap();
+        encoder.write_all(&input).unwrap();
+        drop(encoder);
+    }
+}

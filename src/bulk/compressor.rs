@@ -148,6 +148,38 @@ impl<'a> Compressor<'a> {
         Ok(buffer)
     }
 
+    /// Compresses a block of data with `prefix` as its single-use
+    /// dictionary, into the given destination buffer.
+    ///
+    /// The prefix is only borrowed for this call, and the worker threads
+    /// ([`Compressor::multithread()`]) are used all the same. The compressor's
+    /// own dictionary, if prepared, is used again for the next calls.
+    pub fn compress_to_buffer_with_prefix<C: zstd_safe::WriteBuf + ?Sized>(
+        &mut self,
+        source: &[u8],
+        destination: &mut C,
+        prefix: &[u8],
+    ) -> io::Result<usize> {
+        self.context
+            .compress_with_prefix(destination, source, prefix)
+            .map_err(map_error_code)
+    }
+
+    /// Compresses a block of data with `prefix` as its single-use
+    /// dictionary, and returns the compressed result.
+    ///
+    /// See [`Compressor::compress_to_buffer_with_prefix()`].
+    pub fn compress_with_prefix(
+        &mut self,
+        data: &[u8],
+        prefix: &[u8],
+    ) -> io::Result<Vec<u8>> {
+        let buffer_len = zstd_safe::compress_bound(data.len());
+        let mut buffer = crate::vec_with_capacity(buffer_len)?;
+        self.compress_to_buffer_with_prefix(data, &mut buffer, prefix)?;
+        Ok(buffer)
+    }
+
     /// Gives mutable access to the internal context.
     pub fn context_mut(&mut self) -> &mut zstd_safe::CCtx<'a> {
         &mut self.context

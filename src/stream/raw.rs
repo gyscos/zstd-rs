@@ -306,6 +306,30 @@ impl Encoder<'static> {
             context: MaybeOwnedCCtx::Owned(context),
         })
     }
+
+    /// Creates a new encoder with a prefix it owns, as single-use dictionary
+    /// for its first frame.
+    ///
+    /// `prefix` gives the bytes without copying them: a `Vec<u8>`, an
+    /// `Arc<[u8]>`, a memory map... Unlike [`Encoder::with_ref_prefix()`],
+    /// the frame that reads it can use worker threads.
+    pub fn with_prefix<P>(level: i32, prefix: P) -> io::Result<Self>
+    where
+        P: std::ops::Deref + Send + Sync + 'static,
+        P::Target: AsRef<[u8]>,
+    {
+        let mut context = zstd_safe::CCtx::create();
+
+        context
+            .set_parameter(CParameter::CompressionLevel(level))
+            .map_err(map_error_code)?;
+
+        context.set_prefix(prefix).map_err(map_error_code)?;
+
+        Ok(Encoder {
+            context: MaybeOwnedCCtx::Owned(context),
+        })
+    }
 }
 
 impl<'a> Encoder<'a> {
@@ -342,6 +366,11 @@ impl<'a> Encoder<'a> {
     }
 
     /// Creates a new encoder initialized with the given ref prefix.
+    ///
+    /// The prefix is borrowed: with worker threads, the frame that reads it
+    /// is compressed on the calling thread (a leaked encoder would leave
+    /// them reading it after the borrow ended). [`Encoder::with_prefix()`]
+    /// takes an owned prefix, which can use them.
     pub fn with_ref_prefix<'b>(
         level: i32,
         ref_prefix: &'b [u8],

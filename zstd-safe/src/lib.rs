@@ -95,6 +95,13 @@ const PARAMETER_UNSUPPORTED_ERROR: ErrorCode =
 const STAGE_WRONG_ERROR: ErrorCode =
     (zstd_sys::ZSTD_ErrorCode::ZSTD_error_stage_wrong as usize).wrapping_neg();
 
+/// The error code zstd returns for a dictionary that does not fit
+/// (`-ZSTD_error_dictionary_wrong`), for `CCtx::compress_with_*` on a context
+/// with a loaded dictionary, which they would lose.
+const DICTIONARY_WRONG_ERROR: ErrorCode =
+    (zstd_sys::ZSTD_ErrorCode::ZSTD_error_dictionary_wrong as usize)
+        .wrapping_neg();
+
 /// The error code `ZSTD_compress2()` returns when the destination is too
 /// small, leaving its frame in progress (`-ZSTD_error_dstSize_tooSmall`).
 const DST_SIZE_TOO_SMALL_ERROR: ErrorCode =
@@ -343,6 +350,9 @@ struct Workers {
     prefix_borrowed: bool,
     /// A dictionary that is only borrowed is referenced (`ref_cdict`).
     dict_borrowed: bool,
+    /// zstd holds a copy of a dictionary (`load_dictionary`), which nothing
+    /// could load again after `compress_with_*` replaced it.
+    loaded: bool,
     /// The `pending` frame reads borrowed data, so it runs on the calling
     /// thread (or, for a one-shot call, is waited for before returning).
     frame_borrows: bool,
@@ -586,8 +596,10 @@ impl<'a> CCtx<'a> {
     /// context. Like [`CCtx::compress()`], it uses the worker threads.
     ///
     /// A dictionary the context holds ([`CCtx::ref_cdict()`],
-    /// [`CCtx::set_cdict()`]) is referenced again afterwards. One it only
-    /// borrows or loaded ([`CCtx::load_dictionary()`]), or a prefix, is not.
+    /// [`CCtx::set_cdict()`]) is referenced again afterwards; one it only
+    /// borrows, or a prefix, is not. With a dictionary loaded with
+    /// [`CCtx::load_dictionary()`], which could not be loaded again, this
+    /// fails with a `dictionary_wrong` error: disable it first.
     pub fn compress_with_cdict<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
@@ -607,9 +619,10 @@ impl<'a> CCtx<'a> {
     /// [`CCtx::compress()`], it uses the worker threads.
     ///
     /// A dictionary the context holds ([`CCtx::ref_cdict()`],
-    /// [`CCtx::set_cdict()`]) is referenced again afterwards. One it only
-    /// borrows or loaded ([`CCtx::load_dictionary()`]), or another prefix,
-    /// is not.
+    /// [`CCtx::set_cdict()`]) is referenced again afterwards; one it only
+    /// borrows, or another prefix, is not. With a dictionary loaded with
+    /// [`CCtx::load_dictionary()`], which could not be loaded again, this
+    /// fails with a `dictionary_wrong` error: disable it first.
     pub fn compress_with_prefix<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
@@ -663,6 +676,10 @@ impl<'a> CCtx<'a> {
             }
         }
 
+        if self.3.loaded {
+            // Referencing anything else would drop it for good.
+            return Err(DICTIONARY_WRONG_ERROR);
+        }
         // zstd only takes a new reference between frames.
         self.reset(ResetDirective::SessionOnly)?;
         let held = core::mem::take(&mut self.4).cdict;
@@ -749,6 +766,7 @@ impl<'a> CCtx<'a> {
         if res.is_ok() {
             // The dictionary is copied.
             self.referenced(false, false);
+            self.3.loaded = !dict.is_empty();
         }
         res
     }
@@ -840,6 +858,7 @@ impl<'a> CCtx<'a> {
         if res.is_ok() {
             // The dictionary is copied.
             self.referenced(false, false);
+            self.3.loaded = !dict.is_empty();
         }
         res
     }
@@ -1340,6 +1359,7 @@ impl<'a> CCtx<'a> {
     fn referenced(&mut self, prefix_borrowed: bool, dict_borrowed: bool) {
         self.3.prefix_borrowed = prefix_borrowed;
         self.3.dict_borrowed = dict_borrowed;
+        self.3.loaded = false;
         self.4 = Held::default();
     }
 

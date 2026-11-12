@@ -152,8 +152,11 @@ impl<'a> Compressor<'a> {
     /// dictionary, into the given destination buffer.
     ///
     /// The prefix is only borrowed for this call, and the worker threads
-    /// ([`Compressor::multithread()`]) are used all the same. The compressor's
-    /// own dictionary, if prepared, is used again for the next calls.
+    /// ([`Compressor::multithread()`]) are used all the same. A prepared
+    /// dictionary ([`Compressor::with_prepared_dictionary()`]) is used again
+    /// for the next calls. With a dictionary given as bytes
+    /// ([`Compressor::with_dictionary()`]), which could not be loaded again,
+    /// this fails instead.
     pub fn compress_to_buffer_with_prefix<C: zstd_safe::WriteBuf + ?Sized>(
         &mut self,
         source: &[u8],

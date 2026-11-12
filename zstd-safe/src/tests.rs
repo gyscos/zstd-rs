@@ -1089,7 +1089,7 @@ fn test_abandoned_multithreaded_frame() {
     let small = words(1000, 3);
     let another = words(64 << 10, 4);
     type Abandon = fn(&mut CCtx<'_>, &[u8]);
-    let ways: [(&str, Abandon); 9] = [
+    let ways: [(&str, Abandon); 8] = [
         ("reset(SessionOnly)", |cctx, _| {
             cctx.reset(ResetDirective::SessionOnly).unwrap();
         }),
@@ -1102,18 +1102,18 @@ fn test_abandoned_multithreaded_frame() {
         ("init()", |cctx, _| {
             cctx.init(1).unwrap();
         }),
-        ("compress_with_prefix()", |cctx, small| {
-            let mut buffer =
-                Vec::with_capacity(zstd_safe::compress_bound(small.len()));
-            cctx.compress_with_prefix(&mut buffer, small, b"dictionary")
-                .unwrap();
-        }),
-        ("compress_with_cdict()", |cctx, small| {
+        // These would drop the loaded dictionary: they refuse, and leave the
+        // frame alone. See `test_one_shot_abandons_a_multithreaded_frame`.
+        ("compress_with_*(), refused", |cctx, small| {
             let cdict = zstd_safe::CDict::create(b"dictionary", 1);
             let mut buffer =
                 Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+            cctx.compress_with_prefix(&mut buffer, small, b"dictionary")
+                .unwrap_err();
             cctx.compress_with_cdict(&mut buffer, small, &cdict)
-                .unwrap();
+                .unwrap_err();
+            assert!(cctx.3.pending);
+            cctx.reset(ResetDirective::SessionOnly).unwrap();
         }),
         // The way the scanner found: a short frame is compressed on the
         // calling thread, without zstd waiting for the workers.
@@ -1840,4 +1840,80 @@ fn test_one_shot_with_borrowed_data_cleans_up() {
     fresh.set_parameter(CParameter::NbWorkers(2)).unwrap();
     fresh.ref_cdict(&held).unwrap();
     assert!(with_held == stream_frame(&mut fresh, &input));
+}
+
+/// The one-shot calls with borrowed data refuse to run on a context with a
+/// loaded dictionary: they would drop it, and its bytes are gone.
+#[cfg(feature = "std")]
+#[test]
+fn test_one_shot_with_borrowed_data_keeps_a_loaded_dictionary() {
+    use zstd_safe::{CCtx, CDict};
+
+    let dict = &LONG_CONTENT.as_bytes()[..1000];
+    let mut cctx = CCtx::create();
+    cctx.load_dictionary(dict).unwrap();
+    let mut with_dict = Vec::with_capacity(1024);
+    cctx.compress(&mut with_dict, INPUT).unwrap();
+
+    let mut buffer = Vec::with_capacity(1024);
+    let refused = cctx.compress_with_prefix(&mut buffer, INPUT, b"prefix");
+    assert!(zstd_safe::is_error_kind(
+        refused.unwrap_err(),
+        zstd_safe::zstd_sys::ZSTD_ErrorCode::ZSTD_error_dictionary_wrong
+    ));
+    let cdict = CDict::create(b"other dictionary", 3);
+    assert!(cctx
+        .compress_with_cdict(&mut buffer, INPUT, &cdict)
+        .is_err());
+
+    // Still loaded.
+    let mut again = Vec::with_capacity(1024);
+    cctx.compress(&mut again, INPUT).unwrap();
+    assert_eq!(again, with_dict);
+
+    // Once disabled, they run.
+    cctx.disable_dictionary().unwrap();
+    cctx.compress_with_prefix(&mut buffer, INPUT, b"prefix")
+        .unwrap();
+}
+
+/// `compress_with_*()` abandon a multithreaded frame in progress like the
+/// other one-shot calls: waiting for its jobs first.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_one_shot_abandons_a_multithreaded_frame() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush;
+    use zstd_safe::{CCtx, CDict, CParameter, InBuffer, OutBuffer};
+
+    let input = words(24 << 20, 2);
+    let small = words(1000, 3);
+    let held = CDict::create(&words(1 << 20, 1), 1);
+    for prefix in [false, true] {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+        cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+        cctx.ref_cdict(&held).unwrap();
+        let mut empty: [u8; 0] = [];
+        let mut output = OutBuffer::around(&mut empty[..]);
+        let mut src = InBuffer::around(&input);
+        assert_ne!(
+            cctx.compress_stream(&mut output, &mut src, ZSTD_e_flush)
+                .unwrap(),
+            0
+        );
+        assert!(cctx.3.pending && cctx.3.requested);
+
+        let mut buffer =
+            Vec::with_capacity(zstd_safe::compress_bound(small.len()));
+        if prefix {
+            cctx.compress_with_prefix(&mut buffer, &small, b"prefix")
+                .unwrap();
+        } else {
+            let other = CDict::create(b"dictionary", 1);
+            cctx.compress_with_cdict(&mut buffer, &small, &other)
+                .unwrap();
+        }
+        assert!(!cctx.3.pending);
+        check_round_trip(&mut cctx, &input, &words(64 << 10, 4));
+    }
 }

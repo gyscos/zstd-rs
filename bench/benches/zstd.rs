@@ -388,6 +388,61 @@ fn zstdmt(c: &mut Criterion) {
     group.finish();
 }
 
+/// Many small frames through one re-used zstd-safe context, with and without
+/// `NbWorkers`: what starting a frame costs around zstd, including deciding
+/// which workers it may use. With a borrowed prefix, a streaming frame runs
+/// on the calling thread; alternating frames with and without one switches
+/// `nbWorkers` every frame, the worst case.
+fn frames(c: &mut Criterion) {
+    const FRAMES: usize = 100;
+    const FRAME: usize = 256;
+    let messages: Vec<Vec<u8>> = (0..FRAMES)
+        .map(|i| {
+            let mut m = data(FRAME + i);
+            m.drain(..i);
+            m
+        })
+        .collect();
+    let prefix = data(1 << 10);
+
+    let mut group = c.benchmark_group("frames");
+    group.throughput(Throughput::Bytes((FRAMES * FRAME) as u64));
+    let mut out = vec![0u8; zstd_safe::compress_bound(FRAME + FRAMES)];
+    let cases: [(&str, u32, fn(usize) -> bool); 4] = [
+        ("no_workers", 0, |_| false),
+        ("2_workers", 2, |_| false),
+        ("2_workers_prefix", 2, |_| true),
+        ("2_workers_alternating_prefix", 2, |i| i % 2 == 0),
+    ];
+    for (name, workers, with_prefix) in cases {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(zstd_safe::CParameter::CompressionLevel(LEVEL))
+            .unwrap();
+        cctx.set_parameter(zstd_safe::CParameter::NbWorkers(workers))
+            .unwrap();
+        group.bench_function(format!("{name}_{FRAMES}x{FRAME}B"), |b| {
+            b.iter(|| {
+                let mut total = 0;
+                for (i, m) in messages.iter().enumerate() {
+                    if with_prefix(i) {
+                        cctx.ref_prefix(&prefix).unwrap();
+                    }
+                    let mut output = OutBuffer::around(&mut out[..]);
+                    let mut src = InBuffer::around(m);
+                    while cctx
+                        .compress_stream2(&mut output, &mut src, ZSTD_e_end)
+                        .unwrap()
+                        != 0
+                    {}
+                    total += output.pos();
+                }
+                total
+            })
+        });
+    }
+    group.finish();
+}
+
 /// Database-row-sized records, one per line, from the `*.jsonl` files in the
 /// directory named by `ZSTD_BENCH_RECORDS` (skipped when it is unset).
 ///
@@ -554,6 +609,7 @@ criterion_group!(
     safe_stream,
     seekable,
     zstdmt,
+    frames,
     records,
     levels
 );

@@ -326,8 +326,25 @@ impl Poison {
 struct Workers {
     /// `NbWorkers` was ever set to a non-zero value, see `guard_own_tables`.
     ever: bool,
-    /// `NbWorkers` is currently set to a non-zero value.
+    /// The `NbWorkers` asked for with `set_parameter` (0: none).
+    ///
+    /// Each frame gets these workers only if everything it reads is owned by
+    /// the context or `'static`, see `CCtx::start_frame()`. A frame that
+    /// reads borrowed data runs on the calling thread instead: a context can
+    /// be leaked mid-frame, and its workers would then read the data after
+    /// the borrow ended.
+    count: u32,
+    /// `NbWorkers` is currently set to a non-zero value in zstd: `count`,
+    /// unless the frame in progress, or the last one, reads borrowed data.
     requested: bool,
+    /// A borrowed prefix (`ref_prefix`) was referenced, and no frame has
+    /// started since to consume it.
+    prefix_borrowed: bool,
+    /// A dictionary that is only borrowed is referenced (`ref_cdict`).
+    dict_borrowed: bool,
+    /// The `pending` frame reads borrowed data, so it runs on the calling
+    /// thread (or, for a one-shot call, is waited for before returning).
+    frame_borrows: bool,
     /// A frame was started while `NbWorkers` was set, and is not finished.
     ///
     /// Its jobs may be running on the worker threads, reading the context's
@@ -480,6 +497,15 @@ impl<'a> CCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        if self.3.count != 0 {
+            // Abandons the frame in progress, if any, waiting for its jobs.
+            // Waiting may find that one of them failed: `start_frame` checks
+            // `broken` after.
+            self.reset(ResetDirective::SessionOnly)?;
+            // This call returns only once its frame is done (see below), so
+            // it may use the workers even when it reads borrowed data.
+            self.start_frame(true)?;
+        }
         if !self.3.requested {
             // Safety: ZSTD_compress2 returns how many bytes were written.
             let res = unsafe {
@@ -493,6 +519,10 @@ impl<'a> CCtx<'a> {
                     ))
                 })
             };
+            if res.is_ok() {
+                // The frame consumed the prefix, if any.
+                self.3.prefix_borrowed = false;
+            }
             // Unlike the others, this starts by resetting the session, and
             // ends it when it succeeds. When it fails, it stays mid-frame:
             // make streaming calls wait for an explicit reset.
@@ -508,12 +538,15 @@ impl<'a> CCtx<'a> {
         // anyway. A short frame, compressed on the calling thread, goes
         // straight to the destination when it can hold the whole frame, and
         // through a copy otherwise.
-        // Waiting for the frame in progress may find that one of its jobs
-        // failed: check `broken` after.
-        self.reset(ResetDirective::SessionOnly)?;
-        self.guard_broken()?;
+        //
+        // A frame that reads borrowed data must not be left in progress: its
+        // jobs would outlive the call, and the borrow with them if the
+        // context is then leaked. So when the destination is too small, the
+        // frame is waited for right away, before `write_from` runs any more
+        // of the caller's `WriteBuf` code (which may panic).
         let mut raw = Ok(0);
         let mut taken = 0;
+        let mut waited = false;
         // Safety: ZSTD_compressStream2 reports how many bytes it wrote in
         // `output.pos`.
         let res = unsafe {
@@ -537,6 +570,13 @@ impl<'a> CCtx<'a> {
                 taken = input.pos;
                 match raw {
                     Ok(0) => Ok(output.pos),
+                    Ok(_) if self.3.frame_borrows => {
+                        waited = true;
+                        if let Err(code) = self.flush_to_scratch() {
+                            raw = Err(code);
+                        }
+                        Err(DST_SIZE_TOO_SMALL_ERROR)
+                    }
                     // As `ZSTD_compress2()`: the frame stays in progress.
                     Ok(_) => Err(DST_SIZE_TOO_SMALL_ERROR),
                     Err(code) => Err(code),
@@ -549,6 +589,11 @@ impl<'a> CCtx<'a> {
             src.len(),
             taken,
         );
+        if waited {
+            // Nothing is left running: the frame is over, but not its
+            // session, which `ZSTD_compress2()` would also leave open.
+            self.end_frame();
+        }
         self.2.record(res)
     }
 
@@ -621,7 +666,11 @@ impl<'a> CCtx<'a> {
         let code = unsafe {
             zstd_sys::ZSTD_initCStream(self.0.as_ptr(), compression_level)
         };
-        self.2.record(parse_code(code))
+        let res = self.2.record(parse_code(code));
+        if res.is_ok() {
+            self.referenced(false, false);
+        }
+        res
     }
 
     /// Wraps the `ZSTD_initCStream_srcSize()` function.
@@ -645,7 +694,11 @@ impl<'a> CCtx<'a> {
                 pledged_src_size as c_ulonglong,
             )
         };
-        parse_code(code)
+        let res = parse_code(code);
+        if res.is_ok() {
+            self.referenced(false, false);
+        }
+        res
     }
 
     /// Wraps the `ZSTD_initCStream_usingDict()` function.
@@ -670,7 +723,12 @@ impl<'a> CCtx<'a> {
                 compression_level,
             )
         };
-        parse_code(code)
+        let res = parse_code(code);
+        if res.is_ok() {
+            // The dictionary is copied.
+            self.referenced(false, false);
+        }
+        res
     }
 
     /// Wraps the `ZSTD_initCStream_usingCDict()` function.
@@ -702,7 +760,11 @@ impl<'a> CCtx<'a> {
                 cdict.0.as_ptr(),
             )
         };
-        self.2.record(parse_code(code))
+        let res = self.2.record(parse_code(code));
+        if res.is_ok() {
+            self.referenced(false, true);
+        }
+        res
     }
 
     /// Tries to load a dictionary.
@@ -720,13 +782,18 @@ impl<'a> CCtx<'a> {
     pub fn load_dictionary(&mut self, dict: &[u8]) -> SafeResult {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
                 self.0.as_ptr(),
                 ptr_void(dict),
                 dict.len(),
             )
-        })
+        });
+        if res.is_ok() {
+            // The dictionary is copied.
+            self.referenced(false, false);
+        }
+        res
     }
 
     /// Wraps the `ZSTD_CCtx_refCDict()` function.
@@ -742,9 +809,13 @@ impl<'a> CCtx<'a> {
     {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_refCDict(self.0.as_ptr(), cdict.0.as_ptr())
-        })
+        });
+        if res.is_ok() {
+            self.referenced(false, true);
+        }
+        res
     }
 
     /// Return to "no-dictionary" mode.
@@ -756,13 +827,17 @@ impl<'a> CCtx<'a> {
     pub fn disable_dictionary(&mut self) -> SafeResult {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
                 self.0.as_ptr(),
                 core::ptr::null(),
                 0,
             )
-        })
+        });
+        if res.is_ok() {
+            self.referenced(false, false);
+        }
+        res
     }
 
     /// Use some prefix as single-use dictionary for the next compressed frame.
@@ -781,13 +856,18 @@ impl<'a> CCtx<'a> {
     {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_refPrefix(
                 self.0.as_ptr(),
                 ptr_void(prefix),
                 prefix.len(),
             )
-        })
+        });
+        if res.is_ok() {
+            // An empty prefix references nothing.
+            self.referenced(!prefix.is_empty(), false);
+        }
+        res
     }
 
     /// Performs a step of a streaming compression operation.
@@ -930,16 +1010,23 @@ impl<'a> CCtx<'a> {
     ///
     /// Returns what the call should return instead when it may not.
     fn before_stream(
-        &self,
+        &mut self,
         no_input: bool,
         end_op: zstd_sys::ZSTD_EndDirective,
     ) -> Option<SafeResult> {
         use zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
-        if !self.3.requested {
+        if self.3.count == 0 {
             return None;
         }
-        if self.3.broken {
-            return Some(Err(STAGE_WRONG_ERROR));
+        if !self.3.pending {
+            // This call starts a frame. A streaming frame can be left in
+            // progress, so it only gets the workers without borrowed data.
+            if let Err(code) = self.start_frame(false) {
+                return Some(Err(code));
+            }
+        }
+        if !self.3.requested {
+            return None;
         }
         if self.3.pending {
             if (self.3.ended && end_op == ZSTD_e_continue)
@@ -961,6 +1048,36 @@ impl<'a> CCtx<'a> {
         None
     }
 
+    /// Gives the frame about to start the workers it may use, see
+    /// `Workers::count`.
+    ///
+    /// `blocking` is for a call that returns only once its frame is done:
+    /// that frame may use the workers even when it reads borrowed data.
+    /// Only called while `NbWorkers` is set and no frame is in progress, when
+    /// zstd still takes a new `nbWorkers`.
+    fn start_frame(&mut self, blocking: bool) -> Result<(), ErrorCode> {
+        let borrows = self.3.prefix_borrowed || self.3.dict_borrowed;
+        let workers = blocking || !borrows;
+        if workers && self.3.broken {
+            // See `Workers::broken`.
+            return Err(STAGE_WRONG_ERROR);
+        }
+        if workers != self.3.requested {
+            let value = if workers { self.3.count } else { 0 };
+            // Safety: Just FFI
+            parse_code(unsafe {
+                zstd_sys::ZSTD_CCtx_setParameter(
+                    self.0.as_ptr(),
+                    zstd_sys::ZSTD_cParameter::ZSTD_c_nbWorkers,
+                    value as c_int,
+                )
+            })?;
+            self.3.requested = workers;
+        }
+        self.3.frame_borrows = borrows;
+        Ok(())
+    }
+
     /// Records what a streaming call left open, see `Workers`.
     ///
     /// `given` is how much input the call was given, and `taken` how much of
@@ -973,11 +1090,18 @@ impl<'a> CCtx<'a> {
         taken: usize,
     ) {
         use zstd_sys::ZSTD_EndDirective::ZSTD_e_end;
+        if res.is_ok() {
+            // zstd started a frame by now, which consumed the prefix, if any.
+            // (A failed call may not have: the prefix then stays counted.)
+            self.3.prefix_borrowed = false;
+        }
         // A pledged size is for the frame this call started or continued.
         let pledged_short = core::mem::take(&mut self.3.pledged_short);
-        if !self.3.requested {
+        if self.3.count == 0 {
             return;
         }
+        // From here on, frames are tracked even when they run on the calling
+        // thread: `NbWorkers` may only change between frames.
         if !self.3.pending {
             // This call started the frame. Given whole, its size is the
             // input's, whatever was pledged.
@@ -987,7 +1111,7 @@ impl<'a> CCtx<'a> {
                 pledged_short
             };
         }
-        self.3.jobs |= taken > 0 && !self.3.short;
+        self.3.jobs |= self.3.requested && taken > 0 && !self.3.short;
         match res {
             Ok(0) if end_op == ZSTD_e_end => self.end_frame(),
             Ok(_) => {
@@ -1015,6 +1139,7 @@ impl<'a> CCtx<'a> {
         self.3.last = false;
         self.3.short = false;
         self.3.jobs = false;
+        self.3.frame_borrows = false;
     }
 
     /// Waits for the jobs of the frame in progress, if any, so that it can
@@ -1031,6 +1156,16 @@ impl<'a> CCtx<'a> {
         if !self.3.pending {
             return;
         }
+        // A frame on the calling thread has no jobs to wait for.
+        if self.3.requested {
+            let _ = self.flush_to_scratch();
+        }
+        self.end_frame();
+    }
+
+    /// Flushes the frame in progress to a scratch buffer, throwing the output
+    /// away, until every job is done. See `drain()`.
+    fn flush_to_scratch(&mut self) -> Result<(), ErrorCode> {
         let mut scratch = [0u8; 4096];
         loop {
             let mut output = zstd_sys::ZSTD_outBuffer {
@@ -1053,16 +1188,15 @@ impl<'a> CCtx<'a> {
                 )
             };
             match parse_code(code) {
-                Ok(0) => break,
+                Ok(0) => return Ok(()),
                 Ok(_) => continue,
                 // A job failed: see `track_frame`.
-                Err(_) => {
+                Err(code) => {
                     self.3.broken |= self.3.jobs;
-                    break;
+                    return Err(code);
                 }
             }
         }
-        self.end_frame();
     }
 
     /// Fails while a frame is in progress (zstd refuses these calls then).
@@ -1078,13 +1212,32 @@ impl<'a> CCtx<'a> {
         Ok(())
     }
 
-    /// Fails if a multithreaded call failed on this context, see
-    /// `Workers::broken`.
-    fn guard_broken(&self) -> Result<(), ErrorCode> {
-        if self.3.requested && self.3.broken {
-            return Err(STAGE_WRONG_ERROR);
+    /// Records a change to the dictionary or prefix the next frames read,
+    /// once zstd accepted it. Any of them replaces the previous one.
+    fn referenced(&mut self, prefix_borrowed: bool, dict_borrowed: bool) {
+        self.3.prefix_borrowed = prefix_borrowed;
+        self.3.dict_borrowed = dict_borrowed;
+    }
+
+    /// How many worker threads the frame in progress uses, or the next frame
+    /// will use if none is in progress.
+    ///
+    /// This is the `NbWorkers` set with [`CCtx::set_parameter()`], unless
+    /// that frame reads borrowed data ([`CCtx::ref_prefix()`],
+    /// [`CCtx::ref_cdict()`]): a streaming frame then runs on the calling
+    /// thread, see [`CCtx`](CCtx#worker-threads-and-leaks). `compress2()`
+    /// always uses the workers.
+    pub fn frame_workers(&self) -> u32 {
+        let workers = if self.3.pending {
+            self.3.requested
+        } else {
+            !(self.3.prefix_borrowed || self.3.dict_borrowed)
+        };
+        if workers {
+            self.3.count
+        } else {
+            0
         }
-        Ok(())
     }
 
     /// Abandons the current frame, if any, and waits for the worker threads
@@ -1145,8 +1298,11 @@ impl<'a> CCtx<'a> {
             self.3.pledged_short = false;
         }
         if res.is_ok() && !matches!(reset, ResetDirective::SessionOnly) {
+            self.3.count = 0;
             self.3.requested = false;
             self.3.stable_out = false;
+            // Resetting the parameters also unloads the dictionary.
+            self.referenced(false, false);
         }
         res
     }
@@ -1176,7 +1332,7 @@ impl<'a> CCtx<'a> {
             }
             // Waiting for the workers needs an output buffer of its own.
             #[cfg(feature = "experimental")]
-            CParameter::StableOutBuffer(true) if self.3.requested => {
+            CParameter::StableOutBuffer(true) if self.3.count != 0 => {
                 return Err(PARAMETER_UNSUPPORTED_ERROR);
             }
             _ => (),
@@ -1306,6 +1462,7 @@ impl<'a> CCtx<'a> {
             zstd_sys::ZSTD_CCtx_setParameter(self.0.as_ptr(), param, value)
         });
         if res.is_ok() && matches!(param, ZSTD_c_nbWorkers) {
+            self.3.count = value as u32;
             self.3.requested = value != 0;
             self.3.ever |= value != 0;
         }

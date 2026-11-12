@@ -240,13 +240,13 @@ impl<'a, W: Write> Encoder<'a, W> {
     ///
     /// (Provides better compression ratio for small files,
     /// but requires the dictionary to be present during decompression.)
-    pub fn with_prepared_dictionary<'b>(
+    ///
+    /// The encoder keeps its own handle to the dictionary, so it does not
+    /// borrow it.
+    pub fn with_prepared_dictionary(
         writer: W,
-        dictionary: &'a EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+        dictionary: &EncoderDictionary<'_>,
+    ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         Ok(Self::with_encoder(writer, encoder))
     }

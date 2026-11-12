@@ -324,12 +324,12 @@ impl<'a> Encoder<'a> {
     }
 
     /// Creates a new encoder using an existing `EncoderDictionary`.
-    pub fn with_prepared_dictionary<'b>(
-        dictionary: &'a EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+    ///
+    /// The encoder keeps its own handle to the dictionary, so it does not
+    /// borrow it.
+    pub fn with_prepared_dictionary(
+        dictionary: &EncoderDictionary<'_>,
+    ) -> io::Result<Self> {
         let mut context = zstd_safe::CCtx::create();
         context
             .ref_cdict(dictionary.as_cdict())

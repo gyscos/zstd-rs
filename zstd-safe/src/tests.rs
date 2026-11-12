@@ -958,7 +958,6 @@ fn test_multithreaded_context_refuses_block_api() {
 #[test]
 fn test_custom_allocator_dictionaries_interoperate_with_c_dictionaries() {
     use crate::{zstd_sys, CCtx, CDict, DCtx};
-    use core::{marker::PhantomData, ptr::NonNull};
 
     for dict_size in [512, 4096] {
         let dict: Vec<u8> = (0..=255u8).cycle().take(dict_size).collect();
@@ -966,17 +965,14 @@ fn test_custom_allocator_dictionaries_interoperate_with_c_dictionaries() {
             let rust_dict = CDict::create(&dict, level);
             // This dictionary owns C-allocated storage and frees it through
             // its own callbacks, independently of the context's allocator.
-            let c_dict = CDict(
-                NonNull::new(unsafe {
-                    zstd_sys::ZSTD_createCDict(
-                        crate::ptr_void(&dict),
-                        dict.len(),
-                        level,
-                    )
-                })
-                .unwrap(),
-                PhantomData,
-            );
+            let c_dict = CDict::from_raw(unsafe {
+                zstd_sys::ZSTD_createCDict(
+                    crate::ptr_void(&dict),
+                    dict.len(),
+                    level,
+                )
+            })
+            .unwrap();
             for input_size in [256, 256 * 1024] {
                 let input: Vec<u8> =
                     dict.iter().copied().cycle().take(input_size).collect();
@@ -1563,4 +1559,228 @@ fn test_is_error_kind() {
 
     // `ZSTD_error_no_error` is 0, and no success value is an error.
     assert!(!zstd_safe::is_error_kind(0, ZSTD_error_no_error));
+}
+
+/// Compresses `input` as one streaming frame, in 128 KiB calls.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+fn stream_frame(cctx: &mut zstd_safe::CCtx<'_>, input: &[u8]) -> Vec<u8> {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::{
+        ZSTD_e_continue, ZSTD_e_end,
+    };
+    use zstd_safe::{InBuffer, OutBuffer};
+
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(input.len()));
+    let mut output = OutBuffer::around(&mut compressed);
+    for chunk in input.chunks(128 << 10) {
+        let mut src = InBuffer::around(chunk);
+        while src.pos() < chunk.len() {
+            cctx.compress_stream2(&mut output, &mut src, ZSTD_e_continue)
+                .unwrap();
+        }
+    }
+    let mut src = InBuffer::around(&[]);
+    while cctx
+        .compress_stream2(&mut output, &mut src, ZSTD_e_end)
+        .unwrap()
+        != 0
+    {}
+    compressed
+}
+
+/// Decompresses `compressed` with `prefix`, and checks it gives `input`.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+fn check_with_prefix(compressed: &[u8], prefix: &[u8], input: &[u8]) {
+    let mut dctx = zstd_safe::DCtx::create();
+    dctx.ref_prefix(prefix).unwrap();
+    let mut decompressed = Vec::with_capacity(input.len());
+    dctx.decompress(&mut decompressed, compressed).unwrap();
+    assert!(decompressed == input);
+}
+
+/// A streaming frame that reads a borrowed prefix runs on the calling
+/// thread: a leaked context would otherwise leave workers reading it after
+/// the borrow ended. The next frame, without it, gets the workers back.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_borrowed_prefix_frame_runs_on_calling_thread() {
+    use zstd_safe::{CCtx, CParameter};
+
+    let input = words(4 << 20, 2);
+    let prefix = words(1 << 20, 3);
+    let single = {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+        cctx.ref_prefix(&prefix).unwrap();
+        stream_frame(&mut cctx, &input)
+    };
+    let multi = {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+        cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+        stream_frame(&mut cctx, &input)
+    };
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    assert_eq!(cctx.frame_workers(), 2);
+    cctx.ref_prefix(&prefix).unwrap();
+    assert_eq!(cctx.frame_workers(), 0);
+    let compressed = stream_frame(&mut cctx, &input);
+    assert!(compressed == single, "not compressed on the calling thread");
+    check_with_prefix(&compressed, &prefix, &input);
+
+    // The prefix was for that frame only.
+    assert_eq!(cctx.frame_workers(), 2);
+    assert!(stream_frame(&mut cctx, &input) == multi);
+}
+
+/// An owned prefix lives as long as the context, so its frames get the
+/// workers, and a leaked context keeps it alive.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_owned_prefix_uses_workers() {
+    use self::std::sync::Arc;
+    use zstd_safe::{CCtx, CParameter};
+
+    let input = words(4 << 20, 2);
+    let prefix: Arc<[u8]> = words(1 << 20, 3).into();
+    let single = {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+        cctx.ref_prefix(&prefix).unwrap();
+        stream_frame(&mut cctx, &input)
+    };
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.set_prefix(prefix.clone()).unwrap();
+    assert_eq!(cctx.frame_workers(), 2);
+    assert_eq!(Arc::strong_count(&prefix), 2);
+    let compressed = stream_frame(&mut cctx, &input);
+    assert!(compressed != single, "compressed on the calling thread");
+    check_with_prefix(&compressed, &prefix, &input);
+
+    // Leaked mid-frame, the context keeps the prefix alive for its workers.
+    start_frame_with_prefix(&mut cctx, prefix.clone(), &input);
+    self::std::mem::forget(cctx);
+    assert_eq!(Arc::strong_count(&prefix), 2);
+
+    // Dropped mid-frame, it waits for them, then lets the prefix go.
+    let mut cctx = CCtx::create();
+    start_frame_with_prefix(&mut cctx, prefix.clone(), &input);
+    drop(cctx);
+    assert_eq!(Arc::strong_count(&prefix), 2, "only the leaked one is left");
+}
+
+/// Starts a multithreaded frame against an owned `prefix`, returning while
+/// its jobs still run.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+fn start_frame_with_prefix(
+    cctx: &mut zstd_safe::CCtx<'_>,
+    prefix: self::std::sync::Arc<[u8]>,
+    input: &[u8],
+) {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush;
+    use zstd_safe::{CParameter, InBuffer, OutBuffer};
+
+    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.set_prefix(prefix).unwrap();
+    assert_eq!(cctx.frame_workers(), 2);
+    let mut empty: [u8; 0] = [];
+    let mut output = OutBuffer::around(&mut empty[..]);
+    let mut input = InBuffer::around(input);
+    assert_ne!(
+        cctx.compress_stream2(&mut output, &mut input, ZSTD_e_flush)
+            .unwrap(),
+        0
+    );
+    assert!(cctx.3.pending && cctx.3.requested);
+}
+
+/// A context keeps its own handle to a dictionary: leaked, it keeps the
+/// dictionary alive for its workers; dropped, it lets it go after them.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_context_holds_its_dictionary() {
+    use self::std::sync::Arc;
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush;
+    use zstd_safe::{CCtx, CDict, CParameter, InBuffer, OutBuffer};
+
+    let input = words(4 << 20, 2);
+    let cdict = CDict::create(&words(1 << 20, 1), 1);
+    let start = |cctx: &mut CCtx<'static>| {
+        cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+        cctx.ref_cdict(&cdict).unwrap();
+        assert_eq!(cctx.frame_workers(), 2);
+        let mut empty: [u8; 0] = [];
+        let mut output = OutBuffer::around(&mut empty[..]);
+        let mut src = InBuffer::around(&input);
+        assert_ne!(
+            cctx.compress_stream2(&mut output, &mut src, ZSTD_e_flush)
+                .unwrap(),
+            0
+        );
+        assert!(cctx.3.pending && cctx.3.requested);
+    };
+
+    let mut leaked = CCtx::create();
+    start(&mut leaked);
+    assert_eq!(Arc::strong_count(&cdict.0), 2);
+    self::std::mem::forget(leaked);
+
+    let mut dropped = CCtx::create();
+    start(&mut dropped);
+    assert_eq!(Arc::strong_count(&cdict.0), 3);
+    drop(dropped);
+    assert_eq!(Arc::strong_count(&cdict.0), 2);
+
+    // Replacing the dictionary lets the old one go.
+    let mut cctx = CCtx::create();
+    cctx.ref_cdict(&cdict).unwrap();
+    assert_eq!(Arc::strong_count(&cdict.0), 3);
+    cctx.disable_dictionary().unwrap();
+    assert_eq!(Arc::strong_count(&cdict.0), 2);
+    drop(cdict); // The leaked context still holds it.
+}
+
+/// `compress2()` returns once its frame is done, so it keeps the workers
+/// with a borrowed prefix; when the destination is too small, it waits for
+/// the frame before returning.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_compress2_with_borrowed_prefix() {
+    use zstd_safe::{CCtx, CParameter};
+
+    let input = words(4 << 20, 2);
+    let prefix = words(1 << 20, 3);
+    let one_shot = |workers, owned: bool| {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+        cctx.set_parameter(CParameter::NbWorkers(workers)).unwrap();
+        if owned {
+            cctx.set_prefix(prefix.clone()).unwrap();
+        } else {
+            cctx.ref_prefix(&prefix).unwrap();
+        }
+        let mut compressed =
+            Vec::with_capacity(zstd_safe::compress_bound(input.len()));
+        cctx.compress2(&mut compressed, &input).unwrap();
+        compressed
+    };
+    let borrowed = one_shot(2, false);
+    assert!(borrowed == one_shot(2, true));
+    assert!(borrowed != one_shot(0, false), "no workers");
+    check_with_prefix(&borrowed, &prefix, &input);
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.ref_prefix(&prefix).unwrap();
+    let mut small = [0u8; 64];
+    assert!(cctx.compress2(&mut small[..], &input).is_err());
+    assert!(!cctx.3.pending, "returned with jobs running");
 }

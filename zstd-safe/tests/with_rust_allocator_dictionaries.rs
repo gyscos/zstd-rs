@@ -30,7 +30,7 @@ fn dictionaries_use_global_allocator() {
              ({held} < {})",
             cdict.sizeof()
         );
-        let cdict_ref = CDict::create_by_reference(&dict, 3);
+        let cdict_ref = CDict::create_by_reference_owned(dict.clone(), 3);
         assert!(
             LIVE_BYTES.load(Relaxed) - before > held,
             "CDict::create_by_reference() did not allocate through the \

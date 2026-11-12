@@ -43,12 +43,9 @@ impl<'a> Compressor<'a> {
     ///
     /// Note that using a dictionary means that decompression will need to use
     /// the same dictionary.
-    pub fn with_prepared_dictionary<'b>(
-        dictionary: &'a crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+    pub fn with_prepared_dictionary(
+        dictionary: &crate::dict::EncoderDictionary<'_>,
+    ) -> io::Result<Self> {
         let mut compressor = Self::default();
 
         compressor.set_prepared_dictionary(dictionary)?;
@@ -94,13 +91,13 @@ impl<'a> Compressor<'a> {
     ///
     /// Note that using a dictionary means that decompression will need to use
     /// the same dictionary.
-    pub fn set_prepared_dictionary<'b>(
+    ///
+    /// The compressor keeps its own handle to the dictionary, so it does not
+    /// borrow it.
+    pub fn set_prepared_dictionary(
         &mut self,
-        dictionary: &'a crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<()>
-    where
-        'b: 'a,
-    {
+        dictionary: &crate::dict::EncoderDictionary<'_>,
+    ) -> io::Result<()> {
         self.context
             .ref_cdict(dictionary.as_cdict())
             .map_err(map_error_code)?;

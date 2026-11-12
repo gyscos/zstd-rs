@@ -20,6 +20,8 @@
 # Environment:
 #   AB_WORK     scratch directory (default: target/ab)
 #   AB_PREFIX   command to run the benchmarks under, e.g. "taskset -c 4"
+#   AB_MACHINE  name of this machine in the comparison (default: uname -n),
+#               such as its CPU
 #   ZSTD_BENCH_RECORDS  passed on to the suite, see README.md
 #
 # The suite must compile against every revision given, so it can only use
@@ -62,12 +64,13 @@ for spec in "$@"; do
     done
     labels="$labels${labels:+,}$label"
     src="$work/src-$label"
+    # Progress goes to stderr: stdout is the comparison.
     if [ ! -d "$src" ]; then
-        git -C "$repo" worktree add --detach "$src" "$rev"
-        git -C "$src" submodule update --init --recursive
+        git -C "$repo" worktree add --detach "$src" "$rev" >&2
+        git -C "$src" submodule update --init --recursive >&2
     else
-        git -C "$src" checkout --detach "$rev"
-        git -C "$src" submodule update --init --recursive
+        git -C "$src" checkout --detach "$rev" >&2
+        git -C "$src" submodule update --init --recursive >&2
     fi
     rm -rf "$src/bench"
     mkdir -p "$src/bench"
@@ -84,6 +87,10 @@ for line in sys.stdin:
     cp "$exe" "$work/bench-$label"
 done
 
+# The labels, one line, comma-separated, in the order given: for scripts
+# that need them, such as revisions.sh.
+echo "$labels" > "$work/labels"
+
 export CRITERION_HOME="$work/criterion"
 rm -rf "$CRITERION_HOME"
 round=1
@@ -97,4 +104,4 @@ while [ $round -le $rounds ]; do
     round=$((round + 1))
 done
 
-python3 "$bench/compare.py" "$labels" "$(uname -n)=$CRITERION_HOME"
+python3 "$bench/compare.py" "$labels" "${AB_MACHINE:-$(uname -n)}=$CRITERION_HOME"

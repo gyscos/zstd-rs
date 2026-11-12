@@ -20,7 +20,8 @@ pub trait Operation {
     /// Should return a hint for the next input size.
     ///
     /// If the result is `Ok(0)`, it may indicate that a frame was just
-    /// finished.
+    /// finished. Only a decoder returns that: an encoder returns zstd's
+    /// recommended input size ([`zstd_safe::CCtx::in_size()`]).
     fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
@@ -118,9 +119,10 @@ impl Operation for NoOp {
 pub struct Status {
     /// Number of bytes expected for next input.
     ///
-    /// * If `remaining = 0`, then we are at the end of a frame.
+    /// * If `remaining = 0`, then we are at the end of a frame (decoders
+    ///   only).
     /// * If `remaining > 0`, then it's just a hint for how much there is still
-    ///   to read.
+    ///   to read. An encoder always gives zstd's recommended input size.
     pub remaining: usize,
 
     /// Number of bytes read from the input.
@@ -304,6 +306,30 @@ impl Encoder<'static> {
             context: MaybeOwnedCCtx::Owned(context),
         })
     }
+
+    /// Creates a new encoder with a prefix it owns, as single-use dictionary
+    /// for its first frame.
+    ///
+    /// `prefix` gives the bytes without copying them: a `Vec<u8>`, an
+    /// `Arc<[u8]>`, a memory map... Unlike [`Encoder::with_ref_prefix()`],
+    /// the frame that reads it can use worker threads.
+    pub fn with_prefix<P>(level: i32, prefix: P) -> io::Result<Self>
+    where
+        P: std::ops::Deref + Send + Sync + 'static,
+        P::Target: AsRef<[u8]>,
+    {
+        let mut context = zstd_safe::CCtx::create();
+
+        context
+            .set_parameter(CParameter::CompressionLevel(level))
+            .map_err(map_error_code)?;
+
+        context.set_prefix(prefix).map_err(map_error_code)?;
+
+        Ok(Encoder {
+            context: MaybeOwnedCCtx::Owned(context),
+        })
+    }
 }
 
 impl<'a> Encoder<'a> {
@@ -324,12 +350,12 @@ impl<'a> Encoder<'a> {
     }
 
     /// Creates a new encoder using an existing `EncoderDictionary`.
-    pub fn with_prepared_dictionary<'b>(
-        dictionary: &'a EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+    ///
+    /// The encoder keeps its own handle to the dictionary, so it does not
+    /// borrow it.
+    pub fn with_prepared_dictionary(
+        dictionary: &EncoderDictionary,
+    ) -> io::Result<Self> {
         let mut context = zstd_safe::CCtx::create();
         context
             .ref_cdict(dictionary.as_cdict())
@@ -340,6 +366,11 @@ impl<'a> Encoder<'a> {
     }
 
     /// Creates a new encoder initialized with the given ref prefix.
+    ///
+    /// The prefix is borrowed: with worker threads, the frame that reads it
+    /// is compressed on the calling thread (a leaked encoder would leave
+    /// them reading it after the borrow ended). [`Encoder::with_prefix()`]
+    /// takes an owned prefix, which can use them.
     pub fn with_ref_prefix<'b>(
         level: i32,
         ref_prefix: &'b [u8],
@@ -401,10 +432,19 @@ impl<'a> Operation for Encoder<'a> {
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize> {
+        use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_continue;
         match &mut self.context {
-            MaybeOwnedCCtx::Owned(x) => x.compress_stream(output, input),
-            MaybeOwnedCCtx::Borrowed(x) => x.compress_stream(output, input),
+            MaybeOwnedCCtx::Owned(x) => {
+                x.compress_stream(output, input, ZSTD_e_continue)
+            }
+            MaybeOwnedCCtx::Borrowed(x) => {
+                x.compress_stream(output, input, ZSTD_e_continue)
+            }
         }
+        // zstd returns how much it still has to flush, which may be 0. That
+        // would read as the end of a frame: return a hint for the next input
+        // instead.
+        .map(|_| zstd_safe::CCtx::in_size())
         .map_err(map_error_code)
     }
 

@@ -21,10 +21,13 @@ pub use zstd_safe::{CDict, DDict};
 
 /// Prepared dictionary for compression
 ///
-/// A dictionary can include its own copy of the data (if it is `'static`), or it can merely point
-/// to a separate buffer (if it has another lifetime).
-pub struct EncoderDictionary<'a> {
-    cdict: CDict<'a>,
+/// A handle to a digested dictionary: cloning it is cheap, and shares the
+/// same digested tables. Encoders made with it keep their own handle, so they
+/// do not borrow it: an encoder from a local, a cache entry or a `static`
+/// dictionary is `'static` all the same, and can use worker threads.
+#[derive(Clone)]
+pub struct EncoderDictionary {
+    cdict: CDict,
 }
 
 /// The error for a dictionary zstd could not load.
@@ -35,7 +38,7 @@ fn invalid_dictionary() -> std::io::Error {
     )
 }
 
-impl EncoderDictionary<'static> {
+impl EncoderDictionary {
     /// Creates a prepared dictionary for compression.
     ///
     /// This will copy the dictionary internally.
@@ -58,11 +61,14 @@ impl EncoderDictionary<'static> {
     pub fn try_copy(dictionary: &[u8], level: i32) -> std::io::Result<Self> {
         let cdict = zstd_safe::CDict::try_create(dictionary, level)
             .ok_or_else(invalid_dictionary)?;
-        Ok(Self { cdict })
+        Ok(Self::from_cdict(cdict))
     }
-}
 
-impl<'a> EncoderDictionary<'a> {
+    /// Wraps a prepared dictionary.
+    pub fn from_cdict(cdict: CDict) -> Self {
+        Self { cdict }
+    }
+
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     /// Create prepared dictionary for compression
@@ -75,7 +81,7 @@ impl<'a> EncoderDictionary<'a> {
     ///
     /// If zstd cannot load the dictionary. Use [`EncoderDictionary::try_new`]
     /// for a dictionary you did not make yourself.
-    pub fn new(dictionary: &'a [u8], level: i32) -> Self {
+    pub fn new(dictionary: &'static [u8], level: i32) -> Self {
         Self::try_new(dictionary, level).expect("zstd returned null pointer")
     }
 
@@ -86,15 +92,18 @@ impl<'a> EncoderDictionary<'a> {
     ///
     /// Only available with the `experimental` feature. Use
     /// `EncoderDictionary::try_copy` otherwise.
-    pub fn try_new(dictionary: &'a [u8], level: i32) -> std::io::Result<Self> {
+    pub fn try_new(
+        dictionary: &'static [u8],
+        level: i32,
+    ) -> std::io::Result<Self> {
         let cdict =
             zstd_safe::CDict::try_create_by_reference(dictionary, level)
                 .ok_or_else(invalid_dictionary)?;
-        Ok(Self { cdict })
+        Ok(Self::from_cdict(cdict))
     }
 
     /// Returns reference to `CDict` inner object
-    pub fn as_cdict(&self) -> &CDict<'a> {
+    pub fn as_cdict(&self) -> &CDict {
         &self.cdict
     }
 }

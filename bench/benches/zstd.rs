@@ -15,7 +15,22 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
 };
 use zstd_safe::zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
-use zstd_safe::{CCtx, DCtx, InBuffer, OutBuffer};
+use zstd_safe::{CCtx, DCtx, InBuffer, OutBuffer, WriteBuf};
+
+/// `CCtx::compress_stream()`, named `compress_stream2()` before zstd-safe 9:
+/// the `zstd-safe-8` feature picks the old name, so the suite also compiles
+/// against older revisions (see `ab.sh`'s `REV:FEATURES`).
+fn compress_stream<C: WriteBuf + ?Sized>(
+    cctx: &mut CCtx<'_>,
+    output: &mut OutBuffer<'_, C>,
+    input: &mut InBuffer<'_>,
+    end_op: zstd_safe::zstd_sys::ZSTD_EndDirective,
+) -> zstd_safe::SafeResult {
+    #[cfg(not(feature = "zstd-safe-8"))]
+    return cctx.compress_stream(output, input, end_op);
+    #[cfg(feature = "zstd-safe-8")]
+    return cctx.compress_stream2(output, input, end_op);
+}
 
 const LEVEL: i32 = 3;
 const SIZES: [usize; 4] = [64, 4 << 10, 128 << 10, 4 << 20];
@@ -262,7 +277,8 @@ fn safe_stream(c: &mut Criterion) {
             for chunk in input.chunks(CHUNK) {
                 let mut src = InBuffer::around(chunk);
                 while src.pos() < chunk.len() {
-                    cctx.compress_stream2(
+                    compress_stream(
+                        &mut cctx,
                         &mut output,
                         &mut src,
                         ZSTD_e_continue,
@@ -271,8 +287,7 @@ fn safe_stream(c: &mut Criterion) {
                 }
             }
             let mut src = InBuffer::around(&[]);
-            while cctx
-                .compress_stream2(&mut output, &mut src, ZSTD_e_end)
+            while compress_stream(&mut cctx, &mut output, &mut src, ZSTD_e_end)
                 .unwrap()
                 != 0
             {}
@@ -385,6 +400,67 @@ fn zstdmt(c: &mut Criterion) {
     group.bench_function("bulk_4_workers_16MiB", |b| {
         b.iter(|| compressor.compress_to_buffer(&input, &mut out).unwrap())
     });
+    group.finish();
+}
+
+/// Many small frames through one re-used zstd-safe context, with and without
+/// `NbWorkers`: what starting a frame costs around zstd, including deciding
+/// which workers it may use. With a borrowed prefix, a streaming frame runs
+/// on the calling thread; alternating frames with and without one switches
+/// `nbWorkers` every frame, the worst case.
+fn frames(c: &mut Criterion) {
+    const FRAMES: usize = 100;
+    const FRAME: usize = 256;
+    let messages: Vec<Vec<u8>> = (0..FRAMES)
+        .map(|i| {
+            let mut m = data(FRAME + i);
+            m.drain(..i);
+            m
+        })
+        .collect();
+    let prefix = data(1 << 10);
+
+    let mut group = c.benchmark_group("frames");
+    group.throughput(Throughput::Bytes((FRAMES * FRAME) as u64));
+    let mut out = vec![0u8; zstd_safe::compress_bound(FRAME + FRAMES)];
+    // A name, `NbWorkers`, and which frames get a prefix.
+    type Case = (&'static str, u32, fn(usize) -> bool);
+    let cases: [Case; 4] = [
+        ("no_workers", 0, |_| false),
+        ("2_workers", 2, |_| false),
+        ("2_workers_prefix", 2, |_| true),
+        ("2_workers_alternating_prefix", 2, |i| i.is_multiple_of(2)),
+    ];
+    for (name, workers, with_prefix) in cases {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(zstd_safe::CParameter::CompressionLevel(LEVEL))
+            .unwrap();
+        cctx.set_parameter(zstd_safe::CParameter::NbWorkers(workers))
+            .unwrap();
+        group.bench_function(format!("{name}_{FRAMES}x{FRAME}B"), |b| {
+            b.iter(|| {
+                let mut total = 0;
+                for (i, m) in messages.iter().enumerate() {
+                    if with_prefix(i) {
+                        cctx.ref_prefix(&prefix).unwrap();
+                    }
+                    let mut output = OutBuffer::around(&mut out[..]);
+                    let mut src = InBuffer::around(m);
+                    while compress_stream(
+                        &mut cctx,
+                        &mut output,
+                        &mut src,
+                        ZSTD_e_end,
+                    )
+                    .unwrap()
+                        != 0
+                    {}
+                    total += output.pos();
+                }
+                total
+            })
+        });
+    }
     group.finish();
 }
 
@@ -554,6 +630,7 @@ criterion_group!(
     safe_stream,
     seekable,
     zstdmt,
+    frames,
     records,
     levels
 );

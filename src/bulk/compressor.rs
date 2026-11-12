@@ -43,12 +43,9 @@ impl<'a> Compressor<'a> {
     ///
     /// Note that using a dictionary means that decompression will need to use
     /// the same dictionary.
-    pub fn with_prepared_dictionary<'b>(
-        dictionary: &'a crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+    pub fn with_prepared_dictionary(
+        dictionary: &crate::dict::EncoderDictionary,
+    ) -> io::Result<Self> {
         let mut compressor = Self::default();
 
         compressor.set_prepared_dictionary(dictionary)?;
@@ -94,13 +91,13 @@ impl<'a> Compressor<'a> {
     ///
     /// Note that using a dictionary means that decompression will need to use
     /// the same dictionary.
-    pub fn set_prepared_dictionary<'b>(
+    ///
+    /// The compressor keeps its own handle to the dictionary, so it does not
+    /// borrow it.
+    pub fn set_prepared_dictionary(
         &mut self,
-        dictionary: &'a crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<()>
-    where
-        'b: 'a,
-    {
+        dictionary: &crate::dict::EncoderDictionary,
+    ) -> io::Result<()> {
         self.context
             .ref_cdict(dictionary.as_cdict())
             .map_err(map_error_code)?;
@@ -126,7 +123,7 @@ impl<'a> Compressor<'a> {
         source: &[u8],
         destination: &mut C,
     ) -> io::Result<usize> {
-        let result = self.context.compress2(destination, source);
+        let result = self.context.compress(destination, source);
         if result.is_err() {
             // `compress2` leaves a failed frame open, and zstd refuses most
             // setters mid-frame. Abandon it, so the compressor can be set up
@@ -148,6 +145,41 @@ impl<'a> Compressor<'a> {
         self.compress_to_buffer(data, &mut buffer)?;
 
         // Should we shrink the vec? Meh, let the user do it if he wants.
+        Ok(buffer)
+    }
+
+    /// Compresses a block of data with `prefix` as its single-use
+    /// dictionary, into the given destination buffer.
+    ///
+    /// The prefix is only borrowed for this call, and the worker threads
+    /// ([`Compressor::multithread()`]) are used all the same. A prepared
+    /// dictionary ([`Compressor::with_prepared_dictionary()`]) is used again
+    /// for the next calls. With a dictionary given as bytes
+    /// ([`Compressor::with_dictionary()`]), which could not be loaded again,
+    /// this fails instead.
+    pub fn compress_to_buffer_with_prefix<C: zstd_safe::WriteBuf + ?Sized>(
+        &mut self,
+        source: &[u8],
+        destination: &mut C,
+        prefix: &[u8],
+    ) -> io::Result<usize> {
+        self.context
+            .compress_with_prefix(destination, source, prefix)
+            .map_err(map_error_code)
+    }
+
+    /// Compresses a block of data with `prefix` as its single-use
+    /// dictionary, and returns the compressed result.
+    ///
+    /// See [`Compressor::compress_to_buffer_with_prefix()`].
+    pub fn compress_with_prefix(
+        &mut self,
+        data: &[u8],
+        prefix: &[u8],
+    ) -> io::Result<Vec<u8>> {
+        let buffer_len = zstd_safe::compress_bound(data.len());
+        let mut buffer = crate::vec_with_capacity(buffer_len)?;
+        self.compress_to_buffer_with_prefix(data, &mut buffer, prefix)?;
         Ok(buffer)
     }
 

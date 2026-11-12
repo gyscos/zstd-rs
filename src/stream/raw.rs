@@ -20,7 +20,8 @@ pub trait Operation {
     /// Should return a hint for the next input size.
     ///
     /// If the result is `Ok(0)`, it may indicate that a frame was just
-    /// finished.
+    /// finished. Only a decoder returns that: an encoder returns zstd's
+    /// recommended input size ([`zstd_safe::CCtx::in_size()`]).
     fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
@@ -118,9 +119,10 @@ impl Operation for NoOp {
 pub struct Status {
     /// Number of bytes expected for next input.
     ///
-    /// * If `remaining = 0`, then we are at the end of a frame.
+    /// * If `remaining = 0`, then we are at the end of a frame (decoders
+    ///   only).
     /// * If `remaining > 0`, then it's just a hint for how much there is still
-    ///   to read.
+    ///   to read. An encoder always gives zstd's recommended input size.
     pub remaining: usize,
 
     /// Number of bytes read from the input.
@@ -328,7 +330,7 @@ impl<'a> Encoder<'a> {
     /// The encoder keeps its own handle to the dictionary, so it does not
     /// borrow it.
     pub fn with_prepared_dictionary(
-        dictionary: &EncoderDictionary<'_>,
+        dictionary: &EncoderDictionary,
     ) -> io::Result<Self> {
         let mut context = zstd_safe::CCtx::create();
         context

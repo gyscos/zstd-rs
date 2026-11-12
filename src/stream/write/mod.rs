@@ -245,7 +245,7 @@ impl<'a, W: Write> Encoder<'a, W> {
     /// borrow it.
     pub fn with_prepared_dictionary(
         writer: W,
-        dictionary: &EncoderDictionary<'_>,
+        dictionary: &EncoderDictionary,
     ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         Ok(Self::with_encoder(writer, encoder))

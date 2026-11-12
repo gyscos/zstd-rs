@@ -331,7 +331,7 @@ impl<'a, R: BufRead> Encoder<'a, R> {
     /// borrow it.
     pub fn with_prepared_dictionary(
         reader: R,
-        dictionary: &EncoderDictionary<'_>,
+        dictionary: &EncoderDictionary,
     ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         let reader = zio::Reader::new(reader, encoder);

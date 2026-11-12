@@ -25,13 +25,9 @@ pub use zstd_safe::{CDict, DDict};
 /// same digested tables. Encoders made with it keep their own handle, so they
 /// do not borrow it: an encoder from a local, a cache entry or a `static`
 /// dictionary is `'static` all the same, and can use worker threads.
-///
-/// The lifetime parameter is a leftover of earlier versions, where a
-/// dictionary could borrow its bytes. It no longer means anything.
 #[derive(Clone)]
-pub struct EncoderDictionary<'a> {
+pub struct EncoderDictionary {
     cdict: CDict,
-    _lifetime: std::marker::PhantomData<&'a ()>,
 }
 
 /// The error for a dictionary zstd could not load.
@@ -42,7 +38,7 @@ fn invalid_dictionary() -> std::io::Error {
     )
 }
 
-impl EncoderDictionary<'static> {
+impl EncoderDictionary {
     /// Creates a prepared dictionary for compression.
     ///
     /// This will copy the dictionary internally.
@@ -70,10 +66,7 @@ impl EncoderDictionary<'static> {
 
     /// Wraps a prepared dictionary.
     pub fn from_cdict(cdict: CDict) -> Self {
-        Self {
-            cdict,
-            _lifetime: std::marker::PhantomData,
-        }
+        Self { cdict }
     }
 
     #[cfg(feature = "experimental")]
@@ -108,9 +101,7 @@ impl EncoderDictionary<'static> {
                 .ok_or_else(invalid_dictionary)?;
         Ok(Self::from_cdict(cdict))
     }
-}
 
-impl EncoderDictionary<'_> {
     /// Returns reference to `CDict` inner object
     pub fn as_cdict(&self) -> &CDict {
         &self.cdict

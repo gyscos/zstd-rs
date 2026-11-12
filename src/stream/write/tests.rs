@@ -105,6 +105,68 @@ fn test_auto_wrappers_panicking_writer() {
     .unwrap_err();
 }
 
+/// Test that a panic from somewhere else can be caught when the writer, or the
+/// callback, panics as the wrappers use it on drop: a panic that leaves
+/// `drop()` while another one is unwinding aborts the process.
+#[test]
+fn test_auto_wrappers_panic_while_unwinding() {
+    struct Panicking;
+
+    impl Write for Panicking {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            panic!("this writer panics");
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            panic!("this writer panics");
+        }
+    }
+
+    let input = b"Abcdefghabcdefgh";
+    let encoded = crate::encode_all(&input[..], 1).unwrap();
+
+    // The data stays in zstd's buffers: the writer is only called on drop.
+    std::panic::catch_unwind(|| {
+        let mut decoder = Decoder::new(Panicking).unwrap().auto_flush();
+        decoder.write_all(&encoded).unwrap();
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    std::panic::catch_unwind(|| {
+        let mut encoder = Encoder::new(Panicking, 1).unwrap().auto_finish();
+        encoder.write_all(input).unwrap();
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    std::panic::catch_unwind(|| {
+        let _decoder = Decoder::new(Vec::new())
+            .unwrap()
+            .on_flush(|_| panic!("this callback panics"));
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    std::panic::catch_unwind(|| {
+        let _encoder = Encoder::new(Vec::new(), 1)
+            .unwrap()
+            .on_finish(|_| panic!("this callback panics"));
+        panic!("something else panics");
+    })
+    .unwrap_err();
+
+    // A healthy writer still gets the end of the stream during a panic.
+    let mut output = Vec::new();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut encoder = Encoder::new(&mut output, 1).unwrap().auto_finish();
+        encoder.write_all(input).unwrap();
+        panic!("something else panics");
+    }))
+    .unwrap_err();
+    assert_eq!(decode_all(&output[..]).unwrap(), input);
+}
+
 /// Test that an input which stops in the middle of a frame is reported by
 /// `finish()`, like it is when reading.
 #[test]

@@ -111,7 +111,10 @@ impl<'a> Compressor<'a> {
     /// Compress a single block of data to the given destination buffer.
     ///
     /// Returns the number of bytes written, or an error if something happened
-    /// (for instance if the destination buffer was too small).
+    /// (for instance if the destination buffer was too small). A failed job
+    /// is abandoned, and the compressor can be set up again for the next one.
+    /// With worker threads (see `multithread`), abandoning a job waits for
+    /// them to be done with it.
     ///
     /// A level of `0` uses zstd's default (currently `3`).
     /// [`crate::compress_bound()`] says how large `destination` might need to
@@ -123,9 +126,15 @@ impl<'a> Compressor<'a> {
         source: &[u8],
         destination: &mut C,
     ) -> io::Result<usize> {
-        self.context
-            .compress2(destination, source)
-            .map_err(map_error_code)
+        let result = self.context.compress2(destination, source);
+        if result.is_err() {
+            // `compress2` leaves a failed frame open, and zstd refuses most
+            // setters mid-frame. Abandon it, so the compressor can be set up
+            // for the next job. Resetting only the session cannot fail (it
+            // waits for the worker threads, if any).
+            let _ = self.context.reset(zstd_safe::ResetDirective::SessionOnly);
+        }
+        result.map_err(map_error_code)
     }
 
     /// Compresses a block of data and returns the compressed result.

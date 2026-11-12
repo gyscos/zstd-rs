@@ -20,7 +20,9 @@ impl Decompressor<'static> {
 
     /// Creates a new zstd decompressor, using the given dictionary.
     pub fn with_dictionary(dictionary: &[u8]) -> io::Result<Self> {
-        let mut decompressor = Self::default();
+        let mut decompressor = Decompressor {
+            context: crate::create_dctx()?,
+        };
 
         decompressor.set_dictionary(dictionary)?;
 
@@ -39,7 +41,9 @@ impl<'a> Decompressor<'a> {
     where
         'b: 'a,
     {
-        let mut decompressor = Self::default();
+        let mut decompressor = Decompressor {
+            context: crate::create_dctx()?,
+        };
 
         decompressor.set_prepared_dictionary(dictionary)?;
 

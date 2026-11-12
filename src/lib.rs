@@ -147,6 +147,32 @@ fn vec_with_capacity(capacity: usize) -> io::Result<Vec<u8>> {
     Ok(vec)
 }
 
+/// Creates a compression context.
+///
+/// Unlike `zstd_safe::CCtx::create`, this fails with an error instead of
+/// panicking when zstd cannot allocate the context.
+fn create_cctx<'a>() -> io::Result<zstd_safe::CCtx<'a>> {
+    zstd_safe::CCtx::try_create().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            "zstd could not allocate a compression context",
+        )
+    })
+}
+
+/// Creates a decompression context.
+///
+/// Unlike `zstd_safe::DCtx::create`, this fails with an error instead of
+/// panicking when zstd cannot allocate the context.
+fn create_dctx<'a>() -> io::Result<zstd_safe::DCtx<'a>> {
+    zstd_safe::DCtx::try_create().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            "zstd could not allocate a decompression context",
+        )
+    })
+}
+
 // Some helper functions to write full-cycle tests.
 
 #[cfg(test)]

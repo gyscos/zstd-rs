@@ -23,6 +23,12 @@ jobs:
 
     runs-on: windows-latest
 
+    # Rust no longer ships 32-bit Windows hosts (rustc, cargo), only their
+    # standard library: install the 64-bit toolchain and build for the
+    # target. 64-bit Windows runs the 32-bit tests.
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+
     steps:
     - uses: actions/checkout@v7
       with:
@@ -30,7 +36,7 @@ jobs:
     - name: setup
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: ${{ matrix.channel }}-${{ matrix.target }}
+        toolchain: ${{ matrix.channel }}
         targets: ${{ matrix.target }}
 
     - name: Add mingw32 to path for i686-gnu

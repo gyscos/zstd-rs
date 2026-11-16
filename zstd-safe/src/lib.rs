@@ -333,6 +333,19 @@ struct Workers {
     stable_out: bool,
 }
 
+/// The `NbWorkers` zstd keeps when it accepts `value`: it clamps the value to
+/// its bounds rather than refusing it.
+fn accepted_workers(value: c_int) -> u32 {
+    // Safety: Just FFI
+    let bounds = unsafe {
+        zstd_sys::ZSTD_cParam_getBounds(
+            zstd_sys::ZSTD_cParameter::ZSTD_c_nbWorkers,
+        )
+    };
+    let upper = bounds.upperBound.max(0);
+    value.max(bounds.lowerBound).max(0).min(upper) as u32
+}
+
 /// Compression context
 ///
 /// It is recommended to allocate a single context per thread and re-use it
@@ -432,24 +445,29 @@ impl<'a> CCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        // What the call leaves behind is recorded as soon as zstd returns,
+        // inside the closure: `write_from` is the caller's code, and may
+        // panic after running it.
         if !self.3.requested {
             // Safety: ZSTD_compress2 returns how many bytes were written.
-            let res = unsafe {
+            return unsafe {
                 dst.write_from(|buffer, capacity| {
-                    parse_code(zstd_sys::ZSTD_compress2(
+                    let res = parse_code(zstd_sys::ZSTD_compress2(
                         self.0.as_ptr(),
                         buffer,
                         capacity,
                         ptr_void(src),
                         src.len(),
-                    ))
+                    ));
+                    // Unlike the others, this starts by resetting the
+                    // session, which drops the pledged size, and ends it when
+                    // it succeeds. When it fails, it stays mid-frame: make
+                    // streaming calls wait for an explicit reset.
+                    self.3.pledged_short = false;
+                    self.2.clear();
+                    self.2.record(res)
                 })
             };
-            // Unlike the others, this starts by resetting the session, and
-            // ends it when it succeeds. When it fails, it stays mid-frame:
-            // make streaming calls wait for an explicit reset.
-            self.2.clear();
-            return self.2.record(res);
         }
 
         // With worker threads, a frame this leaves in progress must be one
@@ -464,11 +482,9 @@ impl<'a> CCtx<'a> {
         // failed: check `broken` after.
         self.reset(ResetDirective::SessionOnly)?;
         self.guard_broken()?;
-        let mut raw = Ok(0);
-        let mut taken = 0;
         // Safety: ZSTD_compressStream2 reports how many bytes it wrote in
         // `output.pos`.
-        let res = unsafe {
+        unsafe {
             dst.write_from(|buffer, capacity| {
                 let mut output = zstd_sys::ZSTD_outBuffer {
                     dst: buffer,
@@ -480,28 +496,27 @@ impl<'a> CCtx<'a> {
                     size: src.len(),
                     pos: 0,
                 };
-                raw = parse_code(zstd_sys::ZSTD_compressStream2(
+                let raw = parse_code(zstd_sys::ZSTD_compressStream2(
                     self.0.as_ptr(),
                     &mut output,
                     &mut input,
                     zstd_sys::ZSTD_EndDirective::ZSTD_e_end,
                 ));
-                taken = input.pos;
-                match raw {
+                self.track_frame(
+                    raw,
+                    zstd_sys::ZSTD_EndDirective::ZSTD_e_end,
+                    src.len(),
+                    input.pos,
+                );
+                let res = match raw {
                     Ok(0) => Ok(output.pos),
                     // As `ZSTD_compress2()`: the frame stays in progress.
                     Ok(_) => Err(DST_SIZE_TOO_SMALL_ERROR),
                     Err(code) => Err(code),
-                }
+                };
+                self.2.record(res)
             })
-        };
-        self.track_frame(
-            raw,
-            zstd_sys::ZSTD_EndDirective::ZSTD_e_end,
-            src.len(),
-            taken,
-        );
-        self.2.record(res)
+        }
     }
 
     /// Wraps the `ZSTD_compress_usingDict()` function.
@@ -569,6 +584,8 @@ impl<'a> CCtx<'a> {
         // This also resets the session and unloads the dictionary.
         self.drain();
         self.2.clear();
+        // zstd drops the pledged size.
+        self.3.pledged_short = false;
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream(self.0.as_ptr(), compression_level)
@@ -587,6 +604,9 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         self.drain();
         self.2.clear();
+        // zstd replaces the pledged size. Not knowing it is short only
+        // costs a flush when the frame is abandoned.
+        self.3.pledged_short = false;
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_srcSize(
@@ -609,6 +629,8 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         self.drain();
         self.2.clear();
+        // zstd drops the pledged size.
+        self.3.pledged_short = false;
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingDict(
@@ -643,6 +665,8 @@ impl<'a> CCtx<'a> {
     {
         self.drain();
         self.2.clear();
+        // zstd drops the pledged size.
+        self.3.pledged_short = false;
         // Safety: Just FFI
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingCDict(
@@ -1256,8 +1280,9 @@ impl<'a> CCtx<'a> {
             zstd_sys::ZSTD_CCtx_setParameter(self.0.as_ptr(), param, value)
         });
         if res.is_ok() && matches!(param, ZSTD_c_nbWorkers) {
-            self.3.requested = value != 0;
-            self.3.ever |= value != 0;
+            let workers = accepted_workers(value) != 0;
+            self.3.requested = workers;
+            self.3.ever |= workers;
         }
         #[cfg(feature = "experimental")]
         if res.is_ok() && matches!(param, ZSTD_c_stableOutBuffer) {
@@ -3088,6 +3113,8 @@ pub enum CParameter {
     /// return, and the actual compression is done in the background (until a flush is requested).
     /// A context compressing that way from a borrowed dictionary or prefix
     /// must not be leaked, see [`CCtx`](CCtx#worker-threads-and-leaks).
+    ///
+    /// zstd clamps the value to its bounds instead of refusing it.
     ///
     /// Note: this will only work if the `zstdmt` feature is activated.
     NbWorkers(u32),

@@ -1564,3 +1564,88 @@ fn test_is_error_kind() {
     // `ZSTD_error_no_error` is 0, and no success value is an error.
     assert!(!zstd_safe::is_error_kind(0, ZSTD_error_no_error));
 }
+
+/// `compress2()` records the frame it leaves in progress before the caller's
+/// `WriteBuf` runs again: a `write_from` that panics once zstd returned does
+/// not leave jobs running that the context knows nothing about.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_compress2_tracks_its_frame_before_write_buf_panics() {
+    use core::ffi::c_void;
+    use zstd_safe::{CCtx, CParameter, ResetDirective, SafeResult, WriteBuf};
+
+    /// Panics once zstd returned.
+    struct Panicking([u8; 64]);
+    unsafe impl WriteBuf for Panicking {
+        fn as_slice(&self) -> &[u8] {
+            &self.0
+        }
+        fn capacity(&self) -> usize {
+            self.0.len()
+        }
+        fn as_mut_ptr(&mut self) -> *mut u8 {
+            self.0.as_mut_ptr()
+        }
+        unsafe fn filled_until(&mut self, _: usize) {}
+        unsafe fn write_from<F>(&mut self, f: F) -> SafeResult
+        where
+            F: FnOnce(*mut c_void, usize) -> SafeResult,
+        {
+            let _ = f(self.0.as_mut_ptr().cast(), self.0.len());
+            panic!("write_from");
+        }
+    }
+
+    let input = words(24 << 20, 2);
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.load_dictionary(&words(1 << 20, 1)).unwrap();
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cctx.compress2(&mut Panicking([0; 64]), &input)
+    }));
+    assert!(res.is_err());
+    // The frame did not fit: it is in progress, with jobs to wait for, and
+    // streaming calls are refused until a reset.
+    assert!(cctx.3.pending && cctx.3.jobs);
+    assert!(cctx.2.guard().is_err());
+    cctx.reset(ResetDirective::SessionOnly).unwrap();
+    assert!(!cctx.3.pending);
+    // Replaces the dictionary the jobs were reading.
+    check_round_trip(&mut cctx, &input, &words(64 << 10, 4));
+}
+
+/// A call that makes zstd drop the pledged size drops what the context
+/// remembers of it too, so it cannot pass for the size of a later frame.
+#[cfg(feature = "std")]
+#[test]
+fn test_pledged_size_dropped_with_the_session() {
+    use zstd_safe::CCtx;
+
+    let mut cctx = CCtx::create();
+    cctx.set_pledged_src_size(Some(100)).unwrap();
+    assert!(cctx.3.pledged_short);
+    let mut buffer = Vec::with_capacity(1024);
+    cctx.compress2(&mut buffer, INPUT).unwrap();
+    assert!(!cctx.3.pledged_short);
+
+    cctx.set_pledged_src_size(Some(100)).unwrap();
+    cctx.init(1).unwrap();
+    assert!(!cctx.3.pledged_short);
+}
+
+/// zstd clamps `NbWorkers` to its bounds: the context goes by the workers it
+/// kept, not the ones asked for.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_nb_workers_is_clamped() {
+    use zstd_safe::{CCtx, CParameter};
+
+    let mut cctx = CCtx::create();
+    // As a C `int`, this is -1, which zstd clamps to no workers at all.
+    cctx.set_parameter(CParameter::NbWorkers(u32::MAX)).unwrap();
+    assert!(!cctx.3.requested && !cctx.3.ever);
+
+    cctx.set_parameter(CParameter::NbWorkers(100_000)).unwrap();
+    assert!(cctx.3.requested && cctx.3.ever);
+}

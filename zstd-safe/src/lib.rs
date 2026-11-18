@@ -95,6 +95,13 @@ const PARAMETER_UNSUPPORTED_ERROR: ErrorCode =
 const STAGE_WRONG_ERROR: ErrorCode =
     (zstd_sys::ZSTD_ErrorCode::ZSTD_error_stage_wrong as usize).wrapping_neg();
 
+/// The error code zstd returns for a dictionary that does not fit
+/// (`-ZSTD_error_dictionary_wrong`), for `CCtx::compress_with_*` on a context
+/// with a loaded dictionary, which they would lose.
+const DICTIONARY_WRONG_ERROR: ErrorCode =
+    (zstd_sys::ZSTD_ErrorCode::ZSTD_error_dictionary_wrong as usize)
+        .wrapping_neg();
+
 /// The error code `ZSTD_compress2()` returns when the destination is too
 /// small, leaving its frame in progress (`-ZSTD_error_dstSize_tooSmall`).
 const DST_SIZE_TOO_SMALL_ERROR: ErrorCode =
@@ -326,8 +333,29 @@ impl Poison {
 struct Workers {
     /// `NbWorkers` was ever set to a non-zero value, see `guard_own_tables`.
     ever: bool,
-    /// `NbWorkers` is currently set to a non-zero value.
+    /// The `NbWorkers` set with `set_parameter`, as zstd clamped it (0: none).
+    ///
+    /// Each frame gets these workers only if everything it reads is owned by
+    /// the context, see `CCtx::start_frame()`. A frame that
+    /// reads borrowed data runs on the calling thread instead: a context can
+    /// be leaked mid-frame, and its workers would then read the data after
+    /// the borrow ended.
+    count: u32,
+    /// `NbWorkers` is currently set to a non-zero value in zstd: `count`,
+    /// unless the frame in progress, or the last one, reads borrowed data.
     requested: bool,
+    /// A borrowed prefix (`ref_prefix`) was referenced, and no frame has
+    /// started since to consume it.
+    prefix_borrowed: bool,
+    /// The dictionary referenced (`ref_cdict`) is only borrowed, or points
+    /// into bytes it only borrows (`CDict::create_by_reference`).
+    dict_borrowed: bool,
+    /// zstd holds a copy of a dictionary (`load_dictionary`), which nothing
+    /// could load again after `compress_with_*` replaced it.
+    loaded: bool,
+    /// The `pending` frame reads borrowed data, so it runs on the calling
+    /// thread (or, for a one-shot call, is waited for before returning).
+    frame_borrows: bool,
     /// A frame was started while `NbWorkers` was set, and is not finished.
     ///
     /// Its jobs may be running on the worker threads, reading the context's
@@ -387,21 +415,59 @@ fn accepted_workers(value: c_int) -> u32 {
 /// # Worker threads and leaks
 ///
 /// With `CParameter::NbWorkers`, the jobs of a frame run on worker threads,
-/// which read the dictionary. Anything that abandons a frame in progress
-/// waits for them, dropping the context included (see
+/// which read the dictionary or prefix. Anything that abandons a frame in
+/// progress waits for them, dropping the context included (see
 /// [`CCtx::wait_for_workers()`]). A context that is leaked instead
-/// (`mem::forget`, `Box::leak`, a reference cycle) never waits: with a
-/// dictionary or prefix it only *borrows* ([`CCtx::ref_cdict()`],
-/// [`CCtx::ref_prefix()`]), the workers may then read it after it is
-/// dropped. Do not leak a context that is compressing with worker threads
-/// from borrowed data. A dictionary loaded with
-/// [`CCtx::load_dictionary()`] is copied, and leaks with the context.
+/// (`mem::forget`, `Box::leak`, a reference cycle) never waits, so the
+/// workers only ever read what the context owns, and leaks with it: a
+/// dictionary it copied ([`CCtx::load_dictionary()`]) or holds
+/// ([`CCtx::set_cdict()`], and [`CCtx::ref_cdict()`] with `alloc`), or a
+/// prefix it owns (`set_prefix()`).
+///
+/// A streaming frame that reads *borrowed* data is compressed on the calling
+/// thread instead, as with `NbWorkers(0)`. That is a prefix given to
+/// [`CCtx::ref_prefix()`], a dictionary made from borrowed bytes
+/// ([`CDict::create_by_reference()`]), and, without `alloc`, any dictionary
+/// given to [`CCtx::ref_cdict()`]. The parameters that only apply to worker
+/// threads (`JobSize`, `OverlapSizeLog`, `RSyncable`) are still accepted, but
+/// have no effect on that frame: only [`CCtx::frame_workers()`] tells.
+///
+/// [`CCtx::compress2()`] and `compress_with_*()` never return with a frame
+/// that reads borrowed data still in progress, so they use the workers with
+/// borrowed data too. (The one-shot calls that take a compression level
+/// never use worker threads.)
 pub struct CCtx<'a>(
     NonNull<zstd_sys::ZSTD_CCtx>,
     PhantomData<&'a ()>,
     Poison,
     Workers,
+    Held,
 );
+
+/// What a `CCtx` keeps alive for zstd: the dictionary or prefix it
+/// references, when the context owns it rather than borrowing it. Dropped
+/// after `Drop for CCtx` waited for the workers, and leaked with the context.
+#[derive(Default)]
+struct Held {
+    /// The lifetime of the bytes it may point into is the context's `'a`
+    /// (or longer), see `CDict::erased()`.
+    cdict: Option<CDict<'static>>,
+    /// Never read: only kept until zstd no longer references its bytes.
+    #[cfg(feature = "alloc")]
+    #[allow(dead_code)]
+    prefix: Option<Owner>,
+}
+
+impl Held {
+    /// Only a dictionary (or nothing).
+    fn with_cdict(cdict: Option<CDict<'static>>) -> Self {
+        Held {
+            cdict,
+            #[cfg(feature = "alloc")]
+            prefix: None,
+        }
+    }
+}
 
 impl Default for CCtx<'_> {
     fn default() -> Self {
@@ -435,6 +501,7 @@ impl<'a> CCtx<'a> {
             PhantomData,
             Poison::default(),
             Workers::default(),
+            Held::default(),
         ))
     }
 
@@ -494,12 +561,30 @@ impl<'a> CCtx<'a> {
         }
     }
 
+    /// Compresses `src` into `dst` as one frame, with the parameters and the
+    /// dictionary or prefix set on this context.
+    ///
+    /// This uses the worker threads of `NbWorkers` even when the frame reads
+    /// borrowed data: it then returns only once the frame is done, or
+    /// abandoned (when `dst` is too small, after waiting for the workers).
+    /// Otherwise, as with `ZSTD_compress2()`, a frame that does not fit in
+    /// `dst` is left in progress until the session is reset.
+    ///
     /// Wraps the `ZSTD_compress2()` function.
     pub fn compress2<C: WriteBuf + ?Sized>(
         &mut self,
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
+        if self.3.count != 0 {
+            // Abandons the frame in progress, if any, waiting for its jobs.
+            // Waiting may find that one of them failed: `start_frame` checks
+            // `broken` after.
+            self.reset(ResetDirective::SessionOnly)?;
+            // This call never returns with a frame that reads borrowed data
+            // in progress (see below), so it may use the workers for it.
+            self.start_frame(true)?;
+        }
         // What the call leaves behind is recorded as soon as zstd returns,
         // inside the closure: `write_from` is the caller's code, and may
         // panic after running it.
@@ -516,9 +601,11 @@ impl<'a> CCtx<'a> {
                     ));
                     // Unlike the others, this starts by resetting the
                     // session, which drops the pledged size, and ends it when
-                    // it succeeds. When it fails, it stays mid-frame: make
-                    // streaming calls wait for an explicit reset.
+                    // it succeeds, having consumed the prefix, if any. When
+                    // it fails, it stays mid-frame: make streaming calls wait
+                    // for an explicit reset.
                     self.3.pledged_short = false;
+                    self.3.prefix_borrowed &= res.is_err();
                     self.2.clear();
                     self.2.record(res)
                 })
@@ -533,10 +620,12 @@ impl<'a> CCtx<'a> {
         // anyway. A short frame, compressed on the calling thread, goes
         // straight to the destination when it can hold the whole frame, and
         // through a copy otherwise.
-        // Waiting for the frame in progress may find that one of its jobs
-        // failed: check `broken` after.
-        self.reset(ResetDirective::SessionOnly)?;
-        self.guard_broken()?;
+        //
+        // A frame that reads borrowed data must not be left in progress: its
+        // jobs would outlive the call, and the borrow with them if the
+        // context is then leaked. So when the destination is too small, the
+        // frame is waited for right away, before `write_from` runs any more
+        // of the caller's `WriteBuf` code.
         // Safety: ZSTD_compressStream2 reports how many bytes it wrote in
         // `output.pos`.
         unsafe {
@@ -565,8 +654,19 @@ impl<'a> CCtx<'a> {
                 );
                 let res = match raw {
                     Ok(0) => Ok(output.pos),
-                    // As `ZSTD_compress2()`: the frame stays in progress.
-                    Ok(_) => Err(DST_SIZE_TOO_SMALL_ERROR),
+                    Ok(_) => {
+                        if self.3.frame_borrows {
+                            // A job that fails here is recorded as `broken`.
+                            let _ = self.flush_to_scratch();
+                            // Nothing is left running: the frame is over,
+                            // but not its session, which `ZSTD_compress2()`
+                            // would also leave open.
+                            self.end_frame();
+                        }
+                        // Otherwise, as `ZSTD_compress2()`: the frame stays
+                        // in progress.
+                        Err(DST_SIZE_TOO_SMALL_ERROR)
+                    }
                     Err(code) => Err(code),
                 };
                 self.2.record(res)
@@ -620,11 +720,126 @@ impl<'a> CCtx<'a> {
                     capacity,
                     ptr_void(src),
                     src.len(),
-                    cdict.0.as_ptr(),
+                    cdict.as_ptr(),
                 ));
                 self.finish_one_shot(res)
             })
         }
+    }
+
+    /// Compresses `src` into `dst` as one frame, with `cdict` for this call
+    /// only, and the other parameters set on this context.
+    ///
+    /// The dictionary is only borrowed, and nothing keeps it once this
+    /// returns: unlike [`CCtx::ref_cdict()`], this takes no handle (no
+    /// reference count to update), and leaves no dictionary alive in the
+    /// context. Like [`CCtx::compress2()`], and unlike
+    /// [`CCtx::compress_using_cdict()`], it uses the worker threads and the
+    /// context's parameters (a checksum, say).
+    ///
+    /// A dictionary the context holds ([`CCtx::ref_cdict()`],
+    /// [`CCtx::set_cdict()`]) is referenced again afterwards; one it only
+    /// borrows, or a prefix, is not. With a dictionary loaded with
+    /// [`CCtx::load_dictionary()`], which could not be loaded again, this
+    /// fails with a `dictionary_wrong` error: disable it first.
+    pub fn compress_with_cdict<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        src: &[u8],
+        cdict: &CDict<'_>,
+    ) -> SafeResult {
+        // Safety: Just FFI. `compress_with` stops zstd referencing it.
+        self.compress_with(dst, src, false, |cctx| unsafe {
+            zstd_sys::ZSTD_CCtx_refCDict(cctx, cdict.as_ptr())
+        })
+    }
+
+    /// Compresses `src` into `dst` as one frame, with `prefix` as its
+    /// single-use dictionary, and the parameters set on this context.
+    ///
+    /// The prefix is only borrowed for this call. Like
+    /// [`CCtx::compress2()`], it uses the worker threads.
+    ///
+    /// The prefix stands in for the dictionary, and for the parameters a
+    /// prepared one decides: this frame gets the context's own (its
+    /// `CompressionLevel`, say), not the dictionary's.
+    ///
+    /// A dictionary the context holds ([`CCtx::ref_cdict()`],
+    /// [`CCtx::set_cdict()`]) is referenced again afterwards; one it only
+    /// borrows, or another prefix, is not. With a dictionary loaded with
+    /// [`CCtx::load_dictionary()`], which could not be loaded again, this
+    /// fails with a `dictionary_wrong` error: disable it first.
+    pub fn compress_with_prefix<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        src: &[u8],
+        prefix: &[u8],
+    ) -> SafeResult {
+        // Safety: Just FFI. `compress_with` stops zstd referencing it.
+        self.compress_with(dst, src, true, |cctx| unsafe {
+            zstd_sys::ZSTD_CCtx_refPrefix(cctx, ptr_void(prefix), prefix.len())
+        })
+    }
+
+    /// `compress2()` with data that `refer` references for this call only
+    /// (a prefix when `prefix`, a dictionary otherwise).
+    ///
+    /// On every way out, panics included, the data is unreferenced before
+    /// its borrow ends: the frame is waited for, the session reset, and what
+    /// the context held referenced again (or nothing).
+    fn compress_with<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        src: &[u8],
+        prefix: bool,
+        refer: impl FnOnce(*mut zstd_sys::ZSTD_CCtx) -> usize,
+    ) -> SafeResult {
+        /// Puts the context back as it was, see `compress_with`.
+        struct Restore<'c, 'a> {
+            cctx: &'c mut CCtx<'a>,
+            /// What the context held. Its dictionary is given back; a
+            /// prefix it owned is dropped after `drop()`, once zstd no
+            /// longer references it (its `Drop` may panic).
+            old: Held,
+        }
+        impl Drop for Restore<'_, '_> {
+            fn drop(&mut self) {
+                let cctx = &mut *self.cctx;
+                cctx.drain();
+                // Safety: Just FFI. Between frames, zstd takes both.
+                unsafe {
+                    zstd_sys::ZSTD_CCtx_reset(
+                        cctx.0.as_ptr(),
+                        zstd_sys::ZSTD_ResetDirective::ZSTD_reset_session_only,
+                    );
+                    let held = self
+                        .old
+                        .cdict
+                        .as_ref()
+                        .map_or(core::ptr::null_mut(), |cdict| cdict.as_ptr());
+                    zstd_sys::ZSTD_CCtx_refCDict(cctx.0.as_ptr(), held);
+                }
+                cctx.2.clear();
+                cctx.3.pledged_short = false;
+                let old = self.old.cdict.take();
+                let borrowed = old.as_ref().map_or(false, CDict::borrows);
+                cctx.referenced(false, borrowed, false, Held::with_cdict(old));
+            }
+        }
+
+        if self.3.loaded {
+            // Referencing anything else would drop it for good.
+            return Err(DICTIONARY_WRONG_ERROR);
+        }
+        // zstd only takes a new reference between frames.
+        self.reset(ResetDirective::SessionOnly)?;
+        let old = core::mem::take(&mut self.4);
+        let guard = Restore { cctx: self, old };
+        parse_code(refer(guard.cctx.0.as_ptr()))?;
+        guard
+            .cctx
+            .referenced(prefix, !prefix, false, Held::default());
+        guard.cctx.compress2(dst, src)
     }
 
     /// Initializes the context with the given compression level.
@@ -645,7 +860,11 @@ impl<'a> CCtx<'a> {
         let code = unsafe {
             zstd_sys::ZSTD_initCStream(self.0.as_ptr(), compression_level)
         };
-        self.2.record(parse_code(code))
+        let res = self.2.record(parse_code(code));
+        if res.is_ok() {
+            self.referenced(false, false, false, Held::default());
+        }
+        res
     }
 
     /// Wraps the `ZSTD_initCStream_srcSize()` function.
@@ -675,6 +894,7 @@ impl<'a> CCtx<'a> {
             // See `Workers::short`. Here, zstd takes 0 for an unknown size.
             self.3.pledged_short = pledged_src_size != 0
                 && pledged_src_size <= ZSTDMT_JOBSIZE_MIN as u64;
+            self.referenced(false, false, false, Held::default());
         }
         res
     }
@@ -703,7 +923,30 @@ impl<'a> CCtx<'a> {
                 compression_level,
             )
         };
-        parse_code(code)
+        let res = parse_code(code);
+        if res.is_ok() {
+            // The dictionary is copied.
+            self.referenced(false, false, !dict.is_empty(), Held::default());
+        }
+        res
+    }
+
+    /// Wraps the `ZSTD_initCStream_usingCDict()` function.
+    ///
+    /// With `alloc`, the context keeps its own handle to the dictionary, see
+    /// [`CCtx::ref_cdict()`].
+    #[cfg(all(
+        feature = "experimental",
+        feature = "alloc",
+        target_has_atomic = "ptr"
+    ))]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+    #[deprecated(note = "Use reset and ref_cdict instead.")]
+    pub fn init_using_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
+    where
+        'b: 'a, // What the dictionary points into outlives the stream.
+    {
+        self.init_with_cdict(cdict, Some(cdict.clone().erased()))
     }
 
     /// Wraps the `ZSTD_initCStream_usingCDict()` function.
@@ -719,13 +962,27 @@ impl<'a> CCtx<'a> {
     ///     cctx // `cdict` would be dropped while `cctx` still points at it.
     /// }
     /// ```
-    #[cfg(feature = "experimental")]
+    #[cfg(all(
+        feature = "experimental",
+        not(all(feature = "alloc", target_has_atomic = "ptr"))
+    ))]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated(note = "Use reset and ref_cdict instead.")]
     pub fn init_using_cdict<'b>(&mut self, cdict: &'a CDict<'b>) -> SafeResult
     where
         'b: 'a, // Dictionary outlives the stream.
     {
+        self.init_with_cdict(cdict, None)
+    }
+
+    /// `init_using_cdict()`, keeping `held` (a handle to `cdict`, or `None`
+    /// when it is only borrowed).
+    #[cfg(feature = "experimental")]
+    fn init_with_cdict(
+        &mut self,
+        cdict: &CDict<'_>,
+        held: Option<CDict<'static>>,
+    ) -> SafeResult {
         self.drain();
         self.2.clear();
         // zstd drops the pledged size.
@@ -734,10 +991,14 @@ impl<'a> CCtx<'a> {
         let code = unsafe {
             zstd_sys::ZSTD_initCStream_usingCDict(
                 self.0.as_ptr(),
-                cdict.0.as_ptr(),
+                cdict.as_ptr(),
             )
         };
-        self.2.record(parse_code(code))
+        let res = self.2.record(parse_code(code));
+        if res.is_ok() {
+            self.hold_cdict(held, cdict.borrows());
+        }
+        res
     }
 
     /// Tries to load a dictionary.
@@ -755,31 +1016,106 @@ impl<'a> CCtx<'a> {
     pub fn load_dictionary(&mut self, dict: &[u8]) -> SafeResult {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
                 self.0.as_ptr(),
                 ptr_void(dict),
                 dict.len(),
             )
-        })
+        });
+        if res.is_ok() {
+            // The dictionary is copied.
+            self.referenced(false, false, !dict.is_empty(), Held::default());
+        }
+        res
     }
 
-    /// Wraps the `ZSTD_CCtx_refCDict()` function.
+    /// References a prepared dictionary for the next frames.
     ///
-    /// Dictionary must outlive the context. With worker threads, do not leak
-    /// the context, see [its documentation](CCtx#worker-threads-and-leaks).
+    /// The context keeps its own handle to it, so the dictionary itself is
+    /// not borrowed: it can come from a cache, a `static` or a local, and be
+    /// dropped before the context. Only the bytes a dictionary made with
+    /// [`CDict::create_by_reference()`] points into must outlive the
+    /// context.
+    ///
+    /// Frames with it may use worker threads, unless it points into such
+    /// borrowed bytes: a streaming frame then runs on the calling thread,
+    /// see [`CCtx`](CCtx#worker-threads-and-leaks).
+    ///
+    /// The dictionary decides the compression parameters (its level, say);
+    /// the others stay the context's.
     ///
     /// Like zstd, this fails with a `stage_wrong` error while a frame is in
     /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).
+    ///
+    /// Wraps the `ZSTD_CCtx_refCDict()` function.
+    #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+    pub fn ref_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
+    where
+        'b: 'a,
+    {
+        self.set_cdict(cdict.clone())
+    }
+
+    /// References a prepared dictionary for the next frames, borrowing it.
+    ///
+    /// Without `alloc`, a dictionary cannot be shared otherwise. A streaming
+    /// frame that reads a borrowed dictionary runs on the calling thread,
+    /// see [`CCtx`](CCtx#worker-threads-and-leaks); [`CCtx::set_cdict()`]
+    /// moves the dictionary into the context instead.
+    ///
+    /// Like zstd, this fails with a `stage_wrong` error while a frame is in
+    /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).
+    ///
+    /// Wraps the `ZSTD_CCtx_refCDict()` function.
+    #[cfg(not(all(feature = "alloc", target_has_atomic = "ptr")))]
     pub fn ref_cdict<'b>(&mut self, cdict: &'a CDict<'b>) -> SafeResult
     where
         'b: 'a,
     {
+        self.refer_cdict(cdict.as_ptr(), None, true)
+    }
+
+    /// References a prepared dictionary for the next frames, moving it into
+    /// the context.
+    ///
+    /// See [`CCtx::ref_cdict()`].
+    pub fn set_cdict<'b>(&mut self, cdict: CDict<'b>) -> SafeResult
+    where
+        'b: 'a,
+    {
+        let borrows = cdict.borrows();
+        self.refer_cdict(cdict.as_ptr(), Some(cdict.erased()), borrows)
+    }
+
+    /// `ref_cdict()` with zstd's pointer to the dictionary, keeping `held`
+    /// (a handle to it, or `None` when the dictionary itself is only
+    /// borrowed) once zstd accepted it. See `hold_cdict()` for `borrows`.
+    fn refer_cdict(
+        &mut self,
+        cdict: *mut zstd_sys::ZSTD_CDict,
+        held: Option<CDict<'static>>,
+        borrows: bool,
+    ) -> SafeResult {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
-            zstd_sys::ZSTD_CCtx_refCDict(self.0.as_ptr(), cdict.0.as_ptr())
-        })
+        let res = parse_code(unsafe {
+            zstd_sys::ZSTD_CCtx_refCDict(self.0.as_ptr(), cdict)
+        });
+        if res.is_ok() {
+            self.hold_cdict(held, borrows);
+        }
+        res
+    }
+
+    /// Records that zstd now references a dictionary, which `held` is a
+    /// handle to, if the context has one.
+    ///
+    /// `borrows` is whether a frame that reads it reads borrowed data: the
+    /// dictionary itself, without a handle, or the bytes it points into.
+    fn hold_cdict(&mut self, held: Option<CDict<'static>>, borrows: bool) {
+        let borrowed = borrows || held.is_none();
+        self.referenced(false, borrowed, false, Held::with_cdict(held));
     }
 
     /// Return to "no-dictionary" mode.
@@ -791,13 +1127,17 @@ impl<'a> CCtx<'a> {
     pub fn disable_dictionary(&mut self) -> SafeResult {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_loadDictionary(
                 self.0.as_ptr(),
                 core::ptr::null(),
                 0,
             )
-        })
+        });
+        if res.is_ok() {
+            self.referenced(false, false, false, Held::default());
+        }
+        res
     }
 
     /// Use some prefix as single-use dictionary for the next compressed frame.
@@ -805,8 +1145,12 @@ impl<'a> CCtx<'a> {
     /// Just like a dictionary, decompression will need to be given the same prefix.
     ///
     /// This is best used if the "prefix" looks like the data to be compressed.
-    /// With worker threads, do not leak the context, see
-    /// [its documentation](CCtx#worker-threads-and-leaks).
+    ///
+    /// The prefix is only borrowed: with worker threads, a streaming frame
+    /// that reads it runs on the calling thread, and the parameters that
+    /// need workers (`RSyncable`, say) have no effect on it, see
+    /// [`CCtx`](CCtx#worker-threads-and-leaks). `set_prefix()` takes a
+    /// prefix the context owns, which can use them.
     ///
     /// Like zstd, this fails with a `stage_wrong` error while a frame is in
     /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).
@@ -816,13 +1160,60 @@ impl<'a> CCtx<'a> {
     {
         self.guard_workers()?;
         // Safety: Just FFI
-        parse_code(unsafe {
+        let res = parse_code(unsafe {
             zstd_sys::ZSTD_CCtx_refPrefix(
                 self.0.as_ptr(),
                 ptr_void(prefix),
                 prefix.len(),
             )
-        })
+        });
+        if res.is_ok() {
+            // An empty prefix references nothing.
+            self.referenced(!prefix.is_empty(), false, false, Held::default());
+        }
+        res
+    }
+
+    /// Uses a prefix as single-use dictionary for the next compressed frame,
+    /// owning it.
+    ///
+    /// `prefix` gives the bytes without copying them: a `Vec<u8>`, an
+    /// `Arc<[u8]>` or `Arc<Vec<u8>>`, a memory map, a `bytes::Bytes`, a
+    /// `&'static [u8]`... The context keeps it for as long as zstd may read
+    /// it, so a frame that reads it may use worker threads, unlike with
+    /// [`CCtx::ref_prefix()`].
+    ///
+    /// It is dropped when something takes its place or unloads it: another
+    /// dictionary or prefix, a reset of the parameters, one of the `init*`
+    /// methods, or a call to [`CCtx::compress_with_cdict()`] or
+    /// [`CCtx::compress_with_prefix()`]. Not when a frame is done with it:
+    /// zstd uses a prefix for one frame only, but the context does not
+    /// track which.
+    ///
+    /// Like zstd, this fails with a `stage_wrong` error while a frame is in
+    /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "alloc")))]
+    pub fn set_prefix<P>(&mut self, prefix: P) -> SafeResult
+    where
+        P: core::ops::Deref + Send + Sync + 'static,
+        P::Target: AsRef<[u8]>,
+    {
+        self.guard_workers()?;
+        let (owner, ptr, len) = Owner::new(prefix);
+        // Safety: Just FFI. The context owns the bytes from here on, and
+        // keeps them until zstd no longer references them.
+        let res = parse_code(unsafe {
+            zstd_sys::ZSTD_CCtx_refPrefix(self.0.as_ptr(), ptr.cast(), len)
+        });
+        if res.is_ok() {
+            let held = Held {
+                cdict: None,
+                prefix: Some(owner),
+            };
+            self.referenced(false, false, false, held);
+        }
+        res
     }
 
     /// Performs a step of a streaming compression operation.
@@ -964,17 +1355,38 @@ impl<'a> CCtx<'a> {
     /// Decides whether a streaming call may reach zstd, see `Workers`.
     ///
     /// Returns what the call should return instead when it may not.
+    ///
+    /// Without `NbWorkers`, this is one test, inlined in every streaming
+    /// call: the rest is kept out of line.
+    #[inline]
     fn before_stream(
-        &self,
+        &mut self,
+        no_input: bool,
+        end_op: zstd_sys::ZSTD_EndDirective,
+    ) -> Option<SafeResult> {
+        if self.3.count == 0 {
+            return None;
+        }
+        self.before_stream_with_workers(no_input, end_op)
+    }
+
+    /// `before_stream()` while `NbWorkers` is set.
+    #[inline(never)]
+    fn before_stream_with_workers(
+        &mut self,
         no_input: bool,
         end_op: zstd_sys::ZSTD_EndDirective,
     ) -> Option<SafeResult> {
         use zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
+        if !self.3.pending {
+            // This call starts a frame. A streaming frame can be left in
+            // progress, so it only gets the workers without borrowed data.
+            if let Err(code) = self.start_frame(false) {
+                return Some(Err(code));
+            }
+        }
         if !self.3.requested {
             return None;
-        }
-        if self.3.broken {
-            return Some(Err(STAGE_WRONG_ERROR));
         }
         if self.3.pending {
             if (self.3.ended && end_op == ZSTD_e_continue)
@@ -996,10 +1408,44 @@ impl<'a> CCtx<'a> {
         None
     }
 
+    /// Gives the frame about to start the workers it may use, see
+    /// `Workers::count`.
+    ///
+    /// `blocking` is for a call that returns only once its frame is done:
+    /// that frame may use the workers even when it reads borrowed data.
+    /// Only called while `NbWorkers` is set and no frame is in progress, when
+    /// zstd still takes a new `nbWorkers`.
+    fn start_frame(&mut self, blocking: bool) -> Result<(), ErrorCode> {
+        let borrows = self.3.prefix_borrowed || self.3.dict_borrowed;
+        let workers = blocking || !borrows;
+        if workers && self.3.broken {
+            // See `Workers::broken`.
+            return Err(STAGE_WRONG_ERROR);
+        }
+        if workers != self.3.requested {
+            let value = if workers { self.3.count } else { 0 };
+            // Safety: Just FFI
+            parse_code(unsafe {
+                zstd_sys::ZSTD_CCtx_setParameter(
+                    self.0.as_ptr(),
+                    zstd_sys::ZSTD_cParameter::ZSTD_c_nbWorkers,
+                    value as c_int,
+                )
+            })?;
+            self.3.requested = workers;
+        }
+        self.3.frame_borrows = borrows;
+        Ok(())
+    }
+
     /// Records what a streaming call left open, see `Workers`.
     ///
     /// `given` is how much input the call was given, and `taken` how much of
     /// it zstd took.
+    ///
+    /// Inlined like `before_stream()`, with the work for `NbWorkers` out of
+    /// line.
+    #[inline]
     fn track_frame(
         &mut self,
         res: SafeResult,
@@ -1007,12 +1453,35 @@ impl<'a> CCtx<'a> {
         given: usize,
         taken: usize,
     ) {
-        use zstd_sys::ZSTD_EndDirective::ZSTD_e_end;
+        // zstd started a frame by now, which consumed the prefix, if any. (A
+        // failed call may not have: the prefix then stays counted.)
+        self.3.prefix_borrowed &= res.is_err();
         // A pledged size is for the frame this call started or continued.
         let pledged_short = core::mem::take(&mut self.3.pledged_short);
-        if !self.3.requested {
-            return;
+        if self.3.count != 0 {
+            self.track_frame_with_workers(
+                res,
+                end_op,
+                given,
+                taken,
+                pledged_short,
+            );
         }
+    }
+
+    /// `track_frame()` while `NbWorkers` is set.
+    #[inline(never)]
+    fn track_frame_with_workers(
+        &mut self,
+        res: SafeResult,
+        end_op: zstd_sys::ZSTD_EndDirective,
+        given: usize,
+        taken: usize,
+        pledged_short: bool,
+    ) {
+        use zstd_sys::ZSTD_EndDirective::ZSTD_e_end;
+        // From here on, frames are tracked even when they run on the calling
+        // thread: `NbWorkers` may only change between frames.
         if !self.3.pending {
             // This call started the frame. Given whole, its size is the
             // input's, whatever was pledged.
@@ -1022,7 +1491,7 @@ impl<'a> CCtx<'a> {
                 pledged_short
             };
         }
-        self.3.jobs |= taken > 0 && !self.3.short;
+        self.3.jobs |= self.3.requested && taken > 0 && !self.3.short;
         match res {
             Ok(0) if end_op == ZSTD_e_end => self.end_frame(),
             Ok(_) => {
@@ -1052,6 +1521,7 @@ impl<'a> CCtx<'a> {
         self.3.last = false;
         self.3.short = false;
         self.3.jobs = false;
+        self.3.frame_borrows = false;
     }
 
     /// Waits for the jobs of the frame in progress, if any, so that it can
@@ -1068,6 +1538,16 @@ impl<'a> CCtx<'a> {
         if !self.3.pending {
             return;
         }
+        // A frame on the calling thread has no jobs to wait for.
+        if self.3.requested {
+            let _ = self.flush_to_scratch();
+        }
+        self.end_frame();
+    }
+
+    /// Flushes the frame in progress to a scratch buffer, throwing the output
+    /// away, until every job is done. See `drain()`.
+    fn flush_to_scratch(&mut self) -> Result<(), ErrorCode> {
         let mut scratch = [0u8; 4096];
         loop {
             let mut output = zstd_sys::ZSTD_outBuffer {
@@ -1090,16 +1570,15 @@ impl<'a> CCtx<'a> {
                 )
             };
             match parse_code(code) {
-                Ok(0) => break,
+                Ok(0) => return Ok(()),
                 Ok(_) => continue,
                 // A job failed: see `track_frame`.
-                Err(_) => {
+                Err(code) => {
                     self.3.broken |= self.3.jobs;
-                    break;
+                    return Err(code);
                 }
             }
         }
-        self.end_frame();
     }
 
     /// Fails while a frame is in progress (zstd refuses these calls then).
@@ -1115,13 +1594,55 @@ impl<'a> CCtx<'a> {
         Ok(())
     }
 
-    /// Fails if a multithreaded call failed on this context, see
-    /// `Workers::broken`.
-    fn guard_broken(&self) -> Result<(), ErrorCode> {
-        if self.3.requested && self.3.broken {
-            return Err(STAGE_WRONG_ERROR);
+    /// Records a change to the dictionary or prefix the next frames read,
+    /// once zstd accepted it. Any of them replaces the previous one.
+    ///
+    /// `loaded` is for a dictionary zstd copied, and `held` is what the
+    /// context now keeps alive for zstd (nothing, for borrowed or copied
+    /// data).
+    ///
+    /// Drops what the context held before, if anything: zstd no longer
+    /// references it, and resets what pointed into it before its next frame
+    /// reads anything (`ZSTD_reset_matchState`). zstd only takes such a
+    /// change between frames.
+    ///
+    /// That drop comes last, once everything describes the new state: it
+    /// runs the `Drop` of whoever owned a prefix or a dictionary's bytes,
+    /// which is the caller's code and may panic.
+    fn referenced(
+        &mut self,
+        prefix_borrowed: bool,
+        dict_borrowed: bool,
+        loaded: bool,
+        held: Held,
+    ) {
+        self.3.prefix_borrowed = prefix_borrowed;
+        self.3.dict_borrowed = dict_borrowed;
+        self.3.loaded = loaded;
+        let old = core::mem::replace(&mut self.4, held);
+        drop(old);
+    }
+
+    /// How many worker threads the frame in progress uses, or the next frame
+    /// will use if none is in progress.
+    ///
+    /// This is the `NbWorkers` set with [`CCtx::set_parameter()`], as zstd
+    /// clamped it to its bounds, unless that frame reads borrowed data (a
+    /// prefix given to [`CCtx::ref_prefix()`], say): a streaming frame then
+    /// runs on the calling thread, see
+    /// [`CCtx`](CCtx#worker-threads-and-leaks). `compress2()` always uses
+    /// the workers.
+    pub fn frame_workers(&self) -> u32 {
+        let workers = if self.3.pending {
+            self.3.requested
+        } else {
+            !(self.3.prefix_borrowed || self.3.dict_borrowed)
+        };
+        if workers {
+            self.3.count
+        } else {
+            0
         }
-        Ok(())
     }
 
     /// Abandons the current frame, if any, and waits for the worker threads
@@ -1136,7 +1657,8 @@ impl<'a> CCtx<'a> {
     ///
     /// After a job failed on a worker thread (for instance because the frame
     /// was given more than its pledged size), the context refuses any
-    /// streaming call or `compress2()` while `NbWorkers` is set, and setting
+    /// frame that would use the workers while `NbWorkers` is set (a
+    /// streaming frame that reads borrowed data does not), and setting
     /// it again (with a `stage_wrong` error): zstd up to 1.5.7, the version
     /// bundled here, can leave a cleared job behind that the next
     /// multithreaded frame would hand to a worker, which crashes. Create a new
@@ -1182,8 +1704,11 @@ impl<'a> CCtx<'a> {
             self.3.pledged_short = false;
         }
         if res.is_ok() && !matches!(reset, ResetDirective::SessionOnly) {
+            self.3.count = 0;
             self.3.requested = false;
             self.3.stable_out = false;
+            // Resetting the parameters also unloads the dictionary.
+            self.referenced(false, false, false, Held::default());
         }
         res
     }
@@ -1214,7 +1739,7 @@ impl<'a> CCtx<'a> {
             }
             // Waiting for the workers needs an output buffer of its own.
             #[cfg(feature = "experimental")]
-            CParameter::StableOutBuffer(true) if self.3.requested => {
+            CParameter::StableOutBuffer(true) if self.3.count != 0 => {
                 return Err(PARAMETER_UNSUPPORTED_ERROR);
             }
             _ => (),
@@ -1344,9 +1869,10 @@ impl<'a> CCtx<'a> {
             zstd_sys::ZSTD_CCtx_setParameter(self.0.as_ptr(), param, value)
         });
         if res.is_ok() && matches!(param, ZSTD_c_nbWorkers) {
-            let workers = accepted_workers(value) != 0;
-            self.3.requested = workers;
-            self.3.ever |= workers;
+            let count = accepted_workers(value);
+            self.3.count = count;
+            self.3.requested = count != 0;
+            self.3.ever |= count != 0;
         }
         #[cfg(feature = "experimental")]
         if res.is_ok() && matches!(param, ZSTD_c_stableOutBuffer) {
@@ -1424,6 +1950,11 @@ impl<'a> CCtx<'a> {
     /// `src` becomes this context's history window, so it must stay allocated and unmodified until
     /// the next call to `compress_block` on this context (or until this context is dropped), as the
     /// following block is compressed against it.
+    ///
+    /// A block is also compressed against what the last frame started on this context left
+    /// behind, which may point into that frame's dictionary or prefix. That one must stay alive
+    /// too, even once the context was told to use another one or none (the context then no
+    /// longer holds it): keep your own handle to it, or its bytes.
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated(
@@ -2067,12 +2598,168 @@ unsafe impl Send for DCtx<'_> {}
 // Safety: as for `CCtx` - the mutating methods all take `&mut self`.
 unsafe impl Sync for DCtx<'_> {}
 
+/// Owns bytes that zstd points into, without copying them: a `Vec<u8>`, an
+/// `Arc<[u8]>`, a memory map...
+///
+/// Kept as a raw pointer rather than a `Box`: the bytes may live inside the
+/// owner, and moving a `Box` would assert unique access to memory zstd still
+/// points into. The owner goes to its final place on the heap before its
+/// bytes are taken, and is not touched again until it is dropped.
+#[cfg(feature = "alloc")]
+struct Owner(NonNull<dyn Send + Sync>);
+
+#[cfg(feature = "alloc")]
+impl Owner {
+    /// Moves `owner` to the heap, and returns it with its bytes.
+    ///
+    /// The bytes stay valid until the `Owner` is dropped.
+    fn new<P>(owner: P) -> (Self, *const u8, usize)
+    where
+        P: core::ops::Deref + Send + Sync + 'static,
+        P::Target: AsRef<[u8]>,
+    {
+        let owner: *mut P =
+            alloc::boxed::Box::into_raw(alloc::boxed::Box::new(owner));
+        // Safety: `owner` is valid, and only ever read from now on.
+        let bytes: &[u8] = unsafe { (**owner).as_ref() };
+        let (ptr, len) = (bytes.as_ptr(), bytes.len());
+        let owner: *mut (dyn Send + Sync) = owner;
+        // Safety: from a `Box`, so not null.
+        (Owner(unsafe { NonNull::new_unchecked(owner) }), ptr, len)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Drop for Owner {
+    fn drop(&mut self) {
+        // Safety: made by `Box::into_raw`, and only read since.
+        drop(unsafe { alloc::boxed::Box::from_raw(self.0.as_ptr()) });
+    }
+}
+
+// Safety: the owner is `Send + Sync`; this only reads it, then drops it.
+#[cfg(feature = "alloc")]
+unsafe impl Send for Owner {}
+#[cfg(feature = "alloc")]
+unsafe impl Sync for Owner {}
+
+// The owner is never called into after a panic, only dropped: a context or
+// a dictionary that holds one stays as unwind-safe as it was without.
+#[cfg(feature = "alloc")]
+impl core::panic::UnwindSafe for Owner {}
+#[cfg(feature = "alloc")]
+impl core::panic::RefUnwindSafe for Owner {}
+
 /// Compression dictionary.
+///
+/// A digested dictionary, cheap to share: with the `alloc` feature (on targets
+/// with pointer-sized atomics), it is a reference-counted handle, and cloning
+/// it shares the same digested tables. A context referencing it
+/// ([`CCtx::ref_cdict()`]) keeps its own handle, so the dictionary lives as
+/// long as any context uses it, leaked ones included. Without `alloc`, it has
+/// a single owner: move it into a context ([`CCtx::set_cdict()`]) or borrow
+/// it.
+///
+/// The bytes it was made from are copied ([`CDict::create()`]), owned by the
+/// dictionary ([`CDict::create_by_reference_owned()`]), or borrowed for `'a`
+/// ([`CDict::create_by_reference()`]). With worker threads, a streaming frame
+/// that reads borrowed bytes runs on the calling thread, see
+/// [`CCtx`](CCtx#worker-threads-and-leaks).
 ///
 /// With `with-rust-allocator`, prepared dictionaries retain fixed compression
 /// parameters rather than adapting them to later input sizes. This can change
 /// compression ratio, speed, and memory usage compared with the C allocator.
-pub struct CDict<'a>(NonNull<zstd_sys::ZSTD_CDict>, PhantomData<&'a ()>);
+pub struct CDict<'a>(CDictHandle, Borrow<'a>);
+
+/// The borrow of the bytes a [`CDict`] may point into.
+///
+/// Its `Drop` does nothing, but tells the borrow checker what the one of
+/// `CDict<'a>` itself did before it was a handle: the bytes must still be
+/// alive when the dictionary is dropped.
+struct Borrow<'a>(PhantomData<&'a ()>);
+
+impl Drop for Borrow<'_> {
+    fn drop(&mut self) {}
+}
+
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+type CDictHandle = alloc::sync::Arc<CDictInner>;
+#[cfg(not(all(feature = "alloc", target_has_atomic = "ptr")))]
+type CDictHandle = CDictInner;
+
+/// What a [`CDict`] handle points to.
+struct CDictInner {
+    ptr: NonNull<zstd_sys::ZSTD_CDict>,
+    /// The dictionary points into bytes it only borrows
+    /// (`CDict::create_by_reference()`), for the `'a` of its handles.
+    borrows: bool,
+    /// Owns the bytes a dictionary made by reference points into, see
+    /// `CDict::try_create_by_reference_owned()`. Dropped after the
+    /// dictionary is freed.
+    #[cfg(feature = "alloc")]
+    #[allow(dead_code)] // Only kept alive.
+    owner: Option<Owner>,
+}
+
+impl Drop for CDictInner {
+    fn drop(&mut self) {
+        // The dictionary first: it may point into the owner.
+        // Safety: this is the last handle to it.
+        unsafe {
+            zstd_sys::ZSTD_freeCDict(self.ptr.as_ptr());
+        }
+        // Then `owner`, as a field.
+    }
+}
+
+// Safety: a digested dictionary is immutable once built. zstd.h: "ZSTD_CDict
+// can be created once and shared by multiple threads concurrently, since its
+// usage is read-only". The owner is `Send + Sync`, and is only dropped.
+unsafe impl Send for CDictInner {}
+unsafe impl Sync for CDictInner {}
+
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+impl Clone for CDict<'_> {
+    /// Returns another handle to the same digested dictionary.
+    fn clone(&self) -> Self {
+        CDict(self.0.clone(), Borrow(PhantomData))
+    }
+}
+
+impl<'a> CDict<'a> {
+    /// `borrows`: the dictionary points into bytes borrowed for `'a`.
+    fn from_raw(
+        ptr: *mut zstd_sys::ZSTD_CDict,
+        borrows: bool,
+    ) -> Option<Self> {
+        let inner = CDictInner {
+            ptr: NonNull::new(ptr)?,
+            borrows,
+            #[cfg(feature = "alloc")]
+            owner: None,
+        };
+        // Without `alloc`, the handle is the dictionary itself.
+        #[allow(clippy::useless_conversion)]
+        let handle = inner.into();
+        Some(CDict(handle, Borrow(PhantomData)))
+    }
+
+    fn as_ptr(&self) -> *mut zstd_sys::ZSTD_CDict {
+        self.0.ptr.as_ptr()
+    }
+
+    /// Whether the dictionary points into bytes it only borrows.
+    fn borrows(&self) -> bool {
+        self.0.borrows
+    }
+
+    /// Forgets the lifetime of the bytes the dictionary may point into, for
+    /// a context to hold it: a `CCtx<'b>` only takes a dictionary whose
+    /// `'a` outlives its own `'b`, which it stands for from then on.
+    fn erased(self) -> CDict<'static> {
+        CDict(self.0, Borrow(PhantomData))
+    }
+}
 
 impl CDict<'static> {
     /// Prepare a dictionary to compress data.
@@ -2117,12 +2804,109 @@ impl CDict<'static> {
                 compression_level,
             )
         };
-        Some(CDict(NonNull::new(ptr)?, PhantomData))
+        Self::from_raw(ptr, false)
+    }
+
+    /// Prepare a dictionary to compress data, referencing the bytes `owner`
+    /// gives, which the dictionary then owns.
+    ///
+    /// # Panics
+    ///
+    /// If loading this dictionary failed. See
+    /// [`CDict::try_create_by_reference_owned`].
+    #[cfg(all(feature = "experimental", feature = "alloc"))]
+    #[cfg_attr(
+        feature = "doc-cfg",
+        doc(cfg(all(feature = "experimental", feature = "alloc")))
+    )]
+    pub fn create_by_reference_owned<P>(
+        owner: P,
+        compression_level: CompressionLevel,
+    ) -> Self
+    where
+        P: core::ops::Deref + Send + Sync + 'static,
+        P::Target: AsRef<[u8]>,
+    {
+        Self::try_create_by_reference_owned(owner, compression_level)
+            .expect("zstd returned null pointer")
+    }
+
+    /// Prepare a dictionary to compress data, referencing the bytes `owner`
+    /// gives, which the dictionary then owns.
+    ///
+    /// The bytes are not copied: `owner` can be a `Vec<u8>`, an `Arc<[u8]>`,
+    /// an `Arc<Vec<u8>>`, a memory map, a `bytes::Bytes`, a
+    /// `&'static [u8]`... It is dropped with the last handle to the
+    /// dictionary.
+    ///
+    /// Returns `None` if zstd could not load the dictionary.
+    #[cfg(all(feature = "experimental", feature = "alloc"))]
+    #[cfg_attr(
+        feature = "doc-cfg",
+        doc(cfg(all(feature = "experimental", feature = "alloc")))
+    )]
+    pub fn try_create_by_reference_owned<P>(
+        owner: P,
+        compression_level: CompressionLevel,
+    ) -> Option<Self>
+    where
+        P: core::ops::Deref + Send + Sync + 'static,
+        P::Target: AsRef<[u8]>,
+    {
+        let (owner, ptr, len) = Owner::new(owner);
+        // Safety: the dictionary owns the bytes from here on (below), and
+        // frees itself before them.
+        let ptr = unsafe {
+            Self::by_reference(
+                core::slice::from_raw_parts(ptr, len),
+                compression_level,
+            )
+        };
+        let inner = CDictInner {
+            ptr: NonNull::new(ptr)?,
+            borrows: false,
+            owner: Some(owner),
+        };
+        Some(CDict(inner.into(), Borrow(PhantomData)))
     }
 }
 
 impl<'a> CDict<'a> {
+    /// Digests `dict_buffer` by reference.
+    ///
+    /// # Safety
+    ///
+    /// `dict_buffer` must stay valid and unchanged until the dictionary is
+    /// freed.
+    #[cfg(feature = "experimental")]
+    unsafe fn by_reference(
+        dict_buffer: &[u8],
+        compression_level: CompressionLevel,
+    ) -> *mut zstd_sys::ZSTD_CDict {
+        #[cfg(feature = "with-rust-allocator")]
+        let ptr = rust_allocator::create_cdict(
+            dict_buffer,
+            compression_level,
+            zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byRef,
+        );
+        #[cfg(not(feature = "with-rust-allocator"))]
+        let ptr = zstd_sys::ZSTD_createCDict_byReference(
+            ptr_void(dict_buffer),
+            dict_buffer.len(),
+            compression_level,
+        );
+        ptr
+    }
+
     /// Prepare a dictionary to compress data, referencing `dict_buffer`.
+    ///
+    /// The bytes must outlive the dictionary:
+    ///
+    /// ```compile_fail,E0597
+    /// let cdict;
+    /// let bytes = vec![0u8; 16];
+    /// cdict = zstd_safe::CDict::create_by_reference(&bytes, 3);
+    /// ```
     ///
     /// # Panics
     ///
@@ -2139,6 +2923,17 @@ impl<'a> CDict<'a> {
 
     /// Prepare a dictionary to compress data, referencing `dict_buffer`.
     ///
+    /// The bytes are not copied, and are borrowed for as long as the
+    /// dictionary is used. With worker threads (`CParameter::NbWorkers`), a
+    /// streaming frame that reads such a dictionary runs on the calling
+    /// thread, see [`CCtx`](CCtx#worker-threads-and-leaks): a context can be
+    /// leaked mid-frame, and the borrow would end under its workers.
+    ///
+    /// [`CDict::try_create_by_reference_owned()`] makes a dictionary that
+    /// keeps the workers, from bytes with an owner (a `Vec`, an
+    /// `Arc<[u8]>`, a memory map) or `'static` ones (`include_bytes!`,
+    /// say): nothing tells this method that a `&'a [u8]` is `'static`.
+    ///
     /// Returns `None` if zstd could not load the dictionary, for instance
     /// because it starts with the dictionary magic number but its header is
     /// corrupt.
@@ -2148,30 +2943,17 @@ impl<'a> CDict<'a> {
         dict_buffer: &'a [u8],
         compression_level: CompressionLevel,
     ) -> Option<Self> {
-        #[cfg(feature = "with-rust-allocator")]
-        let ptr = unsafe {
-            rust_allocator::create_cdict(
-                dict_buffer,
-                compression_level,
-                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byRef,
-            )
-        };
-        #[cfg(not(feature = "with-rust-allocator"))]
-        let ptr = unsafe {
-            zstd_sys::ZSTD_createCDict_byReference(
-                ptr_void(dict_buffer),
-                dict_buffer.len(),
-                compression_level,
-            )
-        };
-        Some(CDict(NonNull::new(ptr)?, PhantomData))
+        // Safety: the bytes are borrowed for `'a`, as the dictionary is.
+        let ptr =
+            unsafe { Self::by_reference(dict_buffer, compression_level) };
+        Self::from_raw(ptr, true)
     }
 
     /// Returns the _current_ memory usage of this dictionary.
     ///
     /// Note that this may change over time.
     pub fn sizeof(&self) -> usize {
-        unsafe { zstd_sys::ZSTD_sizeof_CDict(self.0.as_ptr()) }
+        unsafe { zstd_sys::ZSTD_sizeof_CDict(self.as_ptr()) }
     }
 
     /// Returns the dictionary ID for this dict.
@@ -2179,7 +2961,7 @@ impl<'a> CDict<'a> {
     /// Returns `None` if this dictionary is empty or invalid.
     pub fn get_dict_id(&self) -> Option<NonZeroU32> {
         NonZeroU32::new(unsafe {
-            zstd_sys::ZSTD_getDictID_fromCDict(self.0.as_ptr()) as u32
+            zstd_sys::ZSTD_getDictID_fromCDict(self.as_ptr()) as u32
         })
     }
 }
@@ -2191,20 +2973,6 @@ pub fn create_cdict(
 ) -> CDict<'static> {
     CDict::create(dict_buffer, compression_level)
 }
-
-impl<'a> Drop for CDict<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            zstd_sys::ZSTD_freeCDict(self.0.as_ptr());
-        }
-    }
-}
-
-// Safety: a digested dictionary is immutable once built. zstd.h: "ZSTD_CDict
-// can be created once and shared by multiple threads concurrently, since its
-// usage is read-only".
-unsafe impl<'a> Send for CDict<'a> {}
-unsafe impl<'a> Sync for CDict<'a> {}
 
 /// Wraps the `ZSTD_compress_usingCDict()` function.
 pub fn compress_using_cdict(
@@ -2820,8 +3588,8 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
         // shrunk since the position was set. zstd refuses a position past
         // the end before doing anything, and `set_pos()` would panic on it
         // once the call returned: do it first, while a compression context
-        // still knows about the frame it has in progress. The capacity is
-        // read once, so zstd gets the one that was checked.
+        // still knows about the frame it has in progress. zstd is given the
+        // capacity that was checked, not a second reading of it.
         let capacity = self.dst.capacity();
         if self.pos > capacity {
             panic!("Given position outside of the buffer bounds.");
@@ -3124,6 +3892,11 @@ pub enum ParamSwitch {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CParameter {
+    /// Makes the compressed output friendly to `rsync`.
+    ///
+    /// Only frames compressed with worker threads are: this has no effect
+    /// with `NbWorkers(0)`, or on a frame that runs on the calling thread
+    /// (see `NbWorkers`).
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     RSyncable(bool),
@@ -3254,17 +4027,21 @@ pub enum CParameter {
     ///
     /// With any other value (including 1, a single compressing thread), these methods directly
     /// return, and the actual compression is done in the background (until a flush is requested).
-    /// A context compressing that way from a borrowed dictionary or prefix
-    /// must not be leaked, see [`CCtx`](CCtx#worker-threads-and-leaks).
     ///
-    /// zstd clamps the value to its bounds instead of refusing it.
+    /// zstd clamps the value to its bounds instead of refusing it. A
+    /// streaming frame that reads a borrowed dictionary or prefix is
+    /// compressed on the calling thread whatever this is set to, and
+    /// `JobSize`, `OverlapSizeLog` and `RSyncable` then have no effect on
+    /// it, see [`CCtx`](CCtx#worker-threads-and-leaks).
+    /// [`CCtx::frame_workers()`] returns what a frame gets.
     ///
     /// Note: this will only work if the `zstdmt` feature is activated.
     NbWorkers(u32),
 
     /// Size in bytes of a compression job.
     ///
-    /// Does not have any effect when `NbWorkers` is set to 0.
+    /// Does not have any effect when `NbWorkers` is set to 0, or on a frame
+    /// that runs on the calling thread (see `NbWorkers`).
     ///
     /// The default value of 0 finds the best job size based on the compression parameters.
     ///

@@ -1649,3 +1649,213 @@ fn test_nb_workers_is_clamped() {
     cctx.set_parameter(CParameter::NbWorkers(100_000)).unwrap();
     assert!(cctx.3.requested && cctx.3.ever);
 }
+
+/// A destination whose `write_from` panics once zstd returned.
+#[cfg(feature = "std")]
+struct Unwinding(Vec<u8>);
+
+#[cfg(feature = "std")]
+unsafe impl zstd_safe::WriteBuf for Unwinding {
+    fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.0.as_mut_ptr()
+    }
+    unsafe fn filled_until(&mut self, n: usize) {
+        self.0.set_len(n);
+    }
+    unsafe fn write_from<F>(&mut self, f: F) -> zstd_safe::SafeResult
+    where
+        F: FnOnce(*mut core::ffi::c_void, usize) -> zstd_safe::SafeResult,
+    {
+        let _ = f(self.0.as_mut_ptr().cast(), self.0.capacity());
+        panic!("write_from");
+    }
+}
+
+/// The one-shot calls end their session as soon as zstd returns: a
+/// destination that panics afterwards does not leave a stream that carries
+/// on from the buffers and dictionary borrowed for that call.
+#[cfg(feature = "std")]
+#[test]
+fn test_one_shot_decompression_resets_before_write_buf_panics() {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use zstd_safe::{DCtx, DDict, InBuffer, OutBuffer, SafeResult};
+
+    type OneShot = fn(&mut DCtx<'_>, &mut Unwinding, &[u8]) -> SafeResult;
+    let one_shots: [OneShot; 3] = [
+        |dctx, dst, src| dctx.decompress(dst, src),
+        |dctx, dst, src| {
+            dctx.decompress_using_dict(dst, src, &std::vec![b'd'; 1000])
+        },
+        |dctx, dst, src| {
+            let ddict = DDict::create(&[b'd'; 1000]);
+            dctx.decompress_using_ddict(dst, src, &ddict)
+        },
+    ];
+
+    let long = LONG_CONTENT.as_bytes();
+    let mut abandoned =
+        Vec::with_capacity(zstd_safe::compress_bound(long.len()));
+    zstd_safe::compress(&mut abandoned, long, 1).unwrap();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    zstd_safe::compress(&mut compressed, INPUT, 1).unwrap();
+
+    for one_shot in one_shots {
+        // Whether the call fails (no room for output) or succeeds.
+        for capacity in [0, INPUT.len()] {
+            let mut dctx = DCtx::create();
+
+            // A stream that is abandoned with output still buffered...
+            let mut head = [0u8; 16];
+            dctx.decompress_stream(
+                &mut OutBuffer::around(&mut head[..]),
+                &mut InBuffer::around(&abandoned),
+            )
+            .unwrap();
+
+            // ... a one-shot job on the same context, which unwinds...
+            {
+                let source = compressed.clone();
+                let mut dst = Unwinding(Vec::with_capacity(capacity));
+                catch_unwind(AssertUnwindSafe(|| {
+                    one_shot(&mut dctx, &mut dst, &source)
+                }))
+                .unwrap_err();
+            }
+
+            // ... and a new stream, which must see nothing of either.
+            let mut decoded = Vec::with_capacity(INPUT.len() + 1);
+            let hint = dctx
+                .decompress_stream(
+                    &mut OutBuffer::around(&mut decoded),
+                    &mut InBuffer::around(&compressed),
+                )
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            assert_eq!(hint, 0);
+            assert_eq!(decoded, INPUT);
+        }
+    }
+}
+
+/// Same on the compression side.
+#[cfg(feature = "std")]
+#[test]
+fn test_one_shot_compression_resets_before_write_buf_panics() {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use zstd_safe::{CCtx, CDict, InBuffer, OutBuffer, SafeResult};
+
+    type OneShot = fn(&mut CCtx<'_>, &mut Unwinding, &[u8]) -> SafeResult;
+    let one_shots: [OneShot; 4] = [
+        |cctx, dst, src| cctx.compress(dst, src, 1),
+        |cctx, dst, src| cctx.compress2(dst, src),
+        |cctx, dst, src| {
+            cctx.compress_using_dict(dst, src, &std::vec![b'd'; 1000], 1)
+        },
+        |cctx, dst, src| {
+            let cdict = CDict::create(&[b'd'; 1000], 1);
+            cctx.compress_using_cdict(dst, src, &cdict)
+        },
+    ];
+
+    let long = LONG_CONTENT.as_bytes();
+    let bound = zstd_safe::compress_bound(long.len());
+
+    for (i, one_shot) in one_shots.iter().enumerate() {
+        for capacity in [0, bound] {
+            let mut cctx = CCtx::create();
+            let mut compressed = Vec::with_capacity(bound);
+
+            // A stream that is abandoned with input still buffered...
+            cctx.compress_stream(
+                &mut OutBuffer::around(&mut compressed),
+                &mut InBuffer::around(INPUT),
+            )
+            .unwrap();
+            compressed.clear();
+
+            // ... a one-shot job on the same context, which unwinds...
+            {
+                let source = INPUT.to_vec();
+                let mut dst = Unwinding(Vec::with_capacity(capacity));
+                catch_unwind(AssertUnwindSafe(|| {
+                    one_shot(&mut cctx, &mut dst, &source)
+                }))
+                .unwrap_err();
+            }
+
+            // A failed `compress2` is left mid-frame, and says so: streaming
+            // waits for a reset.
+            if i == 1 && capacity == 0 {
+                cctx.compress_stream(
+                    &mut OutBuffer::around(&mut compressed),
+                    &mut InBuffer::around(long),
+                )
+                .unwrap_err();
+                assert!(compressed.is_empty());
+                cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+            }
+
+            // ... and a new stream, which must see nothing of either.
+            let mut output = OutBuffer::around(&mut compressed);
+            cctx.compress_stream(&mut output, &mut InBuffer::around(long))
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            let remaining = cctx
+                .end_stream(&mut output)
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            assert_eq!(remaining, 0);
+
+            let mut decoded = Vec::with_capacity(long.len());
+            zstd_safe::decompress(&mut decoded, &compressed)
+                .map_err(zstd_safe::get_error_name)
+                .unwrap();
+            assert_eq!(decoded, long);
+        }
+    }
+}
+
+/// `init_src_size()` pledges a size like `set_pledged_src_size()`: a short
+/// frame that fails on the calling thread does not pass for a failed job.
+#[cfg(all(feature = "std", feature = "experimental", feature = "zstdmt"))]
+#[test]
+#[allow(deprecated)]
+fn test_init_src_size_pledges_a_short_frame() {
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.init_src_size(1, 100).unwrap();
+    let mut buffer = Vec::with_capacity(1024);
+    let mut output = OutBuffer::around(&mut buffer);
+    cctx.compress_stream(&mut output, &mut InBuffer::around(&INPUT[..50]))
+        .unwrap();
+    // Less than what was pledged.
+    cctx.end_stream(&mut output).unwrap_err();
+    assert!(!cctx.3.broken);
+    cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+    buffer.clear();
+    cctx.compress2(&mut buffer, INPUT).unwrap();
+}
+
+/// An `NbWorkers` that zstd clamps to none is taken wherever `NbWorkers(0)`
+/// is.
+#[cfg(all(feature = "std", feature = "experimental", feature = "zstdmt"))]
+#[test]
+fn test_clamped_nb_workers_with_stable_out_buffer() {
+    use zstd_safe::{CCtx, CParameter};
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::StableOutBuffer(true))
+        .unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(1)).unwrap_err();
+    cctx.set_parameter(CParameter::NbWorkers(0)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(u32::MAX)).unwrap();
+}

@@ -456,6 +456,9 @@ impl<'a> CCtx<'a> {
     /// would then carry on from a state that still points at buffers and
     /// dictionaries borrowed for that one call. So reset explicitly: the next
     /// stream starts from scratch.
+    ///
+    /// Called as soon as zstd returns, inside the closure given to
+    /// `write_from`: that is the caller's code, which may panic afterwards.
     fn finish_one_shot(&mut self, res: SafeResult) -> SafeResult {
         self.reset(ResetDirective::SessionOnly).and(res)
     }
@@ -472,19 +475,19 @@ impl<'a> CCtx<'a> {
         // multithreaded frame left open was started with.
         self.drain();
         // Safety: ZSTD_compressCCtx returns how many bytes were written.
-        let res = unsafe {
+        unsafe {
             dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_compressCCtx(
+                let res = parse_code(zstd_sys::ZSTD_compressCCtx(
                     self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
                     src.len(),
                     compression_level,
-                ))
+                ));
+                self.finish_one_shot(res)
             })
-        };
-        self.finish_one_shot(res)
+        }
     }
 
     /// Wraps the `ZSTD_compress2()` function.
@@ -578,9 +581,9 @@ impl<'a> CCtx<'a> {
         // See `compress()`.
         self.drain();
         // Safety: ZSTD_compress_usingDict returns how many bytes were written.
-        let res = unsafe {
+        unsafe {
             dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_compress_usingDict(
+                let res = parse_code(zstd_sys::ZSTD_compress_usingDict(
                     self.0.as_ptr(),
                     buffer,
                     capacity,
@@ -589,10 +592,10 @@ impl<'a> CCtx<'a> {
                     ptr_void(dict),
                     dict.len(),
                     compression_level,
-                ))
+                ));
+                self.finish_one_shot(res)
             })
-        };
-        self.finish_one_shot(res)
+        }
     }
 
     /// Wraps the `ZSTD_compress_usingCDict()` function.
@@ -605,19 +608,19 @@ impl<'a> CCtx<'a> {
         // See `compress()`.
         self.drain();
         // Safety: ZSTD_compress_usingCDict returns how many bytes were written.
-        let res = unsafe {
+        unsafe {
             dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_compress_usingCDict(
+                let res = parse_code(zstd_sys::ZSTD_compress_usingCDict(
                     self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
                     src.len(),
                     cdict.0.as_ptr(),
-                ))
+                ));
+                self.finish_one_shot(res)
             })
-        };
-        self.finish_one_shot(res)
+        }
     }
 
     /// Initializes the context with the given compression level.
@@ -654,8 +657,6 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         self.drain();
         self.2.clear();
-        // zstd replaces the pledged size. Not knowing it is short only
-        // costs a flush when the frame is abandoned.
         self.3.pledged_short = false;
         // Safety: Just FFI
         let code = unsafe {
@@ -665,7 +666,13 @@ impl<'a> CCtx<'a> {
                 pledged_src_size as c_ulonglong,
             )
         };
-        parse_code(code)
+        let res = parse_code(code);
+        if res.is_ok() {
+            // See `Workers::short`. Here, zstd takes 0 for an unknown size.
+            self.3.pledged_short = pledged_src_size != 0
+                && pledged_src_size <= ZSTDMT_JOBSIZE_MIN as u64;
+        }
+        res
     }
 
     /// Wraps the `ZSTD_initCStream_usingDict()` function.
@@ -1188,7 +1195,8 @@ impl<'a> CCtx<'a> {
             CParameter::NbWorkers(workers) => {
                 // zstd would resize the job table the old jobs still use.
                 self.guard_workers()?;
-                if workers != 0 {
+                // What zstd will make of the value, see `accepted_workers`.
+                if accepted_workers(workers as c_int) != 0 {
                     if self.3.broken {
                         return Err(STAGE_WRONG_ERROR);
                     }
@@ -1635,6 +1643,9 @@ impl<'a> DCtx<'a> {
     /// skipping the reset saves a call per frame - which shows on tiny ones.
     ///
     /// Only the check is inlined: it runs once per frame.
+    ///
+    /// Called as soon as zstd returns, inside the closure given to
+    /// `write_from`: that is the caller's code, which may panic afterwards.
     #[inline]
     fn finish_one_shot(&mut self, res: SafeResult) -> SafeResult {
         if self.3.streamed || self.2.guard().is_err() {
@@ -1666,18 +1677,18 @@ impl<'a> DCtx<'a> {
         dst: &mut C,
         src: &[u8],
     ) -> SafeResult {
-        let res = unsafe {
+        unsafe {
             dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_decompressDCtx(
+                let res = parse_code(zstd_sys::ZSTD_decompressDCtx(
                     self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
                     src.len(),
-                ))
+                ));
+                self.finish_one_shot(res)
             })
-        };
-        self.finish_one_shot(res)
+        }
     }
 
     /// Fully decompress the given frame using a dictionary.
@@ -1699,9 +1710,9 @@ impl<'a> DCtx<'a> {
         src: &[u8],
         dict: &[u8],
     ) -> SafeResult {
-        let res = unsafe {
+        unsafe {
             dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_decompress_usingDict(
+                let res = parse_code(zstd_sys::ZSTD_decompress_usingDict(
                     self.0.as_ptr(),
                     buffer,
                     capacity,
@@ -1709,10 +1720,10 @@ impl<'a> DCtx<'a> {
                     src.len(),
                     ptr_void(dict),
                     dict.len(),
-                ))
+                ));
+                self.finish_one_shot(res)
             })
-        };
-        self.finish_one_shot(res)
+        }
     }
 
     /// Fully decompress the given frame using a dictionary.
@@ -1731,19 +1742,19 @@ impl<'a> DCtx<'a> {
         src: &[u8],
         ddict: &DDict<'_>,
     ) -> SafeResult {
-        let res = unsafe {
+        unsafe {
             dst.write_from(|buffer, capacity| {
-                parse_code(zstd_sys::ZSTD_decompress_usingDDict(
+                let res = parse_code(zstd_sys::ZSTD_decompress_usingDDict(
                     self.0.as_ptr(),
                     buffer,
                     capacity,
                     ptr_void(src),
                     src.len(),
                     ddict.0.as_ptr(),
-                ))
+                ));
+                self.finish_one_shot(res)
             })
-        };
-        self.finish_one_shot(res)
+        }
     }
 
     /// Initializes an existing `DStream` for decompression.

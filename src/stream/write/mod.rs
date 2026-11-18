@@ -241,6 +241,20 @@ impl<W: Write> Encoder<'static, W> {
         let encoder = raw::Encoder::with_dictionary(level, dictionary)?;
         Ok(Self::with_encoder(writer, encoder))
     }
+
+    /// Creates a new encoder with a prefix it owns, as single-use dictionary.
+    ///
+    /// `prefix` gives the bytes without copying them: a `Vec<u8>`, an
+    /// `Arc<[u8]>`, a memory map... Unlike [`Encoder::with_ref_prefix()`],
+    /// the frame can use worker threads ([`Encoder::multithread()`]).
+    pub fn with_prefix<P>(writer: W, level: i32, prefix: P) -> io::Result<Self>
+    where
+        P: std::ops::Deref + Send + Sync + 'static,
+        P::Target: AsRef<[u8]>,
+    {
+        let encoder = raw::Encoder::with_prefix(level, prefix)?;
+        Ok(Self::with_encoder(writer, encoder))
+    }
 }
 
 impl<'a, W: Write> Encoder<'a, W> {
@@ -268,9 +282,12 @@ impl<'a, W: Write> Encoder<'a, W> {
     ///
     /// (Provides better compression ratio for small files,
     /// but requires the dictionary to be present during decompression.)
+    ///
+    /// The encoder keeps its own handle to the dictionary, so it does not
+    /// borrow it.
     pub fn with_prepared_dictionary<'b>(
         writer: W,
-        dictionary: &'a EncoderDictionary<'b>,
+        dictionary: &EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
@@ -280,6 +297,12 @@ impl<'a, W: Write> Encoder<'a, W> {
     }
 
     /// Creates a new encoder, using a ref prefix
+    ///
+    /// The prefix is borrowed: with worker threads
+    /// ([`Encoder::multithread()`]), the frame is still compressed on the
+    /// calling thread, and the parameters that need them (`RSyncable`, say)
+    /// have no effect on it. [`Encoder::with_prefix()`] takes an owned
+    /// prefix, which can use them.
     pub fn with_ref_prefix<'b>(
         writer: W,
         level: i32,

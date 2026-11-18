@@ -23,6 +23,13 @@ pub use zstd_safe::{CDict, DDict};
 ///
 /// A dictionary can include its own copy of the data (if it is `'static`), or it can merely point
 /// to a separate buffer (if it has another lifetime).
+///
+/// It is a handle to a digested dictionary: cloning it is cheap, and shares
+/// the same digested tables. Encoders made with it keep their own handle, so
+/// they do not borrow it: an encoder from a local, a cache entry or a
+/// `static` dictionary with its own copy of the data is `'static` all the
+/// same, and can use worker threads.
+#[derive(Clone)]
 pub struct EncoderDictionary<'a> {
     cdict: CDict<'a>,
 }
@@ -58,11 +65,20 @@ impl EncoderDictionary<'static> {
     pub fn try_copy(dictionary: &[u8], level: i32) -> std::io::Result<Self> {
         let cdict = zstd_safe::CDict::try_create(dictionary, level)
             .ok_or_else(invalid_dictionary)?;
-        Ok(Self { cdict })
+        Ok(Self::from_cdict(cdict))
     }
 }
 
 impl<'a> EncoderDictionary<'a> {
+    /// Wraps a prepared dictionary.
+    ///
+    /// For instance one that owns the bytes it references, without copying
+    /// them (`CDict::create_by_reference_owned`, with the `experimental`
+    /// feature).
+    pub fn from_cdict(cdict: CDict<'a>) -> Self {
+        Self { cdict }
+    }
+
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     /// Create prepared dictionary for compression
@@ -70,6 +86,14 @@ impl<'a> EncoderDictionary<'a> {
     /// A level of `0` uses zstd's default (currently `3`).
     ///
     /// Only available with the `experimental` feature. Use `EncoderDictionary::copy` otherwise.
+    ///
+    /// The dictionary points into `dictionary` without copying it. With
+    /// worker threads (`multithread`), a streamed frame that reads such a
+    /// dictionary is compressed on the calling thread: an encoder can be
+    /// leaked mid-frame, and the borrow would end under its workers. To keep
+    /// them, use [`EncoderDictionary::copy`], or
+    /// [`EncoderDictionary::from_cdict`] with a dictionary that owns its
+    /// bytes (which also takes `'static` ones).
     ///
     /// # Panics
     ///
@@ -86,11 +110,14 @@ impl<'a> EncoderDictionary<'a> {
     ///
     /// Only available with the `experimental` feature. Use
     /// `EncoderDictionary::try_copy` otherwise.
+    ///
+    /// See [`EncoderDictionary::new`] for what borrowing the bytes means
+    /// with worker threads.
     pub fn try_new(dictionary: &'a [u8], level: i32) -> std::io::Result<Self> {
         let cdict =
             zstd_safe::CDict::try_create_by_reference(dictionary, level)
                 .ok_or_else(invalid_dictionary)?;
-        Ok(Self { cdict })
+        Ok(Self::from_cdict(cdict))
     }
 
     /// Returns reference to `CDict` inner object

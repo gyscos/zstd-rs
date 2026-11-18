@@ -326,9 +326,12 @@ impl<'a, R: BufRead> Encoder<'a, R> {
     /// Creates a new encoder, using an existing `EncoderDictionary`.
     ///
     /// The dictionary must be the same as the one used during compression.
+    ///
+    /// The encoder keeps its own handle to the dictionary, so it does not
+    /// borrow it.
     pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &'a EncoderDictionary<'b>,
+        dictionary: &EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,

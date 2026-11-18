@@ -275,3 +275,34 @@ fn test_multithreaded_compressor_after_a_failed_job() {
             .unwrap_err();
     }
 }
+
+/// With a prefix, a compressor's prepared dictionary is set aside for the
+/// call, and its compression level with it: the compressor's own is used.
+#[test]
+fn test_prefix_uses_the_compressors_own_level() {
+    let text = TEXT.as_bytes();
+    let (prefix, data) = text.split_at(text.len() / 2);
+    let dictionary = crate::dict::EncoderDictionary::copy(b"another", 19);
+
+    let mut prepared =
+        super::Compressor::with_prepared_dictionary(&dictionary).unwrap();
+    let with_prefix = prepared.compress_with_prefix(data, prefix).unwrap();
+    let at = |level| {
+        super::Compressor::new(level)
+            .unwrap()
+            .compress_with_prefix(data, prefix)
+            .unwrap()
+    };
+    assert!(with_prefix == at(3));
+    assert!(with_prefix != at(19));
+
+    // The dictionary and its level are back for the next call.
+    let mut fresh =
+        super::Compressor::with_prepared_dictionary(&dictionary).unwrap();
+    assert!(prepared.compress(data).unwrap() == fresh.compress(data).unwrap());
+
+    prepared
+        .set_parameter(zstd_safe::CParameter::CompressionLevel(19))
+        .unwrap();
+    assert!(prepared.compress_with_prefix(data, prefix).unwrap() == at(19));
+}

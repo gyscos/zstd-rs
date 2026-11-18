@@ -105,10 +105,14 @@ macro_rules! encoder_parameters {
         /// So even `n_workers = 1` may increase performance by separating
         /// IO and compression.
         ///
-        /// With a dictionary or prefix that is only borrowed (a prepared
-        /// dictionary, or a prefix), do not leak this (with `mem::forget`,
-        /// say) in the middle of a frame: the worker threads could then read
-        /// it after it is dropped. See `zstd_safe::CCtx`.
+        /// A streamed frame that reads borrowed data is compressed on the
+        /// calling thread whatever `n_workers` is, and the parameters that
+        /// need worker threads (`RSyncable`, `JobSize`, `OverlapSizeLog`)
+        /// are accepted but have no effect on it. That is a borrowed prefix
+        /// (`with_ref_prefix`), or a dictionary that points into borrowed
+        /// bytes (`EncoderDictionary::new`). A prefix the encoder owns
+        /// (`with_prefix`) and the other dictionaries use the workers. See
+        /// `zstd_safe::CCtx`.
         ///
         /// Note: This is only available if the `zstdmt` cargo feature is activated.
         #[cfg(feature = "zstdmt")]

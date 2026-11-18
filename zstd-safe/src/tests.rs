@@ -1859,3 +1859,62 @@ fn test_clamped_nb_workers_with_stable_out_buffer() {
     cctx.set_parameter(CParameter::NbWorkers(0)).unwrap();
     cctx.set_parameter(CParameter::NbWorkers(u32::MAX)).unwrap();
 }
+
+/// An output buffer whose position is past its end is refused before zstd
+/// sees it: zstd would fail without waiting for the frame's jobs, and the
+/// context would take the frame for over.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_output_position_past_the_end_keeps_the_frame() {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush;
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer, WriteBuf};
+
+    /// Reports a capacity that can shrink.
+    struct Shrinking(Vec<u8>, usize);
+    unsafe impl WriteBuf for Shrinking {
+        fn as_slice(&self) -> &[u8] {
+            &self.0
+        }
+        fn capacity(&self) -> usize {
+            self.1
+        }
+        fn as_mut_ptr(&mut self) -> *mut u8 {
+            self.0.as_mut_ptr()
+        }
+        unsafe fn filled_until(&mut self, n: usize) {
+            self.0.set_len(n);
+        }
+    }
+
+    let input = words(24 << 20, 2);
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    cctx.load_dictionary(&words(1 << 20, 1)).unwrap();
+
+    let mut dst = Shrinking(Vec::with_capacity(64), 64);
+    let mut src = InBuffer::around(&input);
+    let pos = {
+        let mut output = OutBuffer::around(&mut dst);
+        while output.pos() <= 8 {
+            cctx.compress_stream2(&mut output, &mut src, ZSTD_e_flush)
+                .unwrap();
+        }
+        output.pos()
+    };
+    assert!(cctx.3.pending && cctx.3.jobs);
+
+    dst.1 = 8;
+    let mut output = OutBuffer::around(&mut dst);
+    // As a buffer whose capacity shrank between two calls.
+    output.pos = pos;
+    catch_unwind(AssertUnwindSafe(|| {
+        cctx.compress_stream2(&mut output, &mut src, ZSTD_e_flush)
+    }))
+    .unwrap_err();
+    // Still known to be in progress, so abandoning it waits for the jobs.
+    assert!(cctx.3.pending && cctx.3.jobs);
+    cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+    check_round_trip(&mut cctx, &input, &words(64 << 10, 4));
+}

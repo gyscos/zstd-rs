@@ -1029,7 +1029,9 @@ impl<'a> CCtx<'a> {
                 }
             }
             // When a job failed, zstd waited for the others and reset the
-            // session (refused directives and buffers never get that far).
+            // session (refused directives never get that far, nor does an
+            // output position past the buffer's end, which zstd would refuse
+            // while jobs are running: see `OutBuffer::wrap()`).
             // Otherwise, there are no jobs. Either way, nothing is left to
             // wait for.
             Err(_) => {
@@ -2810,6 +2812,15 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
     }
 
     fn wrap<'b>(&'b mut self) -> OutBufferWrapper<'b, 'a, C> {
+        // `pos` is public, and the capacity is the caller's to report: it
+        // may have shrunk since the last call. zstd refuses such a buffer
+        // before doing anything, and `set_pos()` would panic on it once the
+        // call returned: do it first, while a compression context still
+        // knows about the frame it has in progress.
+        if self.pos > self.dst.capacity() {
+            panic!("Given position outside of the buffer bounds.");
+        }
+
         OutBufferWrapper {
             buf: zstd_sys::ZSTD_outBuffer {
                 dst: ptr_mut_void(self.dst),

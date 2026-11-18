@@ -1861,6 +1861,125 @@ fn test_compress_with_borrowed_prefix() {
     assert!(!cctx.3.pending, "returned with jobs running");
 }
 
+/// When the destination is too small, the one-shot calls wait for the jobs
+/// that read borrowed data before they return: zstd has no worker left
+/// running, whatever the context believes.
+#[cfg(all(feature = "std", feature = "zstdmt", feature = "experimental"))]
+#[test]
+fn test_one_shot_too_small_leaves_no_worker_running() {
+    use zstd_safe::{CCtx, CDict, CParameter, SafeResult};
+
+    let input = words(16 << 20, 2);
+    let data = words(1 << 20, 3);
+    type OneShot = fn(&mut CCtx<'_>, &mut [u8], &[u8], &[u8]) -> SafeResult;
+    let one_shots: [OneShot; 3] = [
+        |cctx, dst, src, data| {
+            // Safety: the test keeps `data` alive, and only the lifetime
+            // of the context stands in its way here.
+            let data: &'static [u8] = unsafe {
+                core::slice::from_raw_parts(data.as_ptr(), data.len())
+            };
+            cctx.ref_prefix(data).unwrap();
+            cctx.compress2(dst, src)
+        },
+        |cctx, dst, src, data| cctx.compress_with_prefix(dst, src, data),
+        |cctx, dst, src, data| {
+            let cdict = CDict::create_by_reference(data, 1);
+            cctx.compress_with_cdict(dst, src, &cdict)
+        },
+    ];
+    for one_shot in one_shots {
+        for _ in 0..4 {
+            let mut cctx = CCtx::create();
+            cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+            cctx.set_parameter(CParameter::NbWorkers(3)).unwrap();
+            let mut small = [0u8; 64];
+            one_shot(&mut cctx, &mut small[..], &input, &data).unwrap_err();
+            assert_eq!(cctx.get_frame_progression().nbActiveWorkers, 0);
+        }
+    }
+}
+
+/// zstd ends a frame that runs on the calling thread as soon as its end is
+/// flushed out, even by a call that is not `end_stream()`: the context
+/// knows, and the next frame is set up as any other.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_calling_thread_frame_ended_by_a_flush() {
+    use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_continue;
+    use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+
+    let input = words(4 << 20, 2);
+    let prefix = words(1 << 20, 3);
+    let context = || {
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+        cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+        cctx
+    };
+    let multi = stream_frame(&mut context(), &input);
+
+    // Streams `input`, then ends the frame with room for one byte only.
+    // Returns how much of `buffer` was written.
+    let all_but_the_end = |cctx: &mut CCtx<'_>, buffer: &mut [u8]| {
+        let mut output = OutBuffer::around(&mut buffer[..]);
+        let mut src = InBuffer::around(&input);
+        while src.pos() < input.len() {
+            cctx.compress_stream(&mut output, &mut src).unwrap();
+        }
+        let written = output.pos();
+        let mut output = OutBuffer::around(&mut buffer[written..written + 1]);
+        assert_ne!(cctx.end_stream(&mut output).unwrap(), 0);
+        written + output.pos()
+    };
+    let mut buffer = std::vec![0u8; zstd_safe::compress_bound(input.len())];
+
+    // The end of the frame comes out through `flush_stream()`, the old
+    // `compress_stream()`, or `compress_stream2()` without a directive.
+    for way in 0..3 {
+        let mut cctx = context();
+        cctx.ref_prefix(&prefix).unwrap();
+        let written = all_but_the_end(&mut cctx, &mut buffer);
+        assert!(cctx.3.pending && !cctx.3.requested);
+
+        let mut output = OutBuffer::around(&mut buffer[written..]);
+        let mut none = InBuffer::around(&[]);
+        match way {
+            0 => assert_eq!(cctx.flush_stream(&mut output).unwrap(), 0),
+            1 => drop(cctx.compress_stream(&mut output, &mut none).unwrap()),
+            _ => assert_eq!(
+                cctx.compress_stream2(&mut output, &mut none, ZSTD_e_continue)
+                    .unwrap(),
+                0
+            ),
+        }
+        let written = written + output.pos();
+        assert!(!cctx.3.pending, "way {}", way);
+        check_with_prefix(&buffer[..written], &prefix, &input);
+
+        // Nothing is in progress: the context takes a prefix again, and the
+        // next frame, without one, gets the workers.
+        cctx.ref_prefix(&prefix).unwrap();
+        cctx.disable_dictionary().unwrap();
+        assert_eq!(cctx.frame_workers(), 2);
+        assert!(stream_frame(&mut cctx, &input) == multi);
+    }
+
+    // A frame on the workers stays in progress until `end_stream()` says
+    // it is over.
+    let mut cctx = context();
+    let written = all_but_the_end(&mut cctx, &mut buffer);
+    let mut output = OutBuffer::around(&mut buffer[written..]);
+    while cctx.flush_stream(&mut output).unwrap() != 0 {}
+    assert!(cctx.3.pending);
+    assert_eq!(cctx.end_stream(&mut output).unwrap(), 0);
+    assert!(!cctx.3.pending);
+    let written = written + output.pos();
+    let mut decoded = Vec::with_capacity(input.len());
+    zstd_safe::decompress(&mut decoded, &buffer[..written]).unwrap();
+    assert!(decoded == input);
+}
+
 /// The one-shot calls with borrowed data unreference it on every way out,
 /// a panic in the caller's `WriteBuf` included, and reference again the
 /// dictionary the context held.

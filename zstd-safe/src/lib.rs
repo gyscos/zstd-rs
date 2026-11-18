@@ -427,7 +427,7 @@ fn accepted_workers(value: c_int) -> u32 {
 /// A streaming frame that reads *borrowed* data is compressed on the calling
 /// thread instead, as with `NbWorkers(0)`. That is a prefix given to
 /// [`CCtx::ref_prefix()`], a dictionary made from borrowed bytes
-/// ([`CDict::create_by_reference()`]), and, without `alloc`, any dictionary
+/// (`CDict::create_by_reference()`), and, without `alloc`, any dictionary
 /// given to [`CCtx::ref_cdict()`]. The parameters that only apply to worker
 /// threads (`JobSize`, `OverlapSizeLog`, `RSyncable`) are still accepted, but
 /// have no effect on that frame: only [`CCtx::frame_workers()`] tells.
@@ -1035,7 +1035,7 @@ impl<'a> CCtx<'a> {
     /// The context keeps its own handle to it, so the dictionary itself is
     /// not borrowed: it can come from a cache, a `static` or a local, and be
     /// dropped before the context. Only the bytes a dictionary made with
-    /// [`CDict::create_by_reference()`] points into must outlive the
+    /// `CDict::create_by_reference()` points into must outlive the
     /// context.
     ///
     /// Frames with it may use worker threads, unless it points into such
@@ -1079,7 +1079,8 @@ impl<'a> CCtx<'a> {
     /// References a prepared dictionary for the next frames, moving it into
     /// the context.
     ///
-    /// See [`CCtx::ref_cdict()`].
+    /// The dictionary is dropped if this fails (while a frame is in
+    /// progress, say). See [`CCtx::ref_cdict()`].
     pub fn set_cdict<'b>(&mut self, cdict: CDict<'b>) -> SafeResult
     where
         'b: 'a,
@@ -1494,6 +1495,17 @@ impl<'a> CCtx<'a> {
         self.3.jobs |= self.3.requested && taken > 0 && !self.3.short;
         match res {
             Ok(0) if end_op == ZSTD_e_end => self.end_frame(),
+            // A frame on the calling thread is over as soon as its end is
+            // flushed out, whatever the directive of that call (a frame on
+            // the workers waits for another `ZSTD_e_end`). Ask zstd, rather
+            // than guess what a call that ended the frame left to do.
+            Ok(_)
+                if self.3.ended
+                    && end_op != ZSTD_e_end
+                    && self.between_frames() =>
+            {
+                self.end_frame()
+            }
             Ok(_) => {
                 self.3.pending = true;
                 if end_op == ZSTD_e_end {
@@ -1512,6 +1524,23 @@ impl<'a> CCtx<'a> {
                 self.end_frame();
             }
         }
+    }
+
+    /// Whether zstd is between two frames, while `NbWorkers` is set.
+    ///
+    /// zstd refuses a new `nbWorkers` while a frame is in progress, before
+    /// looking at anything else, and takes the one it already has otherwise.
+    fn between_frames(&mut self) -> bool {
+        let workers = if self.3.requested { self.3.count } else { 0 };
+        // Safety: Just FFI
+        let code = unsafe {
+            zstd_sys::ZSTD_CCtx_setParameter(
+                self.0.as_ptr(),
+                zstd_sys::ZSTD_cParameter::ZSTD_c_nbWorkers,
+                workers as c_int,
+            )
+        };
+        parse_code(code).is_ok()
     }
 
     /// Records that no frame is in progress anymore.
@@ -1630,8 +1659,11 @@ impl<'a> CCtx<'a> {
     /// clamped it to its bounds, unless that frame reads borrowed data (a
     /// prefix given to [`CCtx::ref_prefix()`], say): a streaming frame then
     /// runs on the calling thread, see
-    /// [`CCtx`](CCtx#worker-threads-and-leaks). `compress2()` always uses
-    /// the workers.
+    /// [`CCtx`](CCtx#worker-threads-and-leaks). `compress2()` always may
+    /// use the workers.
+    ///
+    /// zstd itself compresses a frame it knows to be short (512 KiB at
+    /// most) on the calling thread, which this does not tell.
     pub fn frame_workers(&self) -> u32 {
         let workers = if self.3.pending {
             self.3.requested
@@ -2661,8 +2693,8 @@ impl core::panic::RefUnwindSafe for Owner {}
 /// it.
 ///
 /// The bytes it was made from are copied ([`CDict::create()`]), owned by the
-/// dictionary ([`CDict::create_by_reference_owned()`]), or borrowed for `'a`
-/// ([`CDict::create_by_reference()`]). With worker threads, a streaming frame
+/// dictionary (`CDict::create_by_reference_owned()`), or borrowed for `'a`
+/// (`CDict::create_by_reference()`). With worker threads, a streaming frame
 /// that reads borrowed bytes runs on the calling thread, see
 /// [`CCtx`](CCtx#worker-threads-and-leaks).
 ///
@@ -2929,7 +2961,7 @@ impl<'a> CDict<'a> {
     /// thread, see [`CCtx`](CCtx#worker-threads-and-leaks): a context can be
     /// leaked mid-frame, and the borrow would end under its workers.
     ///
-    /// [`CDict::try_create_by_reference_owned()`] makes a dictionary that
+    /// `CDict::try_create_by_reference_owned()` makes a dictionary that
     /// keeps the workers, from bytes with an owner (a `Vec`, an
     /// `Arc<[u8]>`, a memory map) or `'static` ones (`include_bytes!`,
     /// say): nothing tells this method that a `&'a [u8]` is `'static`.

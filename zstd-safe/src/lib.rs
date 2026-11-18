@@ -424,11 +424,15 @@ impl<'a> CCtx<'a> {
     ) -> SafeResult {
         // The one-shot calls run on the calling thread, but end by resetting
         // the session (see `finish_one_shot`), and overwrite the parameters a
-        // multithreaded frame left open was started with.
-        self.drain();
+        // multithreaded frame left open was started with: wait for its jobs
+        // first. That is done inside the closure, with the call it is for:
+        // `write_from` is the caller's code, and when it panics before
+        // running the closure, the frame is still in progress, and known as
+        // such.
         // Safety: ZSTD_compressCCtx returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
+                self.drain();
                 let res = parse_code(zstd_sys::ZSTD_compressCCtx(
                     self.0.as_ptr(),
                     buffer,
@@ -530,11 +534,11 @@ impl<'a> CCtx<'a> {
         dict: &[u8],
         compression_level: CompressionLevel,
     ) -> SafeResult {
-        // See `compress()`.
-        self.drain();
         // Safety: ZSTD_compress_usingDict returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
+                // See `compress()`.
+                self.drain();
                 let res = parse_code(zstd_sys::ZSTD_compress_usingDict(
                     self.0.as_ptr(),
                     buffer,
@@ -557,11 +561,11 @@ impl<'a> CCtx<'a> {
         src: &[u8],
         cdict: &CDict<'_>,
     ) -> SafeResult {
-        // See `compress()`.
-        self.drain();
         // Safety: ZSTD_compress_usingCDict returns how many bytes were written.
         unsafe {
             dst.write_from(|buffer, capacity| {
+                // See `compress()`.
+                self.drain();
                 let res = parse_code(zstd_sys::ZSTD_compress_usingCDict(
                     self.0.as_ptr(),
                     buffer,
@@ -2698,19 +2702,21 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
     }
 
     fn wrap<'b>(&'b mut self) -> OutBufferWrapper<'b, 'a, C> {
-        // `pos` is public, and the capacity is the caller's to report: it
-        // may have shrunk since the last call. zstd refuses such a buffer
-        // before doing anything, and `set_pos()` would panic on it once the
-        // call returned: do it first, while a compression context still
-        // knows about the frame it has in progress.
-        if self.pos > self.dst.capacity() {
+        // The capacity is the caller's to report (`WriteBuf`), and may have
+        // shrunk since the position was set. zstd refuses a position past
+        // the end before doing anything, and `set_pos()` would panic on it
+        // once the call returned: do it first, while a compression context
+        // still knows about the frame it has in progress. The capacity is
+        // read once, so zstd gets the one that was checked.
+        let capacity = self.dst.capacity();
+        if self.pos > capacity {
             panic!("Given position outside of the buffer bounds.");
         }
 
         OutBufferWrapper {
             buf: zstd_sys::ZSTD_outBuffer {
                 dst: ptr_mut_void(self.dst),
-                size: self.dst.capacity(),
+                size: capacity,
                 pos: self.pos,
             },
             parent: self,

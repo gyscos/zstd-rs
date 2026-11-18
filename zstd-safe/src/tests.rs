@@ -2037,14 +2037,19 @@ fn test_output_position_past_the_end_keeps_the_frame() {
     use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush;
     use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer, WriteBuf};
 
-    /// Reports a capacity that can shrink.
-    struct Shrinking(Vec<u8>, usize);
+    /// Reports a capacity that can shrink: at once, or (`.2`) only from
+    /// the second time it is asked.
+    struct Shrinking(Vec<u8>, usize, core::cell::Cell<bool>);
     unsafe impl WriteBuf for Shrinking {
         fn as_slice(&self) -> &[u8] {
             &self.0
         }
         fn capacity(&self) -> usize {
-            self.1
+            if self.2.replace(false) {
+                self.0.capacity()
+            } else {
+                self.1
+            }
         }
         fn as_mut_ptr(&mut self) -> *mut u8 {
             self.0.as_mut_ptr()
@@ -2054,34 +2059,82 @@ fn test_output_position_past_the_end_keeps_the_frame() {
         }
     }
 
-    let input = words(24 << 20, 2);
-    let mut cctx = CCtx::create();
-    cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
-    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
-    cctx.load_dictionary(&words(1 << 20, 1)).unwrap();
+    for late in [false, true] {
+        let input = words(24 << 20, 2);
+        let mut cctx = CCtx::create();
+        cctx.set_parameter(CParameter::CompressionLevel(1)).unwrap();
+        cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+        cctx.load_dictionary(&words(1 << 20, 1)).unwrap();
 
-    let mut dst = Shrinking(Vec::with_capacity(64), 64);
-    let mut src = InBuffer::around(&input);
-    let pos = {
+        let mut dst =
+            Shrinking(Vec::with_capacity(64), 64, Default::default());
+        let mut src = InBuffer::around(&input);
+        let pos = {
+            let mut output = OutBuffer::around(&mut dst);
+            while output.pos() <= 8 {
+                cctx.compress_stream2(&mut output, &mut src, ZSTD_e_flush)
+                    .unwrap();
+            }
+            output.pos()
+        };
+        assert!(cctx.3.pending && cctx.3.jobs);
+
+        dst.1 = 8;
+        dst.2.set(late);
         let mut output = OutBuffer::around(&mut dst);
-        while output.pos() <= 8 {
+        // As a buffer whose capacity shrank between two calls.
+        output.pos = pos;
+        catch_unwind(AssertUnwindSafe(|| {
             cctx.compress_stream2(&mut output, &mut src, ZSTD_e_flush)
-                .unwrap();
-        }
-        output.pos()
-    };
-    assert!(cctx.3.pending && cctx.3.jobs);
+        }))
+        .unwrap_err();
+        // Still known to be in progress, so abandoning it waits for the jobs.
+        assert!(cctx.3.pending && cctx.3.jobs);
+        cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+        check_round_trip(&mut cctx, &input, &words(64 << 10, 4));
+    }
+}
 
-    dst.1 = 8;
-    let mut output = OutBuffer::around(&mut dst);
-    // As a buffer whose capacity shrank between two calls.
-    output.pos = pos;
-    catch_unwind(AssertUnwindSafe(|| {
-        cctx.compress_stream2(&mut output, &mut src, ZSTD_e_flush)
-    }))
-    .unwrap_err();
-    // Still known to be in progress, so abandoning it waits for the jobs.
-    assert!(cctx.3.pending && cctx.3.jobs);
-    cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
-    check_round_trip(&mut cctx, &input, &words(64 << 10, 4));
+/// A one-shot call whose destination panics before zstd is called leaves a
+/// multithreaded frame in progress as it was: still known, so still waited
+/// for and refused more input like any other.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_one_shot_that_panics_early_keeps_the_frame() {
+    use std::io::Cursor;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use zstd_safe::{CCtx, CDict, SafeResult};
+
+    type OneShot =
+        fn(&mut CCtx<'_>, &mut Cursor<Vec<u8>>, &[u8]) -> SafeResult;
+    let one_shots: [OneShot; 3] = [
+        |cctx, dst, src| cctx.compress(dst, src, 1),
+        |cctx, dst, src| {
+            cctx.compress_using_dict(dst, src, &std::vec![b'd'; 1000], 1)
+        },
+        |cctx, dst, src| {
+            let cdict = CDict::create(&[b'd'; 1000], 1);
+            cctx.compress_using_cdict(dst, src, &cdict)
+        },
+    ];
+
+    let input = words(24 << 20, 2);
+    for one_shot in one_shots {
+        let mut cctx = CCtx::create();
+        start_multithreaded_frame(&mut cctx, &input);
+        assert!(cctx.3.pending);
+
+        // A cursor past the end of its buffer panics when asked where to
+        // write, before the call gets to zstd.
+        let mut dst = Cursor::new(Vec::with_capacity(16));
+        dst.set_position(17);
+        catch_unwind(AssertUnwindSafe(|| {
+            one_shot(&mut cctx, &mut dst, INPUT)
+        }))
+        .unwrap_err();
+        assert!(cctx.3.pending);
+
+        cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+        check_round_trip(&mut cctx, &input, &words(64 << 10, 4));
+    }
 }

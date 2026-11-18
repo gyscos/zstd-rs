@@ -452,6 +452,10 @@ struct Held {
     /// The lifetime of the bytes it may point into is the context's `'a`
     /// (or longer), see `CDict::erased()`.
     cdict: Option<CDict<'static>>,
+    /// The dictionary zstd references, when the context has no handle to it
+    /// and only borrows it, for its `'a`: kept to reference it again after a
+    /// call that set it aside (`compress_with`).
+    borrowed_cdict: Option<NonNull<zstd_sys::ZSTD_CDict>>,
     /// Never read: only kept until zstd no longer references its bytes.
     #[cfg(feature = "alloc")]
     #[allow(dead_code)]
@@ -459,12 +463,26 @@ struct Held {
 }
 
 impl Held {
-    /// Only a dictionary (or nothing).
-    fn with_cdict(cdict: Option<CDict<'static>>) -> Self {
+    /// Only a dictionary (or nothing): one the context has a handle to, or
+    /// one it borrows.
+    fn with_cdict(
+        cdict: Option<CDict<'static>>,
+        borrowed_cdict: Option<NonNull<zstd_sys::ZSTD_CDict>>,
+    ) -> Self {
         Held {
             cdict,
+            borrowed_cdict,
             #[cfg(feature = "alloc")]
             prefix: None,
+        }
+    }
+
+    /// zstd's pointer to the dictionary, or null.
+    fn cdict_ptr(&self) -> *mut zstd_sys::ZSTD_CDict {
+        match (&self.cdict, self.borrowed_cdict) {
+            (Some(cdict), _) => cdict.as_ptr(),
+            (None, Some(cdict)) => cdict.as_ptr(),
+            (None, None) => core::ptr::null_mut(),
         }
     }
 }
@@ -737,9 +755,9 @@ impl<'a> CCtx<'a> {
     /// [`CCtx::compress_using_cdict()`], it uses the worker threads and the
     /// context's parameters (a checksum, say).
     ///
-    /// A dictionary the context holds ([`CCtx::ref_cdict()`],
-    /// [`CCtx::set_cdict()`]) is referenced again afterwards; one it only
-    /// borrows, or a prefix, is not. With a dictionary loaded with
+    /// The dictionary the context referenced ([`CCtx::ref_cdict()`],
+    /// [`CCtx::set_cdict()`]) is referenced again afterwards; a prefix is
+    /// not. With a dictionary loaded with
     /// [`CCtx::load_dictionary()`], which could not be loaded again, this
     /// fails with a `dictionary_wrong` error: disable it first.
     pub fn compress_with_cdict<C: WriteBuf + ?Sized>(
@@ -764,9 +782,9 @@ impl<'a> CCtx<'a> {
     /// prepared one decides: this frame gets the context's own (its
     /// `CompressionLevel`, say), not the dictionary's.
     ///
-    /// A dictionary the context holds ([`CCtx::ref_cdict()`],
-    /// [`CCtx::set_cdict()`]) is referenced again afterwards; one it only
-    /// borrows, or another prefix, is not. With a dictionary loaded with
+    /// The dictionary the context referenced ([`CCtx::ref_cdict()`],
+    /// [`CCtx::set_cdict()`]) is referenced again afterwards; another
+    /// prefix is not. With a dictionary loaded with
     /// [`CCtx::load_dictionary()`], which could not be loaded again, this
     /// fails with a `dictionary_wrong` error: disable it first.
     pub fn compress_with_prefix<C: WriteBuf + ?Sized>(
@@ -797,9 +815,9 @@ impl<'a> CCtx<'a> {
         /// Puts the context back as it was, see `compress_with`.
         struct Restore<'c, 'a> {
             cctx: &'c mut CCtx<'a>,
-            /// What the context held. Its dictionary is given back; a
-            /// prefix it owned is dropped after `drop()`, once zstd no
-            /// longer references it (its `Drop` may panic).
+            /// What the context held. Its dictionary is given back, held or
+            /// borrowed; a prefix it owned is dropped after `drop()`, once
+            /// zstd no longer references it (its `Drop` may panic).
             old: Held,
         }
         impl Drop for Restore<'_, '_> {
@@ -812,18 +830,22 @@ impl<'a> CCtx<'a> {
                         cctx.0.as_ptr(),
                         zstd_sys::ZSTD_ResetDirective::ZSTD_reset_session_only,
                     );
-                    let held = self
-                        .old
-                        .cdict
-                        .as_ref()
-                        .map_or(core::ptr::null_mut(), |cdict| cdict.as_ptr());
-                    zstd_sys::ZSTD_CCtx_refCDict(cctx.0.as_ptr(), held);
+                    // A dictionary the context only borrows is still
+                    // borrowed: for `'a`, which outlives the context.
+                    zstd_sys::ZSTD_CCtx_refCDict(
+                        cctx.0.as_ptr(),
+                        self.old.cdict_ptr(),
+                    );
                 }
                 cctx.2.clear();
                 cctx.3.pledged_short = false;
-                let old = self.old.cdict.take();
-                let borrowed = old.as_ref().map_or(false, CDict::borrows);
-                cctx.referenced(false, borrowed, false, Held::with_cdict(old));
+                let old = Held::with_cdict(
+                    self.old.cdict.take(),
+                    self.old.borrowed_cdict.take(),
+                );
+                let borrowed = old.borrowed_cdict.is_some()
+                    || old.cdict.as_ref().map_or(false, CDict::borrows);
+                cctx.referenced(false, borrowed, false, old);
             }
         }
 
@@ -996,7 +1018,7 @@ impl<'a> CCtx<'a> {
         };
         let res = self.2.record(parse_code(code));
         if res.is_ok() {
-            self.hold_cdict(held, cdict.borrows());
+            self.hold_cdict(cdict.as_ptr(), held, cdict.borrows());
         }
         res
     }
@@ -1104,7 +1126,7 @@ impl<'a> CCtx<'a> {
             zstd_sys::ZSTD_CCtx_refCDict(self.0.as_ptr(), cdict)
         });
         if res.is_ok() {
-            self.hold_cdict(held, borrows);
+            self.hold_cdict(cdict, held, borrows);
         }
         res
     }
@@ -1114,9 +1136,19 @@ impl<'a> CCtx<'a> {
     ///
     /// `borrows` is whether a frame that reads it reads borrowed data: the
     /// dictionary itself, without a handle, or the bytes it points into.
-    fn hold_cdict(&mut self, held: Option<CDict<'static>>, borrows: bool) {
-        let borrowed = borrows || held.is_none();
-        self.referenced(false, borrowed, false, Held::with_cdict(held));
+    fn hold_cdict(
+        &mut self,
+        cdict: *mut zstd_sys::ZSTD_CDict,
+        held: Option<CDict<'static>>,
+        borrows: bool,
+    ) {
+        let borrowed_cdict = match held {
+            Some(_) => None,
+            None => NonNull::new(cdict),
+        };
+        let borrowed = borrows || borrowed_cdict.is_some();
+        let held = Held::with_cdict(held, borrowed_cdict);
+        self.referenced(false, borrowed, false, held);
     }
 
     /// Return to "no-dictionary" mode.
@@ -1210,6 +1242,7 @@ impl<'a> CCtx<'a> {
         if res.is_ok() {
             let held = Held {
                 cdict: None,
+                borrowed_cdict: None,
                 prefix: Some(owner),
             };
             self.referenced(false, false, false, held);

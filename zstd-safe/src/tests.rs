@@ -2643,3 +2643,34 @@ fn test_auto_traits() {
     check::<zstd_safe::DCtx<'static>>();
     check::<zstd_safe::DDict<'static>>();
 }
+
+/// A one-shot call with other data sets the context's dictionary aside, and
+/// references it again afterwards, whether the context has its own handle
+/// to it (with `alloc`) or only borrows it (without).
+#[test]
+fn test_one_shot_with_borrowed_data_puts_the_dictionary_back() {
+    use zstd_safe::{CCtx, CDict};
+
+    let cdict = CDict::create(b"a dictionary to compress the input with", 19);
+    let mut fresh = CCtx::create();
+    fresh.ref_cdict(&cdict).unwrap();
+    let mut expected = [0u8; 256];
+    let expected_len = fresh.compress2(&mut expected[..], INPUT).unwrap();
+
+    let other = CDict::create(b"another dictionary", 1);
+    let mut cctx = CCtx::create();
+    cctx.ref_cdict(&cdict).unwrap();
+    let mut buffer = [0u8; 256];
+    for with_prefix in [true, false] {
+        let with_other = if with_prefix {
+            cctx.compress_with_prefix(&mut buffer[..], INPUT, b"a prefix")
+        } else {
+            cctx.compress_with_cdict(&mut buffer[..], INPUT, &other)
+        };
+        let with_other = with_other.unwrap();
+        assert!(buffer[..with_other] != expected[..expected_len]);
+
+        let again = cctx.compress2(&mut buffer[..], INPUT).unwrap();
+        assert!(buffer[..again] == expected[..expected_len]);
+    }
+}

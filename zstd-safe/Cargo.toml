@@ -28,9 +28,11 @@ experimental = ["zstd-sys/experimental"]
 legacy = ["zstd-sys/legacy"]
 pkg-config = ["zstd-sys/pkg-config"]
 vendored = ["zstd-sys/vendored"]
-alloc = [] # Implements WriteBuf for Vec.
+alloc = [] # Implements WriteBuf for Vec; makes CDict a shared handle.
 std = ["alloc", "zstd-sys/std"] # Also implements WriteBuf for Cursor.
-zstdmt = ["zstd-sys/zstdmt"]
+# Worker threads need the shared dictionary handles of `alloc`, see
+# `CCtx::ref_cdict()`.
+zstdmt = ["zstd-sys/zstdmt", "alloc"]
 thin = ["zstd-sys/thin"]
 arrays = []
 cmake = ["zstd-sys/cmake"]

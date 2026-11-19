@@ -427,10 +427,16 @@ fn accepted_workers(value: c_int) -> u32 {
 /// A streaming frame that reads *borrowed* data is compressed on the calling
 /// thread instead, as with `NbWorkers(0)`. That is a prefix given to
 /// [`CCtx::ref_prefix()`], a dictionary made from borrowed bytes
-/// (`CDict::create_by_reference()`), and, without `alloc`, any dictionary
-/// given to [`CCtx::ref_cdict()`]. The parameters that only apply to worker
+/// (`CDict::create_by_reference()`). The parameters that only apply to worker
 /// threads (`JobSize`, `OverlapSizeLog`, `RSyncable`) are still accepted, but
 /// have no effect on that frame: only [`CCtx::frame_workers()`] tells.
+///
+/// The `zstdmt` feature enables `alloc`, so a build with worker threads
+/// always has the shared dictionary handles [`CCtx::ref_cdict()`] relies on.
+/// Without `alloc`, `ref_cdict()` only borrows the dictionary. That only
+/// matters with a system zstd library that has worker threads while the
+/// `zstdmt` feature is off: its streaming frames reading such a dictionary
+/// run on the calling thread too.
 ///
 /// [`CCtx::compress2()`] and `compress_with_*()` never return with a frame
 /// that reads borrowed data still in progress, so they use the workers with
@@ -1081,10 +1087,12 @@ impl<'a> CCtx<'a> {
 
     /// References a prepared dictionary for the next frames, borrowing it.
     ///
-    /// Without `alloc`, a dictionary cannot be shared otherwise. A streaming
-    /// frame that reads a borrowed dictionary runs on the calling thread,
-    /// see [`CCtx`](CCtx#worker-threads-and-leaks); [`CCtx::set_cdict()`]
-    /// moves the dictionary into the context instead.
+    /// Without `alloc`, a dictionary cannot be shared otherwise. This build
+    /// has no worker threads unless it links a system zstd library that has
+    /// them (the `zstdmt` feature enables `alloc`): a streaming frame that
+    /// reads a borrowed dictionary then runs on the calling thread, see
+    /// [`CCtx`](CCtx#worker-threads-and-leaks). [`CCtx::set_cdict()`] moves
+    /// the dictionary into the context instead.
     ///
     /// Like zstd, this fails with a `stage_wrong` error while a frame is in
     /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).

@@ -84,7 +84,7 @@ const MEMORY_ALLOCATION_ERROR: ErrorCode =
 /// The error code zstd itself returns for a parameter it does not support
 /// (`-ZSTD_error_parameter_unsupported` as a `size_t`), for the parameters
 /// that are refused on the Rust side of a call.
-#[cfg(feature = "experimental")]
+#[cfg(any(feature = "experimental", not(feature = "zstdmt")))]
 const PARAMETER_UNSUPPORTED_ERROR: ErrorCode =
     (zstd_sys::ZSTD_ErrorCode::ZSTD_error_parameter_unsupported as usize)
         .wrapping_neg();
@@ -431,12 +431,10 @@ fn accepted_workers(value: c_int) -> u32 {
 /// threads (`JobSize`, `OverlapSizeLog`, `RSyncable`) are still accepted, but
 /// have no effect on that frame: only [`CCtx::frame_workers()`] tells.
 ///
-/// The `zstdmt` feature enables `alloc`, so a build with worker threads
-/// always has the shared dictionary handles [`CCtx::ref_cdict()`] relies on.
-/// Without `alloc`, `ref_cdict()` only borrows the dictionary. That only
-/// matters with a system zstd library that has worker threads while the
-/// `zstdmt` feature is off: its streaming frames reading such a dictionary
-/// run on the calling thread too.
+/// Worker threads need the `zstdmt` feature, which enables `alloc`: a build
+/// with worker threads always has the shared dictionary handles
+/// [`CCtx::ref_cdict()`] relies on. Without the feature, `NbWorkers` is
+/// refused, even when the linked zstd library has worker threads.
 ///
 /// [`CCtx::compress2()`] and `compress_with_*()` never return with a frame
 /// that reads borrowed data still in progress, so they use the workers with
@@ -1088,11 +1086,9 @@ impl<'a> CCtx<'a> {
     /// References a prepared dictionary for the next frames, borrowing it.
     ///
     /// Without `alloc`, a dictionary cannot be shared otherwise. This build
-    /// has no worker threads unless it links a system zstd library that has
-    /// them (the `zstdmt` feature enables `alloc`): a streaming frame that
-    /// reads a borrowed dictionary then runs on the calling thread, see
-    /// [`CCtx`](CCtx#worker-threads-and-leaks). [`CCtx::set_cdict()`] moves
-    /// the dictionary into the context instead.
+    /// has no worker threads (the `zstdmt` feature enables `alloc`), so
+    /// borrowing is all a frame needs. [`CCtx::set_cdict()`] moves the
+    /// dictionary into the context instead.
     ///
     /// Like zstd, this fails with a `stage_wrong` error while a frame is in
     /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).
@@ -1794,9 +1790,21 @@ impl<'a> CCtx<'a> {
     /// a frame is in progress, and so does setting it to a non-zero value
     /// after a multithreaded call failed (see [`CCtx::wait_for_workers()`]).
     /// `NbWorkers` and `StableOutBuffer` cannot be used together.
+    ///
+    /// Without the `zstdmt` feature, a non-zero `NbWorkers` fails with a
+    /// `parameter_unsupported` error, as it does in a zstd library built
+    /// without worker threads, even when the linked library has them.
     pub fn set_parameter(&mut self, param: CParameter) -> SafeResult {
         match param {
             CParameter::NbWorkers(workers) => {
+                // What a zstd built without worker threads answers. A system
+                // library may have them: they stay off without the feature,
+                // which is what makes the shared dictionary handles available
+                // (see `CCtx::ref_cdict()`).
+                #[cfg(not(feature = "zstdmt"))]
+                if workers != 0 {
+                    return Err(PARAMETER_UNSUPPORTED_ERROR);
+                }
                 // zstd would resize the job table the old jobs still use.
                 self.guard_workers()?;
                 // What zstd will make of the value, see `accepted_workers`.
@@ -4108,7 +4116,8 @@ pub enum CParameter {
     /// it, see [`CCtx`](CCtx#worker-threads-and-leaks).
     /// [`CCtx::frame_workers()`] returns what a frame gets.
     ///
-    /// Note: this will only work if the `zstdmt` feature is activated.
+    /// Note: this needs the `zstdmt` feature. Without it, any value other
+    /// than `0` is refused with a `parameter_unsupported` error.
     NbWorkers(u32),
 
     /// Size in bytes of a compression job.

@@ -1085,10 +1085,12 @@ impl<'a> CCtx<'a> {
 
     /// References a prepared dictionary for the next frames, borrowing it.
     ///
-    /// Without `alloc`, a dictionary cannot be shared otherwise. This build
-    /// has no worker threads (the `zstdmt` feature enables `alloc`), so
-    /// borrowing is all a frame needs. [`CCtx::set_cdict()`] moves the
-    /// dictionary into the context instead.
+    /// Without `alloc`, or on a target without pointer-sized atomics, a
+    /// dictionary cannot be shared otherwise. Such a build normally has no
+    /// worker threads (the `zstdmt` feature enables `alloc`); if it does, a
+    /// streaming frame that reads a borrowed dictionary runs on the calling
+    /// thread, see [`CCtx`](CCtx#worker-threads-and-leaks).
+    /// [`CCtx::set_cdict()`] moves the dictionary into the context instead.
     ///
     /// Like zstd, this fails with a `stage_wrong` error while a frame is in
     /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).

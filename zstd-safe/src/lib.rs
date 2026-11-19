@@ -1095,6 +1095,17 @@ impl<'a> CCtx<'a> {
     /// Like zstd, this fails with a `stage_wrong` error while a frame is in
     /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).
     ///
+    /// The dictionary has to outlive the context:
+    ///
+    /// ```compile_fail,E0505
+    /// let cdict = zstd_safe::CDict::create(b"a dictionary", 3);
+    /// let mut cctx = zstd_safe::CCtx::create();
+    /// cctx.ref_cdict(&cdict).unwrap();
+    /// drop(cdict);
+    /// let mut frame = [0u8; 64];
+    /// cctx.compress2(&mut frame[..], b"some data").unwrap();
+    /// ```
+    ///
     /// Wraps the `ZSTD_CCtx_refCDict()` function.
     #[cfg(not(all(feature = "alloc", target_has_atomic = "ptr")))]
     pub fn ref_cdict<'b>(&mut self, cdict: &'a CDict<'b>) -> SafeResult

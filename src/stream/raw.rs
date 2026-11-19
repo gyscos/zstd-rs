@@ -20,7 +20,8 @@ pub trait Operation {
     /// Should return a hint for the next input size.
     ///
     /// If the result is `Ok(0)`, it may indicate that a frame was just
-    /// finished.
+    /// finished. Only a decoder returns that: an encoder returns zstd's
+    /// recommended input size ([`zstd_safe::CCtx::in_size()`]).
     fn run<C: WriteBuf + ?Sized>(
         &mut self,
         input: &mut InBuffer<'_>,
@@ -118,9 +119,10 @@ impl Operation for NoOp {
 pub struct Status {
     /// Number of bytes expected for next input.
     ///
-    /// * If `remaining = 0`, then we are at the end of a frame.
+    /// * If `remaining = 0`, then we are at the end of a frame (decoders
+    ///   only).
     /// * If `remaining > 0`, then it's just a hint for how much there is still
-    ///   to read.
+    ///   to read. An encoder always gives zstd's recommended input size.
     pub remaining: usize,
 
     /// Number of bytes read from the input.
@@ -426,10 +428,19 @@ impl<'a> Operation for Encoder<'a> {
         input: &mut InBuffer<'_>,
         output: &mut OutBuffer<'_, C>,
     ) -> io::Result<usize> {
+        use zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_continue;
         match &mut self.context {
-            MaybeOwnedCCtx::Owned(x) => x.compress_stream(output, input),
-            MaybeOwnedCCtx::Borrowed(x) => x.compress_stream(output, input),
+            MaybeOwnedCCtx::Owned(x) => {
+                x.compress_stream2(output, input, ZSTD_e_continue)
+            }
+            MaybeOwnedCCtx::Borrowed(x) => {
+                x.compress_stream2(output, input, ZSTD_e_continue)
+            }
         }
+        // zstd returns how much it still has to flush, which may be 0. That
+        // would read as the end of a frame: return a hint for the next input
+        // instead.
+        .map(|_| zstd_safe::CCtx::in_size())
         .map_err(map_error_code)
     }
 

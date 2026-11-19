@@ -329,13 +329,10 @@ impl<'a, R: BufRead> Encoder<'a, R> {
     ///
     /// The encoder keeps its own handle to the dictionary, so it does not
     /// borrow it.
-    pub fn with_prepared_dictionary<'b>(
+    pub fn with_prepared_dictionary(
         reader: R,
-        dictionary: &EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+        dictionary: &EncoderDictionary,
+    ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         let reader = zio::Reader::new(reader, encoder);
 

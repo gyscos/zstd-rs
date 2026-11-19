@@ -9,8 +9,10 @@
 
 use std::io::Write;
 
-use zstd_safe::zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
-use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+use zstd_safe::zstd_sys::ZSTD_EndDirective::{
+    self, ZSTD_e_continue, ZSTD_e_end,
+};
+use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer, WriteBuf};
 
 const WORKLOADS: [&str; 6] = [
     "safe_stream",
@@ -20,6 +22,19 @@ const WORKLOADS: [&str; 6] = [
     "frames_workers_prefix",
     "frames_workers_alternating_prefix",
 ];
+
+/// See `compress_stream` in benches/zstd.rs.
+fn compress_stream<C: WriteBuf + ?Sized>(
+    cctx: &mut CCtx<'_>,
+    output: &mut OutBuffer<'_, C>,
+    input: &mut InBuffer<'_>,
+    end_op: ZSTD_EndDirective,
+) -> usize {
+    #[cfg(not(feature = "zstd-safe-8"))]
+    return cctx.compress_stream(output, input, end_op).unwrap();
+    #[cfg(feature = "zstd-safe-8")]
+    return cctx.compress_stream2(output, input, end_op).unwrap();
+}
 
 /// Deterministic text, `len` bytes.
 fn data(len: usize, seed: usize) -> Vec<u8> {
@@ -59,19 +74,21 @@ fn main() {
                 for chunk in input.chunks(64) {
                     let mut src = InBuffer::around(chunk);
                     while src.pos() < chunk.len() {
-                        cctx.compress_stream2(
+                        compress_stream(
+                            &mut cctx,
                             &mut output,
                             &mut src,
                             ZSTD_e_continue,
-                        )
-                        .unwrap();
+                        );
                     }
                 }
                 let mut src = InBuffer::around(&[]);
-                while cctx
-                    .compress_stream2(&mut output, &mut src, ZSTD_e_end)
-                    .unwrap()
-                    != 0
+                while compress_stream(
+                    &mut cctx,
+                    &mut output,
+                    &mut src,
+                    ZSTD_e_end,
+                ) != 0
                 {}
                 total += output.pos();
             }
@@ -132,10 +149,12 @@ fn main() {
                     }
                     let mut output = OutBuffer::around(&mut out[..]);
                     let mut src = InBuffer::around(m);
-                    while cctx
-                        .compress_stream2(&mut output, &mut src, ZSTD_e_end)
-                        .unwrap()
-                        != 0
+                    while compress_stream(
+                        &mut cctx,
+                        &mut output,
+                        &mut src,
+                        ZSTD_e_end,
+                    ) != 0
                     {}
                     total += output.pos();
                 }

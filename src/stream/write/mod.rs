@@ -285,13 +285,10 @@ impl<'a, W: Write> Encoder<'a, W> {
     ///
     /// The encoder keeps its own handle to the dictionary, so it does not
     /// borrow it.
-    pub fn with_prepared_dictionary<'b>(
+    pub fn with_prepared_dictionary(
         writer: W,
-        dictionary: &EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+        dictionary: &EncoderDictionary,
+    ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
         Ok(Self::with_encoder(writer, encoder))
     }

@@ -5,11 +5,12 @@
 # usage: ./instructions.sh [-r ROUNDS] REV[:FEATURES] REV[:FEATURES]...
 #
 # Revisions and features work as with ab.sh: each one is built from a
-# worktree with this copy of the suite. Unlike timings, instruction counts
+# worktree with this copy of the suite (the `zstd-safe-8` feature picks the
+# names of revisions before zstd-safe 9). Unlike timings, instruction counts
 # do not depend on code layout or on the machine's load, so a difference of
 # a fraction of a percent is real. Worker threads are counted too.
 #
-#   ./instructions.sh main my-branch
+#   ./instructions.sh main:seekable,zstd-safe-8 my-branch
 #
 # The work goes to AB_WORK (default target/instructions). Prints a markdown
 # table: the first revision's counts, then each other one's difference.

@@ -48,12 +48,9 @@ impl<'a> Compressor<'a> {
     ///
     /// The compressor keeps its own handle to the dictionary, so it does not
     /// borrow it.
-    pub fn with_prepared_dictionary<'b>(
-        dictionary: &crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+    pub fn with_prepared_dictionary(
+        dictionary: &crate::dict::EncoderDictionary,
+    ) -> io::Result<Self> {
         let mut compressor = Compressor {
             context: crate::create_cctx()?,
         };
@@ -104,13 +101,10 @@ impl<'a> Compressor<'a> {
     ///
     /// The compressor keeps its own handle to the dictionary, so it does not
     /// borrow it.
-    pub fn set_prepared_dictionary<'b>(
+    pub fn set_prepared_dictionary(
         &mut self,
-        dictionary: &crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<()>
-    where
-        'b: 'a,
-    {
+        dictionary: &crate::dict::EncoderDictionary,
+    ) -> io::Result<()> {
         self.context
             .ref_cdict(dictionary.as_cdict())
             .map_err(map_error_code)?;
@@ -136,9 +130,9 @@ impl<'a> Compressor<'a> {
         source: &[u8],
         destination: &mut C,
     ) -> io::Result<usize> {
-        let result = self.context.compress2(destination, source);
+        let result = self.context.compress(destination, source);
         if result.is_err() {
-            // `compress2` leaves a failed frame open, and zstd refuses most
+            // `compress` leaves a failed frame open, and zstd refuses most
             // setters mid-frame. Abandon it, so the compressor can be set up
             // for the next job. Resetting only the session cannot fail (it
             // waits for the worker threads, if any).

@@ -19,7 +19,8 @@ fuzz_target!(|data: &[u8]| {
 
     // Fuzz compression and decompression with CCtx
     let mut cctx = zstd_safe::CCtx::default();
-    if let Ok(written) = cctx.compress(&mut buffer[..], data, 3) {
+    cctx.set_parameter(zstd_safe::CParameter::CompressionLevel(3)).unwrap();
+    if let Ok(written) = cctx.compress(&mut buffer[..], data) {
         let compressed = &buffer[..written];
         let mut dctx = zstd_safe::DCtx::default();
         let mut decompressed = vec![0u8; buffer_size];
@@ -29,7 +30,9 @@ fuzz_target!(|data: &[u8]| {
     // Fuzz compression and decompression on dict
     let dict = b"sample dictionary for zstd fuzzing";
     let mut cctx_dict = zstd_safe::CCtx::default();
-    if let Ok(written) = cctx_dict.compress_using_dict(&mut buffer[..], data, dict, 3) {
+    cctx_dict.set_parameter(zstd_safe::CParameter::CompressionLevel(3)).unwrap();
+    cctx_dict.load_dictionary(dict).unwrap();
+    if let Ok(written) = cctx_dict.compress(&mut buffer[..], data) {
         let compressed = &buffer[..written];
 
         let mut dctx_dict = zstd_safe::DCtx::default();
@@ -43,7 +46,8 @@ fuzz_target!(|data: &[u8]| {
     let mut in_buffer = zstd_safe::InBuffer::around(data);
     let mut out_buffer = zstd_safe::OutBuffer::around(&mut buffer[..]);
 
-    if let Ok(_) = cctx_stream.compress_stream(&mut out_buffer, &mut in_buffer) {
+    let end_op = zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_continue;
+    if let Ok(_) = cctx_stream.compress_stream(&mut out_buffer, &mut in_buffer, end_op) {
         let mut decompressed_stream = vec![0u8; buffer_size];
         let mut out_buffer_stream = zstd_safe::OutBuffer::around(&mut decompressed_stream[..]);
         let mut in_buffer_stream = zstd_safe::InBuffer::around(out_buffer.as_slice());
@@ -53,7 +57,7 @@ fuzz_target!(|data: &[u8]| {
     // Fuzz error handling and malformed input
     let mut cctx_param = zstd_safe::CCtx::default();
     if let Ok(_) = cctx_param.set_parameter(zstd_safe::CParameter::ChecksumFlag(true)) {
-        if let Ok(written) = cctx_param.compress2(&mut buffer[..], data) {
+        if let Ok(written) = cctx_param.compress(&mut buffer[..], data) {
             let compressed = &buffer[..written];
             let mut dctx_param = zstd_safe::DCtx::default();
             let mut decompressed = vec![0u8; buffer_size];

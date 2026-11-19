@@ -38,6 +38,11 @@ jobs:
       run: cargo check --manifest-path zstd-safe/Cargo.toml --no-default-features --features with-rust-allocator
     - name: Run zstd-safe tests with alloc but without std
       run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features alloc
+    # Without alloc, a context only borrows the dictionary it references.
+    - name: Run zstd-safe tests without alloc
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose
+    - name: Run zstd-safe tests without alloc, with feature experimental
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features experimental
 
     - name: Build zstd-safe with feature seekable
       run: cargo build --manifest-path zstd-safe/Cargo.toml --verbose --features seekable

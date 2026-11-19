@@ -2728,3 +2728,175 @@ fn test_workers_need_the_zstdmt_feature() {
     );
     assert_eq!(cctx.frame_workers(), 0);
 }
+
+/// What `INPUT` compresses to with a fresh context, after `setup`.
+fn fresh_frame<'a>(
+    setup: impl FnOnce(&mut zstd_safe::CCtx<'a>) -> zstd_safe::SafeResult,
+) -> ([u8; 256], usize) {
+    let mut cctx = zstd_safe::CCtx::create();
+    setup(&mut cctx).unwrap();
+    let mut buffer = [0u8; 256];
+    let len = cctx.compress2(&mut buffer[..], INPUT).unwrap();
+    (buffer, len)
+}
+
+/// The tests from here on don't depend on any feature: they pin down what a
+/// context does with a prepared dictionary, which has to be the same whether
+/// it keeps its own handle to it (with `alloc`) or only borrows it (without).
+/// CI runs them in both builds.
+///
+/// A one-shot call with other data must not bring back a dictionary that
+/// was cleared since it was referenced.
+#[test]
+fn test_one_shot_does_not_put_back_a_cleared_dictionary() {
+    use zstd_safe::{CCtx, CDict, ResetDirective};
+
+    let cdict = CDict::create(b"a dictionary to compress the input with", 19);
+    let other = CDict::create(b"another dictionary", 1);
+    let (plain, plain_len) = fresh_frame(|_| Ok(0));
+    let (with_dict, with_dict_len) =
+        fresh_frame(|cctx| cctx.ref_cdict(&cdict));
+    assert!(plain[..plain_len] != with_dict[..with_dict_len]);
+
+    let clear: [fn(&mut CCtx<'_>) -> zstd_safe::SafeResult; 3] = [
+        |cctx| cctx.disable_dictionary(),
+        |cctx| cctx.reset(ResetDirective::SessionAndParameters),
+        |cctx| cctx.reset(ResetDirective::Parameters),
+    ];
+    for clear in clear {
+        for with_prefix in [true, false] {
+            let mut cctx = CCtx::create();
+            cctx.ref_cdict(&cdict).unwrap();
+            clear(&mut cctx).unwrap();
+            let mut buffer = [0u8; 256];
+            if with_prefix {
+                cctx.compress_with_prefix(&mut buffer[..], INPUT, b"a prefix")
+            } else {
+                cctx.compress_with_cdict(&mut buffer[..], INPUT, &other)
+            }
+            .unwrap();
+            let len = cctx.compress2(&mut buffer[..], INPUT).unwrap();
+            assert!(buffer[..len] == plain[..plain_len]);
+        }
+    }
+}
+
+/// Referencing a second dictionary replaces the first one, also for what a
+/// one-shot call with other data puts back.
+#[test]
+fn test_one_shot_puts_back_the_last_referenced_dictionary() {
+    use zstd_safe::{CCtx, CDict};
+
+    let first = CDict::create(b"a first dictionary, soon replaced", 19);
+    let second = CDict::create(b"a dictionary to compress the input with", 19);
+    let other = CDict::create(b"another dictionary", 1);
+    let (expected, expected_len) = fresh_frame(|cctx| cctx.ref_cdict(&second));
+
+    let mut cctx = CCtx::create();
+    cctx.ref_cdict(&first).unwrap();
+    cctx.ref_cdict(&second).unwrap();
+    let mut buffer = [0u8; 256];
+    cctx.compress_with_cdict(&mut buffer[..], INPUT, &other)
+        .unwrap();
+    let len = cctx.compress2(&mut buffer[..], INPUT).unwrap();
+    assert!(buffer[..len] == expected[..expected_len]);
+}
+
+/// A dictionary moved into the context compresses like one it references,
+/// frame after frame, and comes back after a one-shot call with other data.
+#[test]
+fn test_dictionary_moved_into_the_context() {
+    use zstd_safe::{CCtx, CDict};
+
+    let dictionary = b"a dictionary to compress the input with";
+    let cdict = CDict::create(dictionary, 19);
+    let (expected, expected_len) = fresh_frame(|cctx| cctx.ref_cdict(&cdict));
+
+    let mut cctx = CCtx::create();
+    cctx.set_cdict(CDict::create(dictionary, 19)).unwrap();
+    let mut buffer = [0u8; 256];
+    for _ in 0..2 {
+        let len = cctx.compress2(&mut buffer[..], INPUT).unwrap();
+        assert!(buffer[..len] == expected[..expected_len]);
+        cctx.compress_with_prefix(&mut buffer[..], INPUT, b"a prefix")
+            .unwrap();
+    }
+}
+
+/// Streaming frames read a referenced dictionary on every frame, cannot
+/// change it while one is in progress, and decode with the same dictionary.
+#[test]
+fn test_streaming_frames_with_a_referenced_dictionary() {
+    use zstd_safe::{
+        zstd_sys::ZSTD_ErrorCode, CCtx, CDict, DCtx, InBuffer, OutBuffer,
+        ResetDirective,
+    };
+
+    // Content the frames will refer to: they cannot decode without it.
+    let dictionary = &INPUT[..INPUT.len() / 3];
+    let cdict = CDict::create(dictionary, 19);
+    let other = CDict::create(b"another dictionary", 1);
+    let (expected, expected_len) = fresh_frame(|cctx| cctx.ref_cdict(&cdict));
+
+    let mut cctx = CCtx::create();
+    cctx.ref_cdict(&cdict).unwrap();
+    let mut dctx = DCtx::create();
+    for _ in 0..2 {
+        let mut buffer = [0u8; 256];
+        let mut output = OutBuffer::around(&mut buffer[..]);
+        // In two calls, so the frame is in progress in between.
+        let (head, tail) = INPUT.split_at(INPUT.len() / 2);
+        let mut input = InBuffer::around(head);
+        cctx.compress_stream2(
+            &mut output,
+            &mut input,
+            zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush,
+        )
+        .unwrap();
+        assert_eq!(input.pos(), head.len());
+        assert_eq!(
+            cctx.ref_cdict(&other),
+            Err((ZSTD_ErrorCode::ZSTD_error_stage_wrong as usize)
+                .wrapping_neg())
+        );
+        let mut input = InBuffer::around(tail);
+        let remaining = cctx
+            .compress_stream2(
+                &mut output,
+                &mut input,
+                zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_end,
+            )
+            .unwrap();
+        assert_eq!(remaining, 0);
+        let len = output.pos();
+
+        let mut decoded = [0u8; 512];
+        let decoded_len = dctx
+            .decompress_using_dict(
+                &mut decoded[..],
+                &buffer[..len],
+                dictionary,
+            )
+            .unwrap();
+        assert!(&decoded[..decoded_len] == INPUT);
+        if let Ok(decoded_len) =
+            dctx.decompress(&mut decoded[..], &buffer[..len])
+        {
+            assert!(&decoded[..decoded_len] != INPUT);
+        }
+    }
+
+    // A frame given up half-way leaves the dictionary in place.
+    let mut buffer = [0u8; 256];
+    let mut output = OutBuffer::around(&mut buffer[..]);
+    let mut input = InBuffer::around(&INPUT[..10]);
+    cctx.compress_stream2(
+        &mut output,
+        &mut input,
+        zstd_safe::zstd_sys::ZSTD_EndDirective::ZSTD_e_flush,
+    )
+    .unwrap();
+    cctx.reset(ResetDirective::SessionOnly).unwrap();
+    let len = cctx.compress2(&mut buffer[..], INPUT).unwrap();
+    assert!(buffer[..len] == expected[..expected_len]);
+}

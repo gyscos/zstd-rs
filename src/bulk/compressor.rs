@@ -48,12 +48,9 @@ impl<'a> Compressor<'a> {
     ///
     /// The compressor keeps its own handle to the dictionary, so it does not
     /// borrow it.
-    pub fn with_prepared_dictionary<'b>(
-        dictionary: &crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+    pub fn with_prepared_dictionary(
+        dictionary: &crate::dict::EncoderDictionary,
+    ) -> io::Result<Self> {
         let mut compressor = Compressor {
             context: crate::create_cctx()?,
         };
@@ -104,13 +101,10 @@ impl<'a> Compressor<'a> {
     ///
     /// The compressor keeps its own handle to the dictionary, so it does not
     /// borrow it.
-    pub fn set_prepared_dictionary<'b>(
+    pub fn set_prepared_dictionary(
         &mut self,
-        dictionary: &crate::dict::EncoderDictionary<'b>,
-    ) -> io::Result<()>
-    where
-        'b: 'a,
-    {
+        dictionary: &crate::dict::EncoderDictionary,
+    ) -> io::Result<()> {
         self.context
             .ref_cdict(dictionary.as_cdict())
             .map_err(map_error_code)?;

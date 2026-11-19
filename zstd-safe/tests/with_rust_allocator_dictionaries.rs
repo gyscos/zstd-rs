@@ -12,17 +12,28 @@ fn input() -> Vec<u8> {
     b"hello zstd hello zstd hello zstd".repeat(256)
 }
 
+/// A dictionary's bytes, `'static` for `CDict::create_by_reference()`.
+static DICT: [u8; 4096] = {
+    let mut dict = [0u8; 4096];
+    let mut i = 0;
+    while i < dict.len() {
+        dict[i] = i as u8;
+        i += 1;
+    }
+    dict
+};
+
 #[test]
 fn dictionaries_use_global_allocator() {
     let input = input();
-    let dict: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+    let dict = &DICT[..];
     let mut compressed =
         Vec::with_capacity(zstd_safe::compress_bound(input.len()));
     let mut decompressed = Vec::with_capacity(input.len());
 
     let before = LIVE_BYTES.load(Relaxed);
     {
-        let cdict = CDict::create(&dict, 3);
+        let cdict = CDict::create(dict, 3);
         let held = LIVE_BYTES.load(Relaxed) - before;
         assert!(
             held >= cdict.sizeof(),
@@ -30,23 +41,26 @@ fn dictionaries_use_global_allocator() {
              ({held} < {})",
             cdict.sizeof()
         );
-        let cdict_ref = CDict::create_by_reference(&dict, 3);
+        let cdict_ref = CDict::create_by_reference(dict, 3);
         assert!(
             LIVE_BYTES.load(Relaxed) - before > held,
             "CDict::create_by_reference() did not allocate through the \
              global allocator"
         );
+        // A dictionary that owns its bytes frees them with itself.
+        let cdict_owned = CDict::create_by_reference_owned(dict.to_vec(), 3);
 
         let mut cctx = CCtx::create();
         cctx.compress_with_cdict(&mut compressed, &input, &cdict)
             .expect("compression failed");
         drop(cdict_ref);
+        drop(cdict_owned);
     }
     assert_eq!(LIVE_BYTES.load(Relaxed), before, "CDict leaked");
 
     let before = LIVE_BYTES.load(Relaxed);
     {
-        let ddict = DDict::create(&dict);
+        let ddict = DDict::create(dict);
         let held = LIVE_BYTES.load(Relaxed) - before;
         assert!(
             held >= ddict.sizeof(),
@@ -54,7 +68,7 @@ fn dictionaries_use_global_allocator() {
              ({held} < {})",
             ddict.sizeof()
         );
-        let ddict_ref = DDict::create_by_reference(&dict);
+        let ddict_ref = DDict::create_by_reference(dict);
         assert!(
             LIVE_BYTES.load(Relaxed) - before > held,
             "DDict::create_by_reference() did not allocate through the \

@@ -336,7 +336,7 @@ struct Workers {
     /// The `NbWorkers` set with `set_parameter`, as zstd clamped it (0: none).
     ///
     /// Each frame gets these workers only if everything it reads is owned by
-    /// the context, see `CCtx::start_frame()`. A frame that
+    /// the context or `'static`, see `CCtx::start_frame()`. A frame that
     /// reads borrowed data runs on the calling thread instead: a context can
     /// be leaked mid-frame, and its workers would then read the data after
     /// the borrow ended.
@@ -347,8 +347,9 @@ struct Workers {
     /// A borrowed prefix (`ref_prefix`) was referenced, and no frame has
     /// started since to consume it.
     prefix_borrowed: bool,
-    /// The dictionary referenced (`ref_cdict`) is only borrowed, or points
-    /// into bytes it only borrows (`CDict::create_by_reference`).
+    /// The dictionary referenced is only borrowed: the context has no handle
+    /// to it (`ref_cdict` where a dictionary cannot be shared), or has it for
+    /// one call (`compress_with_cdict`).
     dict_borrowed: bool,
     /// zstd holds a copy of a dictionary (`load_dictionary`), which nothing
     /// could load again after `compress_with_*` replaced it.
@@ -424,12 +425,13 @@ fn accepted_workers(value: c_int) -> u32 {
 /// ([`CCtx::set_cdict()`], and [`CCtx::ref_cdict()`] with `alloc`), or a
 /// prefix it owns (`set_prefix()`).
 ///
-/// A streaming frame that reads *borrowed* data is compressed on the calling
-/// thread instead, as with `NbWorkers(0)`. That is a prefix given to
-/// [`CCtx::ref_prefix()`], a dictionary made from borrowed bytes
-/// (`CDict::create_by_reference()`). The parameters that only apply to worker
-/// threads (`JobSize`, `OverlapSizeLog`, `RSyncable`) are still accepted, but
-/// have no effect on that frame: only [`CCtx::frame_workers()`] tells.
+/// A streaming frame that reads data the context only *borrows* is
+/// compressed on the calling thread instead, as with `NbWorkers(0)`. That is
+/// a prefix given to [`CCtx::ref_prefix()`], or a dictionary where
+/// [`CCtx::ref_cdict()`] has to borrow it (on a target without pointer-sized
+/// atomics). The parameters that only apply to worker threads (`JobSize`,
+/// `OverlapSizeLog`, `RSyncable`) are still accepted, but have no effect on
+/// that frame: only [`CCtx::frame_workers()`] tells.
 ///
 /// Worker threads need the `zstdmt` feature, which enables `alloc`: a build
 /// with worker threads always has the shared dictionary handles
@@ -452,9 +454,7 @@ pub struct CCtx<'a>(
 /// after `Drop for CCtx` waited for the workers, and leaked with the context.
 #[derive(Default)]
 struct Held {
-    /// The lifetime of the bytes it may point into is the context's `'a`
-    /// (or longer), see `CDict::erased()`.
-    cdict: Option<CDict<'static>>,
+    cdict: Option<CDict>,
     /// The dictionary zstd references, when the context has no handle to it
     /// and only borrows it, for its `'a`: kept to reference it again after a
     /// call that set it aside (`compress_with`).
@@ -469,7 +469,7 @@ impl Held {
     /// Only a dictionary (or nothing): one the context has a handle to, or
     /// one it borrows.
     fn with_cdict(
-        cdict: Option<CDict<'static>>,
+        cdict: Option<CDict>,
         borrowed_cdict: Option<NonNull<zstd_sys::ZSTD_CDict>>,
     ) -> Self {
         Held {
@@ -667,7 +667,7 @@ impl<'a> CCtx<'a> {
         &mut self,
         dst: &mut C,
         src: &[u8],
-        cdict: &CDict<'_>,
+        cdict: &CDict,
     ) -> SafeResult {
         // Safety: Just FFI. `compress_with` stops zstd referencing it.
         self.compress_with(dst, src, false, |cctx| unsafe {
@@ -746,8 +746,7 @@ impl<'a> CCtx<'a> {
                     self.old.cdict.take(),
                     self.old.borrowed_cdict.take(),
                 );
-                let borrowed = old.borrowed_cdict.is_some()
-                    || old.cdict.as_ref().map_or(false, CDict::borrows);
+                let borrowed = old.borrowed_cdict.is_some();
                 cctx.referenced(false, borrowed, false, old);
             }
         }
@@ -867,11 +866,8 @@ impl<'a> CCtx<'a> {
     ))]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated(note = "Use reset and ref_cdict instead.")]
-    pub fn init_using_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
-    where
-        'b: 'a, // What the dictionary points into outlives the stream.
-    {
-        self.init_with_cdict(cdict, Some(cdict.clone().erased()))
+    pub fn init_using_cdict(&mut self, cdict: &CDict) -> SafeResult {
+        self.init_with_cdict(cdict, Some(cdict.clone()))
     }
 
     /// Wraps the `ZSTD_initCStream_usingCDict()` function.
@@ -893,10 +889,7 @@ impl<'a> CCtx<'a> {
     ))]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     #[deprecated(note = "Use reset and ref_cdict instead.")]
-    pub fn init_using_cdict<'b>(&mut self, cdict: &'a CDict<'b>) -> SafeResult
-    where
-        'b: 'a, // Dictionary outlives the stream.
-    {
+    pub fn init_using_cdict(&mut self, cdict: &'a CDict) -> SafeResult {
         self.init_with_cdict(cdict, None)
     }
 
@@ -905,8 +898,8 @@ impl<'a> CCtx<'a> {
     #[cfg(feature = "experimental")]
     fn init_with_cdict(
         &mut self,
-        cdict: &CDict<'_>,
-        held: Option<CDict<'static>>,
+        cdict: &CDict,
+        held: Option<CDict>,
     ) -> SafeResult {
         self.drain();
         self.2.clear();
@@ -921,7 +914,7 @@ impl<'a> CCtx<'a> {
         };
         let res = self.2.record(parse_code(code));
         if res.is_ok() {
-            self.hold_cdict(cdict.as_ptr(), held, cdict.borrows());
+            self.hold_cdict(cdict.as_ptr(), held);
         }
         res
     }
@@ -957,15 +950,10 @@ impl<'a> CCtx<'a> {
 
     /// References a prepared dictionary for the next frames.
     ///
-    /// The context keeps its own handle to it, so the dictionary itself is
-    /// not borrowed: it can come from a cache, a `static` or a local, and be
-    /// dropped before the context. Only the bytes a dictionary made with
-    /// `CDict::create_by_reference()` points into must outlive the
-    /// context.
-    ///
-    /// Frames with it may use worker threads, unless it points into such
-    /// borrowed bytes: a streaming frame then runs on the calling thread,
-    /// see [`CCtx`](CCtx#worker-threads-and-leaks).
+    /// The context keeps its own handle to it, so the dictionary is not
+    /// borrowed: it can come from a cache, a `static` or a local, and be
+    /// dropped before the context, which needs no lifetime for it. Frames
+    /// with it may use worker threads.
     ///
     /// The dictionary decides the compression parameters (its level, say);
     /// the others stay the context's.
@@ -975,10 +963,7 @@ impl<'a> CCtx<'a> {
     ///
     /// Wraps the `ZSTD_CCtx_refCDict()` function.
     #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
-    pub fn ref_cdict<'b>(&mut self, cdict: &CDict<'b>) -> SafeResult
-    where
-        'b: 'a,
-    {
+    pub fn ref_cdict(&mut self, cdict: &CDict) -> SafeResult {
         self.set_cdict(cdict.clone())
     }
 
@@ -996,11 +981,8 @@ impl<'a> CCtx<'a> {
     ///
     /// Wraps the `ZSTD_CCtx_refCDict()` function.
     #[cfg(not(all(feature = "alloc", target_has_atomic = "ptr")))]
-    pub fn ref_cdict<'b>(&mut self, cdict: &'a CDict<'b>) -> SafeResult
-    where
-        'b: 'a,
-    {
-        self.refer_cdict(cdict.as_ptr(), None, true)
+    pub fn ref_cdict(&mut self, cdict: &'a CDict) -> SafeResult {
+        self.refer_cdict(cdict.as_ptr(), None)
     }
 
     /// References a prepared dictionary for the next frames, moving it into
@@ -1008,22 +990,17 @@ impl<'a> CCtx<'a> {
     ///
     /// The dictionary is dropped if this fails (while a frame is in
     /// progress, say). See [`CCtx::ref_cdict()`].
-    pub fn set_cdict<'b>(&mut self, cdict: CDict<'b>) -> SafeResult
-    where
-        'b: 'a,
-    {
-        let borrows = cdict.borrows();
-        self.refer_cdict(cdict.as_ptr(), Some(cdict.erased()), borrows)
+    pub fn set_cdict(&mut self, cdict: CDict) -> SafeResult {
+        self.refer_cdict(cdict.as_ptr(), Some(cdict))
     }
 
     /// `ref_cdict()` with zstd's pointer to the dictionary, keeping `held`
-    /// (a handle to it, or `None` when the dictionary itself is only
-    /// borrowed) once zstd accepted it. See `hold_cdict()` for `borrows`.
+    /// (a handle to it, or `None` when the dictionary is only borrowed) once
+    /// zstd accepted it.
     fn refer_cdict(
         &mut self,
         cdict: *mut zstd_sys::ZSTD_CDict,
-        held: Option<CDict<'static>>,
-        borrows: bool,
+        held: Option<CDict>,
     ) -> SafeResult {
         self.guard_workers()?;
         // Safety: Just FFI
@@ -1031,27 +1008,24 @@ impl<'a> CCtx<'a> {
             zstd_sys::ZSTD_CCtx_refCDict(self.0.as_ptr(), cdict)
         });
         if res.is_ok() {
-            self.hold_cdict(cdict, held, borrows);
+            self.hold_cdict(cdict, held);
         }
         res
     }
 
     /// Records that zstd now references a dictionary, which `held` is a
-    /// handle to, if the context has one.
-    ///
-    /// `borrows` is whether a frame that reads it reads borrowed data: the
-    /// dictionary itself, without a handle, or the bytes it points into.
+    /// handle to, if the context has one. Without a handle, the dictionary
+    /// is only borrowed, and so is what a frame with it reads.
     fn hold_cdict(
         &mut self,
         cdict: *mut zstd_sys::ZSTD_CDict,
-        held: Option<CDict<'static>>,
-        borrows: bool,
+        held: Option<CDict>,
     ) {
         let borrowed_cdict = match held {
             Some(_) => None,
             None => NonNull::new(cdict),
         };
-        let borrowed = borrows || borrowed_cdict.is_some();
+        let borrowed = borrowed_cdict.is_some();
         let held = Held::with_cdict(held, borrowed_cdict);
         self.referenced(false, borrowed, false, held);
     }
@@ -2600,27 +2574,16 @@ impl core::panic::RefUnwindSafe for Owner {}
 /// a single owner: move it into a context ([`CCtx::set_cdict()`]) or borrow
 /// it.
 ///
-/// The bytes it was made from are copied ([`CDict::create()`]), owned by the
-/// dictionary (`CDict::create_by_reference_owned()`), or borrowed for `'a`
-/// (`CDict::create_by_reference()`). With worker threads, a streaming frame
-/// that reads borrowed bytes runs on the calling thread, see
-/// [`CCtx`](CCtx#worker-threads-and-leaks).
+/// The bytes it was made from are copied ([`CDict::create()`]), or, for a
+/// dictionary made by reference, are `'static`
+/// (`CDict::create_by_reference()`) or owned by the dictionary
+/// (`CDict::create_by_reference_owned()`): it borrows nothing, so it has no
+/// lifetime.
 ///
 /// With `with-rust-allocator`, prepared dictionaries retain fixed compression
 /// parameters rather than adapting them to later input sizes. This can change
 /// compression ratio, speed, and memory usage compared with the C allocator.
-pub struct CDict<'a>(CDictHandle, Borrow<'a>);
-
-/// The borrow of the bytes a [`CDict`] may point into.
-///
-/// Its `Drop` does nothing, but tells the borrow checker what the one of
-/// `CDict<'a>` itself did before it was a handle: the bytes must still be
-/// alive when the dictionary is dropped.
-struct Borrow<'a>(PhantomData<&'a ()>);
-
-impl Drop for Borrow<'_> {
-    fn drop(&mut self) {}
-}
+pub struct CDict(CDictHandle);
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 type CDictHandle = alloc::sync::Arc<CDictInner>;
@@ -2630,9 +2593,6 @@ type CDictHandle = CDictInner;
 /// What a [`CDict`] handle points to.
 struct CDictInner {
     ptr: NonNull<zstd_sys::ZSTD_CDict>,
-    /// The dictionary points into bytes it only borrows
-    /// (`CDict::create_by_reference()`), for the `'a` of its handles.
-    borrows: bool,
     /// Owns the bytes a dictionary made by reference points into, see
     /// `CDict::try_create_by_reference_owned()`. Dropped after the
     /// dictionary is freed.
@@ -2659,49 +2619,30 @@ unsafe impl Send for CDictInner {}
 unsafe impl Sync for CDictInner {}
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
-impl Clone for CDict<'_> {
+impl Clone for CDict {
     /// Returns another handle to the same digested dictionary.
     fn clone(&self) -> Self {
-        CDict(self.0.clone(), Borrow(PhantomData))
+        CDict(self.0.clone())
     }
 }
 
-impl<'a> CDict<'a> {
-    /// `borrows`: the dictionary points into bytes borrowed for `'a`.
-    fn from_raw(
-        ptr: *mut zstd_sys::ZSTD_CDict,
-        borrows: bool,
-    ) -> Option<Self> {
+impl CDict {
+    fn from_raw(ptr: *mut zstd_sys::ZSTD_CDict) -> Option<Self> {
         let inner = CDictInner {
             ptr: NonNull::new(ptr)?,
-            borrows,
             #[cfg(feature = "alloc")]
             owner: None,
         };
         // Without `alloc`, the handle is the dictionary itself.
         #[allow(clippy::useless_conversion)]
         let handle = inner.into();
-        Some(CDict(handle, Borrow(PhantomData)))
+        Some(CDict(handle))
     }
 
     fn as_ptr(&self) -> *mut zstd_sys::ZSTD_CDict {
         self.0.ptr.as_ptr()
     }
 
-    /// Whether the dictionary points into bytes it only borrows.
-    fn borrows(&self) -> bool {
-        self.0.borrows
-    }
-
-    /// Forgets the lifetime of the bytes the dictionary may point into, for
-    /// a context to hold it: a `CCtx<'b>` only takes a dictionary whose
-    /// `'a` outlives its own `'b`, which it stands for from then on.
-    fn erased(self) -> CDict<'static> {
-        CDict(self.0, Borrow(PhantomData))
-    }
-}
-
-impl CDict<'static> {
     /// Prepare a dictionary to compress data.
     ///
     /// This will make it easier for compression contexts to load this dictionary.
@@ -2744,7 +2685,7 @@ impl CDict<'static> {
                 compression_level,
             )
         };
-        Self::from_raw(ptr, false)
+        Self::from_raw(ptr)
     }
 
     /// Prepare a dictionary to compress data, referencing the bytes `owner`
@@ -2804,14 +2745,11 @@ impl CDict<'static> {
         };
         let inner = CDictInner {
             ptr: NonNull::new(ptr)?,
-            borrows: false,
             owner: Some(owner),
         };
-        Some(CDict(inner.into(), Borrow(PhantomData)))
+        Some(CDict(inner.into()))
     }
-}
 
-impl<'a> CDict<'a> {
     /// Digests `dict_buffer` by reference.
     ///
     /// # Safety
@@ -2840,12 +2778,12 @@ impl<'a> CDict<'a> {
 
     /// Prepare a dictionary to compress data, referencing `dict_buffer`.
     ///
-    /// The bytes must outlive the dictionary:
+    /// The bytes must be `'static`, since nothing else keeps them alive for
+    /// the dictionary's handles:
     ///
     /// ```compile_fail,E0597
-    /// let cdict;
     /// let bytes = vec![0u8; 16];
-    /// cdict = zstd_safe::CDict::create_by_reference(&bytes, 3);
+    /// let cdict = zstd_safe::CDict::create_by_reference(&bytes, 3);
     /// ```
     ///
     /// # Panics
@@ -2854,7 +2792,7 @@ impl<'a> CDict<'a> {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(
-        dict_buffer: &'a [u8],
+        dict_buffer: &'static [u8],
         compression_level: CompressionLevel,
     ) -> Self {
         Self::try_create_by_reference(dict_buffer, compression_level)
@@ -2863,16 +2801,9 @@ impl<'a> CDict<'a> {
 
     /// Prepare a dictionary to compress data, referencing `dict_buffer`.
     ///
-    /// The bytes are not copied, and are borrowed for as long as the
-    /// dictionary is used. With worker threads (`CParameter::NbWorkers`), a
-    /// streaming frame that reads such a dictionary runs on the calling
-    /// thread, see [`CCtx`](CCtx#worker-threads-and-leaks): a context can be
-    /// leaked mid-frame, and the borrow would end under its workers.
-    ///
-    /// `CDict::try_create_by_reference_owned()` makes a dictionary that
-    /// keeps the workers, from bytes with an owner (a `Vec`, an
-    /// `Arc<[u8]>`, a memory map) or `'static` ones (`include_bytes!`,
-    /// say): nothing tells this method that a `&'a [u8]` is `'static`.
+    /// The bytes are not copied: they are `'static` (`include_bytes!`, say).
+    /// For bytes with an owner (a `Vec`, an `Arc<[u8]>`, a memory map), see
+    /// `CDict::try_create_by_reference_owned()`.
     ///
     /// Returns `None` if zstd could not load the dictionary, for instance
     /// because it starts with the dictionary magic number but its header is
@@ -2880,13 +2811,13 @@ impl<'a> CDict<'a> {
     #[cfg(feature = "experimental")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn try_create_by_reference(
-        dict_buffer: &'a [u8],
+        dict_buffer: &'static [u8],
         compression_level: CompressionLevel,
     ) -> Option<Self> {
-        // Safety: the bytes are borrowed for `'a`, as the dictionary is.
+        // Safety: the bytes live forever.
         let ptr =
             unsafe { Self::by_reference(dict_buffer, compression_level) };
-        Self::from_raw(ptr, true)
+        Self::from_raw(ptr)
     }
 
     /// Returns the _current_ memory usage of this dictionary.
@@ -2910,7 +2841,7 @@ impl<'a> CDict<'a> {
 pub fn create_cdict(
     dict_buffer: &[u8],
     compression_level: CompressionLevel,
-) -> CDict<'static> {
+) -> CDict {
     CDict::create(dict_buffer, compression_level)
 }
 

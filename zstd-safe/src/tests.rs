@@ -979,16 +979,13 @@ fn test_custom_allocator_dictionaries_interoperate_with_c_dictionaries() {
             let rust_dict = CDict::create(&dict, level);
             // This dictionary owns C-allocated storage and frees it through
             // its own callbacks, independently of the context's allocator.
-            let c_dict = CDict::from_raw(
-                unsafe {
-                    zstd_sys::ZSTD_createCDict(
-                        crate::ptr_void(&dict),
-                        dict.len(),
-                        level,
-                    )
-                },
-                false,
-            )
+            let c_dict = CDict::from_raw(unsafe {
+                zstd_sys::ZSTD_createCDict(
+                    crate::ptr_void(&dict),
+                    dict.len(),
+                    level,
+                )
+            })
             .unwrap();
             for input_size in [256, 256 * 1024] {
                 let input: Vec<u8> =
@@ -1777,17 +1774,17 @@ fn test_context_holds_its_dictionary() {
     drop(cdict); // The leaked context still holds it.
 }
 
-/// A dictionary made by reference from borrowed bytes is still read by the
-/// workers once the context is leaked, handle or not: its streaming frames
-/// run on the calling thread. One that owns its bytes keeps the workers.
+/// A dictionary made by reference borrows nothing: its bytes are `'static`,
+/// or owned by the dictionary, so the workers of a leaked context can still
+/// read them, and its streaming frames keep the workers.
 #[cfg(all(feature = "std", feature = "zstdmt", feature = "experimental"))]
 #[test]
-fn test_dictionary_of_borrowed_bytes_runs_on_calling_thread() {
+fn test_dictionary_made_by_reference_keeps_the_workers() {
     use zstd_safe::{CCtx, CDict, CParameter};
 
     let input = words(4 << 20, 2);
-    let bytes = words(1 << 20, 1);
-    let stream = |workers: u32, cdict: &CDict<'_>, expected: u32| {
+    let bytes: &'static [u8] = &LONG_CONTENT.as_bytes()[..64 << 10];
+    let stream = |workers: u32, cdict: &CDict, expected: u32| {
         let mut cctx = CCtx::create();
         cctx.set_parameter(CParameter::NbWorkers(workers)).unwrap();
         cctx.ref_cdict(cdict).unwrap();
@@ -1798,37 +1795,36 @@ fn test_dictionary_of_borrowed_bytes_runs_on_calling_thread() {
         compressed
     };
 
-    let borrowed = CDict::create_by_reference(&bytes, 1);
-    let single = stream(0, &borrowed, 0);
-    assert!(stream(2, &borrowed, 0) == single);
-
-    let owned = CDict::create_by_reference_owned(bytes.clone(), 1);
-    assert!(stream(0, &owned, 0) == single);
-    let multi = stream(2, &owned, 2);
+    let by_reference = CDict::create_by_reference(bytes, 1);
+    let single = stream(0, &by_reference, 0);
+    let multi = stream(2, &by_reference, 2);
     assert!(multi != single, "compressed on the calling thread");
 
-    // A call that returns only once its frame is done uses the workers
-    // either way, and a one-shot call with other data puts the borrowed
-    // dictionary back as it was.
+    let owned = CDict::create_by_reference_owned(bytes.to_vec(), 1);
+    assert!(stream(0, &owned, 0) == single);
+    assert!(stream(2, &owned, 2) == multi);
+
+    // A one-shot call uses the workers as well, and one with other data
+    // puts the dictionary back as it was.
     let mut cctx = CCtx::create();
     cctx.set_parameter(zstd_safe::CParameter::NbWorkers(2))
         .unwrap();
-    cctx.ref_cdict(&borrowed).unwrap();
+    cctx.ref_cdict(&by_reference).unwrap();
     let mut compressed =
         Vec::with_capacity(zstd_safe::compress_bound(input.len()));
     cctx.compress(&mut compressed, &input).unwrap();
     assert!(cctx.3.requested, "compress() did not use the workers");
     let mut dctx = zstd_safe::DCtx::create();
-    dctx.load_dictionary(&bytes).unwrap();
+    dctx.load_dictionary(bytes).unwrap();
     let mut decompressed = Vec::with_capacity(input.len());
     dctx.decompress(&mut decompressed, &compressed).unwrap();
     assert!(decompressed == input);
 
     compressed.clear();
-    cctx.compress_with_prefix(&mut compressed, &input, &bytes)
+    cctx.compress_with_prefix(&mut compressed, &input, bytes)
         .unwrap();
-    assert_eq!(cctx.frame_workers(), 0);
-    assert!(stream_frame(&mut cctx, &input) == single);
+    assert_eq!(cctx.frame_workers(), 2);
+    assert!(stream_frame(&mut cctx, &input) == multi);
 }
 
 /// `compress()` returns once its frame is done, so it keeps the workers
@@ -1893,7 +1889,7 @@ fn test_one_shot_too_small_leaves_no_worker_running() {
         },
         |cctx, dst, src, data| cctx.compress_with_prefix(dst, src, data),
         |cctx, dst, src, data| {
-            let cdict = CDict::create_by_reference(data, 1);
+            let cdict = CDict::create(data, 1);
             cctx.compress_with_cdict(dst, src, &cdict)
         },
     ];
@@ -2616,7 +2612,7 @@ fn test_auto_traits() {
     use core::panic::{RefUnwindSafe, UnwindSafe};
     fn check<T: Send + Sync + Unpin + UnwindSafe + RefUnwindSafe>() {}
     check::<zstd_safe::CCtx<'static>>();
-    check::<zstd_safe::CDict<'static>>();
+    check::<zstd_safe::CDict>();
     check::<zstd_safe::DCtx<'static>>();
     check::<zstd_safe::DDict<'static>>();
 }

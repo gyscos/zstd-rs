@@ -344,12 +344,9 @@ impl<'a> Encoder<'a> {
     ///
     /// The encoder keeps its own handle to the dictionary, so it does not
     /// borrow it.
-    pub fn with_prepared_dictionary<'b>(
-        dictionary: &EncoderDictionary<'b>,
-    ) -> io::Result<Self>
-    where
-        'b: 'a,
-    {
+    pub fn with_prepared_dictionary(
+        dictionary: &EncoderDictionary,
+    ) -> io::Result<Self> {
         let mut context = create_cctx()?;
         context
             .ref_cdict(dictionary.as_cdict())

@@ -21,17 +21,16 @@ pub use zstd_safe::{CDict, DDict};
 
 /// Prepared dictionary for compression
 ///
-/// A dictionary can include its own copy of the data (if it is `'static`), or it can merely point
-/// to a separate buffer (if it has another lifetime).
+/// A handle to a digested dictionary: cloning it is cheap, and shares the
+/// same digested tables. Encoders made with it keep their own handle, so they
+/// do not borrow it: an encoder from a local, a cache entry or a `static`
+/// dictionary is `'static` all the same, and can use worker threads.
 ///
-/// It is a handle to a digested dictionary: cloning it is cheap, and shares
-/// the same digested tables. Encoders made with it keep their own handle, so
-/// they do not borrow it: an encoder from a local, a cache entry or a
-/// `static` dictionary with its own copy of the data is `'static` all the
-/// same, and can use worker threads.
+/// The dictionary has its own copy of the data, or points to data that is
+/// `'static` or that it owns: it borrows nothing.
 #[derive(Clone)]
-pub struct EncoderDictionary<'a> {
-    cdict: CDict<'a>,
+pub struct EncoderDictionary {
+    cdict: CDict,
 }
 
 /// The error for a dictionary zstd could not load.
@@ -42,7 +41,7 @@ fn invalid_dictionary() -> std::io::Error {
     )
 }
 
-impl EncoderDictionary<'static> {
+impl EncoderDictionary {
     /// Creates a prepared dictionary for compression.
     ///
     /// This will copy the dictionary internally.
@@ -67,15 +66,13 @@ impl EncoderDictionary<'static> {
             .ok_or_else(invalid_dictionary)?;
         Ok(Self::from_cdict(cdict))
     }
-}
 
-impl<'a> EncoderDictionary<'a> {
     /// Wraps a prepared dictionary.
     ///
     /// For instance one that owns the bytes it references, without copying
     /// them (`CDict::create_by_reference_owned`, with the `experimental`
     /// feature).
-    pub fn from_cdict(cdict: CDict<'a>) -> Self {
+    pub fn from_cdict(cdict: CDict) -> Self {
         Self { cdict }
     }
 
@@ -87,19 +84,17 @@ impl<'a> EncoderDictionary<'a> {
     ///
     /// Only available with the `experimental` feature. Use `EncoderDictionary::copy` otherwise.
     ///
-    /// The dictionary points into `dictionary` without copying it. With
-    /// worker threads (`multithread`), a streamed frame that reads such a
-    /// dictionary is compressed on the calling thread: an encoder can be
-    /// leaked mid-frame, and the borrow would end under its workers. To keep
-    /// them, use [`EncoderDictionary::copy`], or
-    /// [`EncoderDictionary::from_cdict`] with a dictionary that owns its
-    /// bytes (which also takes `'static` ones).
+    /// The dictionary points into `dictionary` without copying it, so the
+    /// bytes must be `'static` (`include_bytes!`, say). For other bytes, use
+    /// [`EncoderDictionary::copy`], or [`EncoderDictionary::from_cdict`]
+    /// with a dictionary that owns them (a `Vec`, an `Arc<[u8]>`, a memory
+    /// map).
     ///
     /// # Panics
     ///
     /// If zstd cannot load the dictionary. Use [`EncoderDictionary::try_new`]
     /// for a dictionary you did not make yourself.
-    pub fn new(dictionary: &'a [u8], level: i32) -> Self {
+    pub fn new(dictionary: &'static [u8], level: i32) -> Self {
         Self::try_new(dictionary, level).expect("zstd returned null pointer")
     }
 
@@ -111,9 +106,11 @@ impl<'a> EncoderDictionary<'a> {
     /// Only available with the `experimental` feature. Use
     /// `EncoderDictionary::try_copy` otherwise.
     ///
-    /// See [`EncoderDictionary::new`] for what borrowing the bytes means
-    /// with worker threads.
-    pub fn try_new(dictionary: &'a [u8], level: i32) -> std::io::Result<Self> {
+    /// See [`EncoderDictionary::new`] for bytes that are not `'static`.
+    pub fn try_new(
+        dictionary: &'static [u8],
+        level: i32,
+    ) -> std::io::Result<Self> {
         let cdict =
             zstd_safe::CDict::try_create_by_reference(dictionary, level)
                 .ok_or_else(invalid_dictionary)?;
@@ -121,7 +118,7 @@ impl<'a> EncoderDictionary<'a> {
     }
 
     /// Returns reference to `CDict` inner object
-    pub fn as_cdict(&self) -> &CDict<'a> {
+    pub fn as_cdict(&self) -> &CDict {
         &self.cdict
     }
 }

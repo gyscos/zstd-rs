@@ -53,6 +53,33 @@ jobs:
     - name: Run zstd-safe tests with features std and seekable
       run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features std,seekable
 
+  # The system's zstd library, found with pkg-config, in place of the
+  # vendored one. It has worker threads whether or not the `zstdmt` feature
+  # is on: only this build checks that zstd-safe then refuses them itself.
+  system-zstd:
+
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        submodules: recursive
+    - name: Install the zstd development files
+      run: |
+        pkg-config --exists libzstd || {
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libzstd-dev
+        }
+        pkg-config --modversion libzstd
+    - name: Run tests
+      run: cargo test --verbose --features pkg-config
+    - name: Run tests with features experimental and zstdmt
+      run: cargo test --verbose --features pkg-config,experimental,zstdmt
+    - name: Run zstd-safe tests without feature zstdmt
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features pkg-config,std,experimental
+    - name: Run zstd-safe tests with feature zstdmt
+      run: cargo test --manifest-path zstd-safe/Cargo.toml --verbose --features pkg-config,std,experimental,zstdmt
+
   # The libzstd-rs-sys Rust port, in place of the C library.
   rust-backend:
 

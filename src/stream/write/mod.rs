@@ -217,6 +217,17 @@ impl<W: Write, F: FnMut(io::Result<W>)> Write for AutoFinishEncoder<'_, W, F> {
     }
 }
 
+/// `zio::Writer::new()`, but failing with an `OutOfMemory` error instead of
+/// aborting when its buffer cannot be allocated.
+fn try_writer<W: Write, D: raw::Operation>(
+    writer: W,
+    operation: D,
+) -> io::Result<zio::Writer<W, D>> {
+    // The same 32KB buffer as `zio::Writer::new()`.
+    let buffer = crate::vec_with_capacity(32 * 1024)?;
+    Ok(zio::Writer::with_output_buffer(buffer, writer, operation))
+}
+
 impl<W: Write> Encoder<'static, W> {
     /// Creates a new encoder.
     ///
@@ -239,7 +250,7 @@ impl<W: Write> Encoder<'static, W> {
         dictionary: &[u8],
     ) -> io::Result<Self> {
         let encoder = raw::Encoder::with_dictionary(level, dictionary)?;
-        Ok(Self::with_encoder(writer, encoder))
+        Ok(Self::with_writer(try_writer(writer, encoder)?))
     }
 
     /// Creates a new encoder with a prefix it owns, as single-use dictionary.
@@ -253,7 +264,7 @@ impl<W: Write> Encoder<'static, W> {
         P::Target: AsRef<[u8]>,
     {
         let encoder = raw::Encoder::with_prefix(level, prefix)?;
-        Ok(Self::with_encoder(writer, encoder))
+        Ok(Self::with_writer(try_writer(writer, encoder)?))
     }
 }
 
@@ -293,7 +304,7 @@ impl<'a, W: Write> Encoder<'a, W> {
         'b: 'a,
     {
         let encoder = raw::Encoder::with_prepared_dictionary(dictionary)?;
-        Ok(Self::with_encoder(writer, encoder))
+        Ok(Self::with_writer(try_writer(writer, encoder)?))
     }
 
     /// Creates a new encoder, using a ref prefix
@@ -312,7 +323,7 @@ impl<'a, W: Write> Encoder<'a, W> {
         'b: 'a,
     {
         let encoder = raw::Encoder::with_ref_prefix(level, ref_prefix)?;
-        Ok(Self::with_encoder(writer, encoder))
+        Ok(Self::with_writer(try_writer(writer, encoder)?))
     }
 
     /// Returns a wrapper around `self` that will finish the stream on drop.
@@ -421,7 +432,7 @@ impl<W: Write> Decoder<'static, W> {
     /// but requires the dictionary to be present during decompression.)
     pub fn with_dictionary(writer: W, dictionary: &[u8]) -> io::Result<Self> {
         let decoder = raw::Decoder::with_dictionary(dictionary)?;
-        Ok(Self::with_decoder(writer, decoder))
+        Ok(Self::with_writer(try_writer(writer, decoder)?))
     }
 }
 
@@ -468,7 +479,7 @@ impl<'a, W: Write> Decoder<'a, W> {
         'b: 'a,
     {
         let decoder = raw::Decoder::with_prepared_dictionary(dictionary)?;
-        Ok(Self::with_decoder(writer, decoder))
+        Ok(Self::with_writer(try_writer(writer, decoder)?))
     }
 
     /// Acquires a reference to the underlying writer.

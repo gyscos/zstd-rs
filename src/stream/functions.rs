@@ -1,5 +1,5 @@
 use std::io;
-use std::io::{BufRead, Read, Write};
+use std::io::{BufRead, Write};
 
 use super::{Decoder, Encoder};
 
@@ -260,11 +260,27 @@ where
 
     // Read the beginning first: if the source ends there, we know its length,
     // and pledging it is what gets the frame to record it.
+    // Filled by hand rather than with `read_to_end`, which grows the buffer
+    // infallibly: this grows it the same way (doubling, so that a short
+    // source only pays for what it holds), but returns an error when that
+    // memory cannot be had.
     let mut head = Vec::new();
-    source
-        .by_ref()
-        .take(MAX_BUFFERED as u64)
-        .read_to_end(&mut head)?;
+    let mut len = 0;
+    while len < MAX_BUFFERED {
+        if len == head.len() {
+            let grow = len.max(64).min(MAX_BUFFERED - len);
+            head.try_reserve_exact(grow)
+                .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
+            head.resize(len + grow, 0);
+        }
+        match source.read(&mut head[len..]) {
+            Ok(0) => break,
+            Ok(n) => len += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    head.truncate(len);
     let complete = head.len() < MAX_BUFFERED;
     if complete {
         encoder.set_pledged_src_size(Some(head.len() as u64))?;

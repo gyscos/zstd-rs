@@ -2429,7 +2429,8 @@ fn test_output_position_past_the_end_keeps_the_frame() {
     use zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer, WriteBuf};
 
     /// Reports a capacity that can shrink: at once, or (`.2`) only from
-    /// the second time it is asked.
+    /// the second time it is asked. That breaks a promise of `WriteBuf`, on
+    /// purpose: zstd-safe still checks the capacity it hands to zstd.
     struct Shrinking(Vec<u8>, usize, core::cell::Cell<bool>);
     unsafe impl WriteBuf for Shrinking {
         fn as_slice(&self) -> &[u8] {

@@ -2868,3 +2868,392 @@ fn test_streaming_frames_with_a_referenced_dictionary() {
     let len = cctx.compress2(&mut buffer[..], INPUT).unwrap();
     assert!(buffer[..len] == expected[..expected_len]);
 }
+
+/// Bytes zstd cannot compress, from a fixed xorshift seed.
+#[cfg(all(feature = "std", feature = "experimental"))]
+fn noise(len: usize) -> Vec<u8> {
+    let mut x = 0x9E37_79B9_7F4A_7C15u64;
+    (0..len)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x as u8
+        })
+        .collect()
+}
+
+/// Starts a streaming frame on `cctx`, which the block API then carries on.
+#[cfg(all(feature = "std", feature = "experimental"))]
+fn start_streaming_frame(cctx: &mut crate::CCtx<'_>) {
+    use crate::{InBuffer, OutBuffer};
+
+    let mut output = [0u8; 64];
+    cctx.compress_stream(
+        &mut OutBuffer::around(&mut output[..]),
+        &mut InBuffer::around(b""),
+    )
+    .unwrap();
+}
+
+/// Compresses `block` with `compress_block`, and checks that a new block
+/// session decodes it: it refers to nothing but the context's own state.
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[allow(deprecated)] // Exercises the deprecated block API.
+fn check_fresh_block(name: &str, cctx: &mut crate::CCtx<'_>, block: &[u8]) {
+    let mut out = Vec::with_capacity(block.len() + 1024);
+    let size = unsafe { cctx.compress_block(&mut out, block) }
+        .unwrap_or_else(|e| panic!("{}: {}", name, crate::get_error_name(e)));
+    if size == 0 {
+        // Stored as is: nothing to decode.
+        return;
+    }
+    let mut decoded = std::vec![0u8; block.len()];
+    let n = unsafe {
+        crate::DCtx::create().decompress_block(&mut decoded[..], &out)
+    }
+    .unwrap_or_else(|e| panic!("{}: {}", name, crate::get_error_name(e)));
+    assert_eq!(&decoded[..n], block, "{}", name);
+}
+
+// The block API carries on from the frame zstd has open, which can read what
+// another call only borrowed. `compress_block` must start its own session
+// instead (gyscos/zstd-rs#415).
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+#[allow(deprecated)] // Exercises the deprecated block API.
+fn test_block_api_starts_its_own_session() {
+    use crate::{
+        CCtx, CDict, CParameter, InBuffer, OutBuffer, ResetDirective,
+    };
+    use zstd_sys::ZSTD_EndDirective::{ZSTD_e_continue, ZSTD_e_end};
+
+    // Blocks repeat what the borrowed data held, so a block compressed
+    // against it would not decode on its own.
+    let data = noise(100 << 10);
+    let block = &data[90 << 10..][..4096];
+    let dict = noise(2048);
+    let cdict = CDict::create(&dict, 3);
+
+    // A one-shot call that fails mid-frame leaves the frame's stage in
+    // progress, with its window in the source. A session reset does not end
+    // it.
+    type OneShot = fn(
+        &mut CCtx<'_>,
+        &mut [u8],
+        &[u8],
+        &[u8],
+        &CDict<'_>,
+    ) -> crate::SafeResult;
+    let calls: [(&str, OneShot); 6] = [
+        ("compress", |cctx, dst, src, _, _| {
+            cctx.compress(dst, src, 3)
+        }),
+        ("compress2", |cctx, dst, src, _, _| cctx.compress2(dst, src)),
+        ("compress_using_dict", |cctx, dst, src, dict, _| {
+            cctx.compress_using_dict(dst, src, dict, 3)
+        }),
+        ("compress_using_cdict", |cctx, dst, src, _, cdict| {
+            cctx.compress_using_cdict(dst, src, cdict)
+        }),
+        ("compress_with_prefix", |cctx, dst, src, dict, _| {
+            cctx.compress_with_prefix(dst, src, dict)
+        }),
+        ("compress_with_cdict", |cctx, dst, src, _, cdict| {
+            cctx.compress_with_cdict(dst, src, cdict)
+        }),
+    ];
+    for (name, call) in calls {
+        for reset in [false, true] {
+            let mut cctx = CCtx::create();
+            start_streaming_frame(&mut cctx);
+            let src = data.clone();
+            let res = call(&mut cctx, &mut [0u8; 32][..], &src, &dict, &cdict);
+            assert!(res.is_err(), "{}: the frame should not fit", name);
+            drop(src);
+            if reset {
+                cctx.reset(ResetDirective::SessionOnly).unwrap();
+            } else if name == "compress2" {
+                // It stays mid-frame, poisoned until a reset.
+                let mut out = Vec::with_capacity(8 << 10);
+                assert_eq!(
+                    unsafe { cctx.compress_block(&mut out, block) },
+                    res
+                );
+                cctx.reset(ResetDirective::SessionOnly).unwrap();
+            }
+            check_fresh_block(name, &mut cctx, block);
+        }
+    }
+
+    // A streaming call that fails mid-frame can leave its window in its own
+    // input, when it compressed it in place (`ZSTD_e_end` with room enough
+    // for the whole frame, or `StableOutBuffer`).
+    for stable_out in [false, true] {
+        let mut cctx = CCtx::create();
+        let mut out = Vec::with_capacity(crate::compress_bound(data.len()));
+        if stable_out {
+            cctx.set_parameter(CParameter::StableOutBuffer(true))
+                .unwrap();
+            out = Vec::with_capacity(64);
+        } else {
+            // The input is larger than pledged.
+            cctx.set_pledged_src_size(Some(64 << 10)).unwrap();
+            start_streaming_frame(&mut cctx);
+        }
+        let src = data.clone();
+        let res = cctx.compress_stream2(
+            &mut OutBuffer::around(&mut out),
+            &mut InBuffer::around(&src),
+            ZSTD_e_end,
+        );
+        assert!(res.is_err());
+        drop(src);
+        // Poisoned until a reset.
+        let mut out = Vec::with_capacity(8 << 10);
+        assert_eq!(unsafe { cctx.compress_block(&mut out, block) }, res);
+        cctx.reset(ResetDirective::SessionOnly).unwrap();
+        check_fresh_block("failed stream", &mut cctx, block);
+    }
+
+    // A loaded dictionary is zstd's own copy, which it frees when the
+    // dictionary changes, while the frame it was attached to may stay open.
+    let text = &LONG_CONTENT.as_bytes()[..4096];
+    for reset in [false, true] {
+        let mut cctx = CCtx::create();
+        cctx.load_dictionary(text).unwrap();
+        start_streaming_frame(&mut cctx);
+        if reset {
+            cctx.reset(ResetDirective::SessionOnly).unwrap();
+        }
+        if cctx.disable_dictionary().is_ok() {
+            check_fresh_block("freed dictionary", &mut cctx, text);
+        } else {
+            // zstd refused mid-frame: the dictionary is still there.
+            assert!(!reset);
+            let mut out = Vec::with_capacity(8 << 10);
+            unsafe { cctx.compress_block(&mut out, text) }.unwrap();
+        }
+    }
+    // Also when the dictionary went with the block session's own frame.
+    let mut cctx = CCtx::create();
+    cctx.load_dictionary(text).unwrap();
+    let mut out = Vec::with_capacity(8 << 10);
+    unsafe { cctx.compress_block(&mut out, b"hello") }.unwrap();
+    cctx.disable_dictionary().unwrap();
+    check_fresh_block("session dictionary", &mut cctx, text);
+
+    // zstd sizes a frame's tables for its pledged size, but takes blocks as
+    // large as the window: block sessions have no pledged size.
+    let mut cctx = CCtx::create();
+    cctx.set_pledged_src_size(Some(1)).unwrap();
+    start_streaming_frame(&mut cctx);
+    check_fresh_block("pledged size", &mut cctx, block);
+    let mut cctx = CCtx::create();
+    cctx.init_src_size(3, 1).unwrap();
+    check_fresh_block("init_src_size", &mut cctx, block);
+    // `ZSTD_e_end` pledges the size of its input.
+    let mut cctx = CCtx::create();
+    let _ = cctx.compress_stream2(
+        &mut OutBuffer::around(&mut [0u8; 4][..]),
+        &mut InBuffer::around(&block[..10]),
+        ZSTD_e_end,
+    );
+    check_fresh_block("ZSTD_e_end", &mut cctx, block);
+
+    // Blocks only live as long as their session: a streaming call after it
+    // starts a new frame rather than carry on the session's. That holds when
+    // the session ended with a failed block call too.
+    for fail in [false, true] {
+        let mut cctx = CCtx::create();
+        let first = data[..4096].to_vec();
+        let mut out = Vec::with_capacity(8 << 10);
+        unsafe { cctx.compress_block(&mut out, &first) }.unwrap();
+        if fail {
+            let too_large = std::vec![0u8; 1 << 20];
+            let res = unsafe { cctx.compress_block(&mut out, &too_large) };
+            assert!(res.is_err());
+            // Poisoned until a reset, for blocks and streams alike.
+            assert_eq!(unsafe { cctx.compress_block(&mut out, b"more") }, res);
+            let mut scratch = [0u8; 64];
+            assert_eq!(
+                cctx.compress_stream2(
+                    &mut OutBuffer::around(&mut scratch[..]),
+                    &mut InBuffer::around(b"more"),
+                    ZSTD_e_continue,
+                ),
+                res
+            );
+            cctx.reset(ResetDirective::SessionOnly).unwrap();
+        }
+        drop(first);
+        let mut frame = Vec::with_capacity(crate::compress_bound(data.len()));
+        let mut output = OutBuffer::around(&mut frame);
+        let mut input = InBuffer::around(&data[..]);
+        cctx.compress_stream2(&mut output, &mut input, ZSTD_e_continue)
+            .unwrap();
+        while cctx
+            .compress_stream2(&mut output, &mut input, ZSTD_e_end)
+            .unwrap()
+            != 0
+        {}
+        let mut decoded = std::vec![0u8; data.len()];
+        assert_eq!(
+            crate::DCtx::create()
+                .decompress(&mut decoded[..], output.as_slice()),
+            Ok(data.len())
+        );
+        assert!(decoded == data);
+    }
+    // And after a failed block call, the context takes a new dictionary:
+    // zstd only does between frames.
+    let mut cctx = CCtx::create();
+    let mut out = Vec::with_capacity(8 << 10);
+    assert!(unsafe { cctx.compress_block(&mut out, &[0u8; 1 << 20]) }.is_err());
+    cctx.load_dictionary(text).unwrap();
+
+    // Blocks of the same session do refer to each other.
+    let mut cctx = CCtx::create();
+    let mut out = Vec::with_capacity(8 << 10);
+    unsafe { cctx.compress_block(&mut out, text) }.unwrap();
+    let first = out.len();
+    out.clear();
+    // A copy: zstd drops the part of its window that new input overlaps.
+    let copy = text.to_vec();
+    let second = unsafe { cctx.compress_block(&mut out, &copy) }.unwrap();
+    assert!(second < first / 4, "{} vs {}", second, first);
+}
+
+/// Compresses `blocks` with the block API, in one session.
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[allow(deprecated)] // Exercises the deprecated block API.
+fn compress_blocks(
+    dict: Option<&[u8]>,
+    blocks: &[&'static [u8]],
+) -> Vec<Vec<u8>> {
+    use crate::CCtx;
+
+    let mut cctx = CCtx::create();
+    if let Some(dict) = dict {
+        cctx.load_dictionary(dict).unwrap();
+    }
+    start_streaming_frame(&mut cctx);
+    blocks
+        .iter()
+        .map(|block| {
+            let mut out = Vec::with_capacity(block.len() + 1024);
+            // Safety: the blocks are `'static`, and the dictionary was copied.
+            let size =
+                unsafe { cctx.compress_block(&mut out, block) }.unwrap();
+            assert!(size > 0, "block stored raw");
+            out
+        })
+        .collect()
+}
+
+// Blocks are decoded against the blocks of their own session only: a fresh
+// context has no history yet, and a frame decoded before, with the
+// dictionary it only borrowed, is not part of it (gyscos/zstd-rs#415).
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+#[allow(deprecated)] // Exercises the deprecated block API.
+fn test_block_api_decodes_against_its_own_session_only() {
+    use crate::{CCtx, DCtx, DDict};
+
+    let text = &LONG_CONTENT.as_bytes()[..4096];
+    // The second block repeats the first, and so refers to it.
+    let blocks = compress_blocks(None, &[text, text]);
+    let decode_session = |dctx: &mut DCtx<'_>| {
+        let mut out = std::vec![0u8; 2 * text.len()];
+        let (first, second) = out.split_at_mut(text.len());
+        let n = unsafe { dctx.decompress_block(first, &blocks[0]) }.unwrap();
+        assert_eq!(n, text.len());
+        let n = unsafe { dctx.decompress_block(second, &blocks[1]) }.unwrap();
+        assert_eq!(n, text.len());
+        assert_eq!(&out[..text.len()], text);
+        assert_eq!(&out[text.len()..], text);
+    };
+
+    let mut dctx = DCtx::create();
+    decode_session(&mut dctx);
+
+    // A block that refers to a dictionary.
+    let dict = noise(2048);
+    let content: &'static [u8] = std::vec::Vec::leak(dict[512..1536].to_vec());
+    let dict_block = compress_blocks(Some(&dict), &[content]).remove(0);
+
+    let mut frame = Vec::with_capacity(1024);
+    CCtx::create()
+        .compress_using_dict(&mut frame, b"hello", &dict, 3)
+        .unwrap();
+
+    for use_ddict in [false, true] {
+        let mut out = std::vec![0u8; 4096];
+        let dict = dict.clone();
+        let ddict = DDict::create(&dict);
+        let mut dctx = DCtx::create();
+        let n = if use_ddict {
+            dctx.decompress_using_ddict(&mut out[..], &frame, &ddict)
+        } else {
+            dctx.decompress_using_dict(&mut out[..], &frame, &dict)
+        };
+        assert_eq!(n, Ok(5));
+        drop(ddict);
+        drop(dict);
+        // The block's matches are not in this session: it must fail, rather
+        // than read the dictionary the frame only borrowed.
+        assert!(unsafe { dctx.decompress_block(&mut out[..], &dict_block) }
+            .is_err());
+    }
+
+    // Decoding a frame ends a block session: the second block no longer
+    // finds the first one.
+    let mut plain = Vec::with_capacity(1024);
+    CCtx::create().compress(&mut plain, b"hello", 3).unwrap();
+    let mut dctx = DCtx::create();
+    let mut out = std::vec![0u8; 2 * text.len()];
+    let (first, second) = out.split_at_mut(text.len());
+    assert_eq!(
+        unsafe { dctx.decompress_block(first, &blocks[0]) },
+        Ok(text.len())
+    );
+    let mut hello = [0u8; 5];
+    assert_eq!(dctx.decompress(&mut hello[..], &plain), Ok(5));
+    let res = unsafe { dctx.decompress_block(second, &blocks[1]) };
+    assert!(res.is_err());
+
+    // That failure poisons the context until a reset, which starts the next
+    // session from scratch.
+    assert_eq!(unsafe { dctx.decompress_block(second, &blocks[0]) }, res);
+    unsafe { dctx.insert_block(text) };
+    assert_eq!(unsafe { dctx.decompress_block(second, &blocks[0]) }, res);
+    dctx.reset(crate::ResetDirective::SessionOnly).unwrap();
+    decode_session(&mut dctx);
+
+    // A session reset starts a new session on both sides, in step. (The
+    // second block is mostly repeated offsets, which a decoder that carried
+    // on the first session would take from it.)
+    let mut runs = std::vec![b'a'; 3000];
+    runs.extend_from_slice(&text[..200]);
+    runs.extend(std::vec![b'b'; 3000]);
+    let mut cctx = CCtx::create();
+    let mut first_block = Vec::with_capacity(8 << 10);
+    unsafe { cctx.compress_block(&mut first_block, text) }.unwrap();
+    cctx.reset(crate::ResetDirective::SessionOnly).unwrap();
+    let mut second_block = Vec::with_capacity(8 << 10);
+    unsafe { cctx.compress_block(&mut second_block, &runs) }.unwrap();
+    let mut dctx = DCtx::create();
+    let mut out = std::vec![0u8; text.len() + runs.len()];
+    let (first, second) = out.split_at_mut(text.len());
+    assert_eq!(
+        unsafe { dctx.decompress_block(first, &first_block) },
+        Ok(text.len())
+    );
+    dctx.reset(crate::ResetDirective::SessionOnly).unwrap();
+    assert_eq!(
+        unsafe { dctx.decompress_block(second, &second_block) },
+        Ok(runs.len())
+    );
+    assert!(&out[..text.len()] == text);
+    assert!(out[text.len()..] == runs[..]);
+}

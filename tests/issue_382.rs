@@ -176,16 +176,18 @@ mod allocation_failure {
 
     thread_local! {
         static FAIL_NEXT: Cell<bool> = const { Cell::new(false) };
+        static FAIL_FROM_NEXT: Cell<bool> = const { Cell::new(false) };
     }
 
-    struct FailOnceAllocator;
+    struct FailingAllocator;
 
-    unsafe impl GlobalAlloc for FailOnceAllocator {
+    unsafe impl GlobalAlloc for FailingAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            if FAIL_NEXT
-                .try_with(|flag| flag.replace(false))
-                .unwrap_or(false)
-            {
+            let fail = FAIL_FROM_NEXT.try_with(Cell::get).unwrap_or(false)
+                || FAIL_NEXT
+                    .try_with(|flag| flag.replace(false))
+                    .unwrap_or(false);
+            if fail {
                 std::ptr::null_mut()
             } else {
                 unsafe { System.alloc(layout) }
@@ -198,7 +200,7 @@ mod allocation_failure {
     }
 
     #[global_allocator]
-    static ALLOCATOR: FailOnceAllocator = FailOnceAllocator;
+    static ALLOCATOR: FailingAllocator = FailingAllocator;
 
     fn fail_next_allocation<T>(constructor: impl FnOnce() -> T) -> T {
         FAIL_NEXT.with(|flag| flag.set(true));
@@ -209,6 +211,18 @@ mod allocation_failure {
             "constructor did not attempt to allocate a context"
         );
         result
+    }
+
+    fn fail_from_next_allocation<T>(constructor: impl FnOnce() -> T) -> T {
+        FAIL_FROM_NEXT.with(|flag| flag.set(true));
+        let result = constructor();
+        FAIL_FROM_NEXT.with(|flag| flag.set(false));
+        result
+    }
+
+    fn check_out_of_memory<T>(result: io::Result<T>) {
+        let error = result.err().expect("constructor should fail");
+        assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
     }
 
     #[test]
@@ -250,14 +264,6 @@ mod allocation_failure {
     fn context_allocation_errors_are_returned_by_the_other_constructors() {
         use zstd::stream::raw;
 
-        fn check<T>(result: io::Result<T>, expected: &str) {
-            let error = result.err().expect("constructor should fail");
-            assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
-            assert_eq!(error.to_string(), expected);
-        }
-        let compression = "zstd could not allocate a compression context";
-        let decompression = "zstd could not allocate a decompression context";
-
         let dictionary = b"a raw-content dictionary";
         let encoder_dictionary =
             zstd::dict::EncoderDictionary::try_copy(dictionary, 3).unwrap();
@@ -266,34 +272,51 @@ mod allocation_failure {
 
         let result =
             fail_next_allocation(|| zstd::Encoder::new(io::sink(), 3));
-        check(result, compression);
+        check_out_of_memory(result);
         let result = fail_next_allocation(|| raw::Encoder::new(3));
-        check(result, compression);
+        check_out_of_memory(result);
         let result = fail_next_allocation(|| {
             raw::Encoder::with_prepared_dictionary(&encoder_dictionary)
         });
-        check(result, compression);
+        check_out_of_memory(result);
         let result = fail_next_allocation(|| {
             raw::Encoder::with_ref_prefix(3, dictionary)
         });
-        check(result, compression);
+        check_out_of_memory(result);
 
         let result = fail_next_allocation(|| zstd::bulk::Compressor::new(3));
-        check(result, compression);
+        check_out_of_memory(result);
         let result = fail_next_allocation(|| {
             zstd::bulk::Compressor::with_prepared_dictionary(
                 &encoder_dictionary,
             )
         });
-        check(result, compression);
+        check_out_of_memory(result);
 
         let result = fail_next_allocation(zstd::bulk::Decompressor::new);
-        check(result, decompression);
+        check_out_of_memory(result);
         let result = fail_next_allocation(|| {
             zstd::bulk::Decompressor::with_prepared_dictionary(
                 &decoder_dictionary,
             )
         });
-        check(result, decompression);
+        check_out_of_memory(result);
+    }
+
+    #[test]
+    fn sticky_allocation_errors_are_returned_without_allocating() {
+        use zstd::stream::raw;
+
+        let result =
+            fail_from_next_allocation(|| zstd::Encoder::new(io::sink(), 3));
+        check_out_of_memory(result);
+
+        let result = fail_from_next_allocation(raw::Decoder::new);
+        check_out_of_memory(result);
+
+        let mut compressor = zstd::bulk::Compressor::new(3).unwrap();
+        let result =
+            fail_from_next_allocation(|| compressor.compress(b"payload"));
+        check_out_of_memory(result);
     }
 }

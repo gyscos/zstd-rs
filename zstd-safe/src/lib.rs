@@ -3504,7 +3504,7 @@ pub struct InBuffer<'a> {
 ///
 /// # Safety
 ///
-/// An implementation has to keep three promises, because the zstd functions
+/// An implementation has to keep four promises, because the zstd functions
 /// this is handed to write straight through the pointer:
 ///
 /// * `as_mut_ptr()` points at a buffer that is valid to write `capacity()`
@@ -3513,6 +3513,12 @@ pub struct InBuffer<'a> {
 ///   that has not been written yet.
 /// * `filled_until(n)` is what marks the first `n` bytes as initialized, so
 ///   after it returns, `as_slice()` must cover them.
+/// * `capacity()` and the pointer `as_mut_ptr()` returns may change between
+///   uses (a `Vec` grows when pushed to), but not while the buffer is
+///   mutably borrowed by the code writing to it through this trait (an
+///   `OutBuffer`, a call taking `&mut` of it): calling this trait's methods,
+///   in any order, changes neither (`filled_until()` only changes what
+///   `as_slice()` covers).
 pub unsafe trait WriteBuf {
     /// Returns the valid data part of this container. Should only cover initialized data.
     fn as_slice(&self) -> &[u8];
@@ -3854,12 +3860,12 @@ impl<'a, C: WriteBuf + ?Sized> OutBuffer<'a, C> {
     }
 
     fn wrap<'b>(&'b mut self) -> OutBufferWrapper<'b, 'a, C> {
-        // The capacity is the caller's to report (`WriteBuf`), and may have
-        // shrunk since the position was set. zstd refuses a position past
-        // the end before doing anything, and `set_pos()` would panic on it
-        // once the call returned: do it first, while a compression context
-        // still knows about the frame it has in progress. zstd is given the
-        // capacity that was checked, not a second reading of it.
+        // `WriteBuf` promises the capacity does not shrink under us, but
+        // checking costs nothing. zstd refuses a position past the end before
+        // doing anything, and `set_pos()` would panic on it once the call
+        // returned: do it first, while a compression context still knows
+        // about the frame it has in progress. zstd is given the capacity that
+        // was checked, not a second reading of it.
         let capacity = self.dst.capacity();
         if self.pos > capacity {
             panic!("Given position outside of the buffer bounds.");

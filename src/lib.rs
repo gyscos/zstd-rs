@@ -84,7 +84,11 @@ pub use crate::stream::{
 /// An error reported by the zstd library.
 ///
 /// When zstd itself fails, the `io::Error` this crate returns carries one of
-/// these, so you can tell what went wrong without matching on the message:
+/// these, so you can tell what went wrong without matching on the message.
+/// The exception is zstd running out of memory: that is an error of kind
+/// [`io::ErrorKind::OutOfMemory`], with nothing inside, since wrapping the
+/// code would need an allocation. (With `rust-backend`, the Rust port of
+/// zstd reports some of those as other errors.)
 ///
 /// ```
 /// let mut small = [0u8; 4];
@@ -128,7 +132,16 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 /// Wraps a zstd error code in an `io::Error`, as an [`Error`].
+///
+/// Except when zstd could not allocate memory: wrapping the code would need
+/// another allocation, which aborts the process if the allocator still fails.
+/// That one is a plain `OutOfMemory` error, as for the allocations this crate
+/// makes itself.
 fn map_error_code(code: usize) -> io::Error {
+    use zstd_safe::zstd_sys::ZSTD_ErrorCode::ZSTD_error_memory_allocation;
+    if zstd_safe::is_error_kind(code, ZSTD_error_memory_allocation) {
+        return io::Error::from(io::ErrorKind::OutOfMemory);
+    }
     io::Error::new(io::ErrorKind::Other, Error { code })
 }
 

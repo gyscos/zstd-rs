@@ -138,12 +138,8 @@ fn map_error_code(code: usize) -> io::Error {
 /// of aborting the process when that much memory cannot be allocated.
 fn vec_with_capacity(capacity: usize) -> io::Result<Vec<u8>> {
     let mut vec = Vec::new();
-    vec.try_reserve_exact(capacity).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::OutOfMemory,
-            format!("could not allocate a buffer of {} bytes", capacity),
-        )
-    })?;
+    vec.try_reserve_exact(capacity)
+        .map_err(|_| io::Error::from(io::ErrorKind::OutOfMemory))?;
     Ok(vec)
 }
 
@@ -152,12 +148,8 @@ fn vec_with_capacity(capacity: usize) -> io::Result<Vec<u8>> {
 /// Unlike `zstd_safe::CCtx::create`, this fails with an error instead of
 /// panicking when zstd cannot allocate the context.
 fn create_cctx<'a>() -> io::Result<zstd_safe::CCtx<'a>> {
-    zstd_safe::CCtx::try_create().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::OutOfMemory,
-            "zstd could not allocate a compression context",
-        )
-    })
+    zstd_safe::CCtx::try_create()
+        .ok_or_else(|| io::Error::from(io::ErrorKind::OutOfMemory))
 }
 
 /// Creates a decompression context.
@@ -165,12 +157,8 @@ fn create_cctx<'a>() -> io::Result<zstd_safe::CCtx<'a>> {
 /// Unlike `zstd_safe::DCtx::create`, this fails with an error instead of
 /// panicking when zstd cannot allocate the context.
 fn create_dctx<'a>() -> io::Result<zstd_safe::DCtx<'a>> {
-    zstd_safe::DCtx::try_create().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::OutOfMemory,
-            "zstd could not allocate a decompression context",
-        )
-    })
+    zstd_safe::DCtx::try_create()
+        .ok_or_else(|| io::Error::from(io::ErrorKind::OutOfMemory))
 }
 
 // Some helper functions to write full-cycle tests.

@@ -1796,10 +1796,10 @@ impl<'a> CCtx<'a> {
     /// was given more than its pledged size), the context refuses any
     /// frame that would use the workers while `NbWorkers` is set (a
     /// streaming frame that reads borrowed data does not), and setting
-    /// it again (with a `stage_wrong` error): zstd up to 1.5.7, the version
-    /// bundled here, can leave a cleared job behind that the next
-    /// multithreaded frame would hand to a worker, which crashes. Create a new
-    /// context then, or set `NbWorkers` to 0.
+    /// it again (with a `stage_wrong` error): zstd up to 1.5.7 can leave a
+    /// cleared job behind that the next multithreaded frame would hand to a
+    /// worker, which crashes. Create a new context then, or set `NbWorkers`
+    /// to 0.
     ///
     /// Once a `ZSTD_e_end` call took all of its input, a frame takes no more:
     /// that is refused with a `stage_wrong` error too, instead of the worker

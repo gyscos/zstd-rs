@@ -3284,3 +3284,173 @@ fn test_block_api_decodes_against_its_own_session_only() {
     assert!(&out[..text.len()] == text);
     assert!(out[text.len()..] == runs[..]);
 }
+
+#[cfg(feature = "std")]
+#[test]
+fn test_get_frame_header() {
+    use zstd_safe::{FrameHeaderStatus, FrameType};
+
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    zstd_safe::compress(&mut compressed, INPUT, 3).unwrap();
+
+    let header = match zstd_safe::get_frame_header(&compressed).unwrap() {
+        FrameHeaderStatus::Complete(header) => header,
+        incomplete => panic!("the whole frame gave {:?}", incomplete),
+    };
+    assert_eq!(header.frameType, FrameType::ZSTD_frame);
+    assert_eq!(header.frameContentSize, INPUT.len() as u64);
+    assert_eq!(header.dictID, 0);
+
+    // Any prefix shorter than the header asks for more of the frame.
+    let header_size = header.headerSize as usize;
+    for len in 0..header_size {
+        match zstd_safe::get_frame_header(&compressed[..len]).unwrap() {
+            FrameHeaderStatus::Incomplete { src_size } => {
+                assert!(src_size > len && src_size <= header_size)
+            }
+            complete => panic!("{} bytes gave {:?}", len, complete),
+        }
+    }
+    assert!(matches!(
+        zstd_safe::get_frame_header(&compressed[..header_size]),
+        Ok(FrameHeaderStatus::Complete(_))
+    ));
+
+    assert!(zstd_safe::get_frame_header(b"not a zstd frame").is_err());
+}
+
+#[test]
+fn test_get_frame_header_skippable() {
+    use zstd_safe::{FrameHeaderStatus, FrameType};
+
+    let variant = 5;
+    let content = b"skipped";
+    let mut frame = (zstd_safe::MAGIC_SKIPPABLE_START + variant)
+        .to_le_bytes()
+        .to_vec();
+    frame.extend_from_slice(&(content.len() as u32).to_le_bytes());
+    frame.extend_from_slice(content);
+
+    let header = match zstd_safe::get_frame_header(&frame).unwrap() {
+        FrameHeaderStatus::Complete(header) => header,
+        incomplete => panic!("the whole frame gave {:?}", incomplete),
+    };
+    assert_eq!(header.frameType, FrameType::ZSTD_skippableFrame);
+    assert_eq!(header.frameContentSize, content.len() as u64);
+    assert_eq!(header.dictID, variant);
+}
+
+#[cfg(all(feature = "std", feature = "experimental"))]
+#[test]
+fn test_get_frame_header_magicless() {
+    use zstd_safe::{CCtx, CParameter, FrameFormat, FrameHeaderStatus};
+
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::Format(FrameFormat::Magicless))
+        .unwrap();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    cctx.compress2(&mut compressed, INPUT).unwrap();
+
+    assert!(zstd_safe::get_frame_header(&compressed).is_err());
+    match zstd_safe::get_frame_header_advanced(
+        &compressed,
+        FrameFormat::Magicless,
+    )
+    .unwrap()
+    {
+        FrameHeaderStatus::Complete(header) => {
+            assert_eq!(header.frameContentSize, INPUT.len() as u64)
+        }
+        incomplete => panic!("the whole frame gave {:?}", incomplete),
+    }
+}
+
+/// Bytes that start with the dictionary magic number, and are not a valid
+/// dictionary after it.
+#[cfg(feature = "std")]
+fn magic_raw_content() -> Vec<u8> {
+    let mut dict = zstd_safe::MAGIC_DICTIONARY.to_le_bytes().to_vec();
+    dict.extend_from_slice(&INPUT[..64]);
+    dict
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_load_dictionary_as_raw_content() {
+    use zstd_safe::{CCtx, DCtx, DictContentType};
+
+    let dict = magic_raw_content();
+    let mut cctx = CCtx::create();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    // Read as a zstd dictionary, it is refused.
+    cctx.load_dictionary_advanced(&dict, DictContentType::FullDict)
+        .unwrap();
+    assert!(cctx.compress2(&mut compressed, INPUT).is_err());
+    let mut dctx = DCtx::create();
+    assert!(dctx
+        .load_dictionary_advanced(&dict, DictContentType::FullDict)
+        .is_err());
+
+    cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
+    cctx.load_dictionary_advanced(&dict, DictContentType::RawContent)
+        .unwrap();
+    cctx.compress2(&mut compressed, INPUT).unwrap();
+    dctx.load_dictionary_advanced(&dict, DictContentType::RawContent)
+        .unwrap();
+    let mut decompressed = Vec::with_capacity(INPUT.len());
+    dctx.decompress(&mut decompressed, &compressed).unwrap();
+    assert!(decompressed == INPUT);
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_ref_dictionary() {
+    use zstd_safe::{CCtx, DCtx, DictContentType};
+
+    let dict = magic_raw_content();
+    let mut cctx = CCtx::create();
+    cctx.ref_dictionary(&dict, DictContentType::RawContent)
+        .unwrap();
+    let mut compressed =
+        Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    cctx.compress2(&mut compressed, INPUT).unwrap();
+
+    // Without the dictionary, the frame does not decompress.
+    let mut decompressed = Vec::with_capacity(INPUT.len());
+    let mut dctx = DCtx::create();
+    assert!(dctx.decompress(&mut decompressed, &compressed).is_err());
+
+    dctx.ref_dictionary(&dict, DictContentType::RawContent)
+        .unwrap();
+    decompressed.clear();
+    dctx.decompress(&mut decompressed, &compressed).unwrap();
+    assert!(decompressed == INPUT);
+
+    // The context could not reference it again after another dictionary.
+    let mut other = Vec::with_capacity(zstd_safe::compress_bound(INPUT.len()));
+    assert!(cctx
+        .compress_with_prefix(&mut other, INPUT, b"a prefix")
+        .is_err());
+}
+
+/// A dictionary the context only borrows keeps streaming frames off the
+/// worker threads.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+#[test]
+fn test_ref_dictionary_with_workers() {
+    use zstd_safe::{CCtx, CParameter, DictContentType};
+
+    let dict = magic_raw_content();
+    let mut cctx = CCtx::create();
+    cctx.set_parameter(CParameter::NbWorkers(2)).unwrap();
+    assert_eq!(cctx.frame_workers(), 2);
+    cctx.ref_dictionary(&dict, DictContentType::RawContent)
+        .unwrap();
+    assert_eq!(cctx.frame_workers(), 0);
+    cctx.load_dictionary_advanced(&dict, DictContentType::RawContent)
+        .unwrap();
+    assert_eq!(cctx.frame_workers(), 2);
+}

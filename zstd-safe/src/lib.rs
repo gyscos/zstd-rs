@@ -44,6 +44,15 @@ pub use zstd_sys::ZSTD_strategy as Strategy;
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
 pub use zstd_sys::ZSTD_frameProgression as FrameProgression;
 
+/// The header of a frame, see [`get_frame_header()`].
+///
+/// `frameContentSize` is [`CONTENTSIZE_UNKNOWN`] when the header does not
+/// give it.
+pub use zstd_sys::ZSTD_FrameHeader as FrameHeader;
+
+/// Whether a frame is a regular zstd frame or a skippable one.
+pub use zstd_sys::ZSTD_FrameType_e as FrameType;
+
 /// Reset directive.
 // pub use zstd_sys::ZSTD_ResetDirective as ResetDirective;
 use core::ffi::{c_char, c_int, c_ulonglong, c_void};
@@ -351,8 +360,9 @@ struct Workers {
     /// The dictionary referenced (`ref_cdict`) is only borrowed, or points
     /// into bytes it only borrows (`CDict::create_by_reference`).
     dict_borrowed: bool,
-    /// zstd holds a copy of a dictionary (`load_dictionary`), which nothing
-    /// could load again after `compress_with_*` replaced it.
+    /// zstd holds a dictionary it loaded (`load_dictionary*`, or
+    /// `ref_dictionary`), which nothing could load again after
+    /// `compress_with_*` replaced it.
     loaded: bool,
     /// The `pending` frame reads borrowed data, so it runs on the calling
     /// thread (or, for a one-shot call, is waited for before returning).
@@ -1069,6 +1079,76 @@ impl<'a> CCtx<'a> {
         if res.is_ok() {
             // The dictionary is copied.
             self.referenced(false, false, !dict.is_empty(), Held::default());
+        }
+        res
+    }
+
+    /// Loads a dictionary, read as `content_type`.
+    ///
+    /// Like [`CCtx::load_dictionary()`], which reads it as
+    /// [`DictContentType::Auto`]: the dictionary is copied.
+    ///
+    /// Wraps the `ZSTD_CCtx_loadDictionary_advanced()` function.
+    pub fn load_dictionary_advanced(
+        &mut self,
+        dict: &[u8],
+        content_type: DictContentType,
+    ) -> SafeResult {
+        self.end_blocks();
+        self.guard_workers()?;
+        // Safety: Just FFI
+        let res = parse_code(unsafe {
+            zstd_sys::ZSTD_CCtx_loadDictionary_advanced(
+                self.0.as_ptr(),
+                ptr_void(dict),
+                dict.len(),
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byCopy,
+                content_type.c_type(),
+            )
+        });
+        if res.is_ok() {
+            self.referenced(false, false, !dict.is_empty(), Held::default());
+        }
+        res
+    }
+
+    /// Loads a dictionary without copying it, read as `content_type`.
+    ///
+    /// The dictionary applies to all compressed frames, until a new one is
+    /// set. It is only borrowed: with worker threads, a streaming frame that
+    /// reads it runs on the calling thread, as with
+    /// [`CCtx::ref_prefix()`], see [`CCtx`](CCtx#worker-threads-and-leaks).
+    /// As with [`CCtx::load_dictionary()`], `compress_with_*()` refuses
+    /// to replace it, with a `dictionary_wrong` error.
+    ///
+    /// Like zstd, this fails with a `stage_wrong` error while a frame is in
+    /// progress: reset the session first (see [`CCtx::wait_for_workers()`]).
+    ///
+    /// Wraps the `ZSTD_CCtx_loadDictionary_advanced()` function.
+    pub fn ref_dictionary<'b>(
+        &mut self,
+        dict: &'b [u8],
+        content_type: DictContentType,
+    ) -> SafeResult
+    where
+        'b: 'a,
+    {
+        self.end_blocks();
+        self.guard_workers()?;
+        // Safety: Just FFI. `dict` outlives the context.
+        let res = parse_code(unsafe {
+            zstd_sys::ZSTD_CCtx_loadDictionary_advanced(
+                self.0.as_ptr(),
+                ptr_void(dict),
+                dict.len(),
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byRef,
+                content_type.c_type(),
+            )
+        });
+        if res.is_ok() {
+            // An empty dictionary references nothing.
+            let loaded = !dict.is_empty();
+            self.referenced(false, loaded, loaded, Held::default());
         }
         res
     }
@@ -2606,6 +2686,54 @@ impl<'a> DCtx<'a> {
         })
     }
 
+    /// Loads a dictionary, read as `content_type`.
+    ///
+    /// Like [`DCtx::load_dictionary()`], which reads it as
+    /// [`DictContentType::Auto`]: the dictionary is copied.
+    ///
+    /// Wraps the `ZSTD_DCtx_loadDictionary_advanced()` function.
+    pub fn load_dictionary_advanced(
+        &mut self,
+        dict: &[u8],
+        content_type: DictContentType,
+    ) -> SafeResult {
+        // Safety: Just FFI
+        parse_code(unsafe {
+            zstd_sys::ZSTD_DCtx_loadDictionary_advanced(
+                self.0.as_ptr(),
+                ptr_void(dict),
+                dict.len(),
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byCopy,
+                content_type.c_type(),
+            )
+        })
+    }
+
+    /// Loads a dictionary without copying it, read as `content_type`.
+    ///
+    /// The dictionary applies to all future frames, until a new one is set.
+    ///
+    /// Wraps the `ZSTD_DCtx_loadDictionary_advanced()` function.
+    pub fn ref_dictionary<'b>(
+        &mut self,
+        dict: &'b [u8],
+        content_type: DictContentType,
+    ) -> SafeResult
+    where
+        'b: 'a,
+    {
+        // Safety: Just FFI. `dict` outlives the context.
+        parse_code(unsafe {
+            zstd_sys::ZSTD_DCtx_loadDictionary_advanced(
+                self.0.as_ptr(),
+                ptr_void(dict),
+                dict.len(),
+                zstd_sys::ZSTD_dictLoadMethod_e::ZSTD_dlm_byRef,
+                content_type.c_type(),
+            )
+        })
+    }
+
     /// Return to "no-dictionary" mode.
     ///
     /// This will disable any dictionary/prefix previously registered for future frames.
@@ -3306,8 +3434,6 @@ impl<'a> DDict<'a> {
     /// # Panics
     ///
     /// If loading this dictionary failed. See [`DDict::try_create_by_reference`].
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn create_by_reference(dict_buffer: &'a [u8]) -> Self {
         Self::try_create_by_reference(dict_buffer)
             .expect("zstd returned null pointer")
@@ -3318,8 +3444,6 @@ impl<'a> DDict<'a> {
     /// The dictionary will keep referencing `dict_buffer`. Returns `None` if
     /// zstd could not load the dictionary, for instance because it starts with
     /// the dictionary magic number but its header is corrupt.
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
     pub fn try_create_by_reference(dict_buffer: &'a [u8]) -> Option<Self> {
         #[cfg(feature = "with-rust-allocator")]
         let ptr = unsafe {
@@ -4040,6 +4164,73 @@ pub fn get_frame_content_size(
     })
 }
 
+/// What [`get_frame_header()`] found at the start of `src`.
+#[derive(Copy, Clone, Debug)]
+pub enum FrameHeaderStatus {
+    /// The whole header was in `src`.
+    Complete(FrameHeader),
+    /// `src` ends before the header does: decoding it needs `src_size`
+    /// bytes of the frame (in total, not in addition to `src`).
+    Incomplete { src_size: usize },
+}
+
+/// Wraps the `ZSTD_getFrameHeader()` function.
+///
+/// `src` is the start of a frame: a regular zstd frame, or a skippable one.
+/// For a skippable frame, `frameContentSize` is the size of its content, and
+/// `dictID` its magic variant (0 to 15).
+///
+/// Fails if `src` does not start with a valid frame header.
+pub fn get_frame_header(src: &[u8]) -> Result<FrameHeaderStatus, ErrorCode> {
+    let mut header = core::mem::MaybeUninit::<FrameHeader>::uninit();
+    // Safety: Just FFI. zstd only reads `src`, and only writes `header`.
+    let code = unsafe {
+        zstd_sys::ZSTD_getFrameHeader(
+            header.as_mut_ptr(),
+            ptr_void(src),
+            src.len(),
+        )
+    };
+    // Safety: zstd filled the header if it returned 0.
+    parse_frame_header(code, || unsafe { header.assume_init() })
+}
+
+/// Wraps the `ZSTD_getFrameHeader_advanced()` function.
+///
+/// Like [`get_frame_header()`], for a frame written in `format`. A
+/// magicless frame cannot be a skippable frame.
+#[cfg(feature = "experimental")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
+pub fn get_frame_header_advanced(
+    src: &[u8],
+    format: FrameFormat,
+) -> Result<FrameHeaderStatus, ErrorCode> {
+    let mut header = core::mem::MaybeUninit::<FrameHeader>::uninit();
+    // Safety: Just FFI. zstd only reads `src`, and only writes `header`.
+    let code = unsafe {
+        zstd_sys::ZSTD_getFrameHeader_advanced(
+            header.as_mut_ptr(),
+            ptr_void(src),
+            src.len(),
+            format.c_format(),
+        )
+    };
+    // Safety: zstd filled the header if it returned 0.
+    parse_frame_header(code, || unsafe { header.assume_init() })
+}
+
+/// Reads the code `ZSTD_getFrameHeader*()` returned; `header` gives the
+/// header it filled, and is only called when it did.
+fn parse_frame_header(
+    code: usize,
+    header: impl FnOnce() -> FrameHeader,
+) -> Result<FrameHeaderStatus, ErrorCode> {
+    Ok(match parse_code(code)? {
+        0 => FrameHeaderStatus::Complete(header()),
+        src_size => FrameHeaderStatus::Incomplete { src_size },
+    })
+}
+
 /// Wraps the `ZSTD_findDecompressedSize()` function.
 ///
 /// `src` should be exactly a sequence of ZSTD frames.
@@ -4140,6 +4331,44 @@ pub enum FrameFormat {
 
     /// Skip the 4 bytes identifying the content as zstd-compressed data.
     Magicless = zstd_sys::ZSTD_format_e::ZSTD_f_zstd1_magicless as u32,
+}
+
+#[cfg(feature = "experimental")]
+impl FrameFormat {
+    fn c_format(self) -> zstd_sys::ZSTD_format_e {
+        match self {
+            FrameFormat::One => zstd_sys::ZSTD_format_e::ZSTD_f_zstd1,
+            FrameFormat::Magicless => {
+                zstd_sys::ZSTD_format_e::ZSTD_f_zstd1_magicless
+            }
+        }
+    }
+}
+
+/// How zstd reads the bytes of a dictionary.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DictContentType {
+    /// A dictionary in zstd's format if the bytes start with its magic
+    /// number, raw content otherwise.
+    Auto,
+
+    /// Raw content, even if the bytes start with the dictionary magic
+    /// number.
+    RawContent,
+
+    /// A dictionary in zstd's format: anything else is an error.
+    FullDict,
+}
+
+impl DictContentType {
+    fn c_type(self) -> zstd_sys::ZSTD_dictContentType_e {
+        use zstd_sys::ZSTD_dictContentType_e::*;
+        match self {
+            DictContentType::Auto => ZSTD_dct_auto,
+            DictContentType::RawContent => ZSTD_dct_rawContent,
+            DictContentType::FullDict => ZSTD_dct_fullDict,
+        }
+    }
 }
 
 #[cfg(feature = "experimental")]

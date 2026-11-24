@@ -1301,8 +1301,18 @@ fn test_continue_after_end() {
     assert!(decompressed == data);
 }
 
+/// Whether zstd refuses more input than the pledged size on the calling
+/// thread (from 1.6.0 on). Before that, a job fails on a worker thread.
+#[cfg(all(feature = "std", feature = "zstdmt"))]
+fn refuses_unpledged_input() -> bool {
+    const PLEDGED_SIZE_CHECK_VERSION: u32 = 10600;
+    zstd_safe::version_number() >= PLEDGED_SIZE_CHECK_VERSION
+}
+
 /// After a job failed, zstd up to 1.5.7 can leave a cleared job behind that
 /// the next multithreaded frame would hand to a worker: none is started.
+/// Later versions refuse the input before any job fails, and the workers
+/// stay usable.
 #[cfg(all(feature = "std", feature = "zstdmt"))]
 #[test]
 fn test_failed_multithreaded_job() {
@@ -1322,17 +1332,27 @@ fn test_failed_multithreaded_job() {
     let mut input = InBuffer::around(&data);
     // (Starting with `ZSTD_e_end` would pledge the size of the input.)
     let mut end_op = ZSTD_e_continue;
-    loop {
+    let code = loop {
         match cctx.compress_stream2(&mut output, &mut input, end_op) {
             Ok(0) if end_op == ZSTD_e_end => {
                 panic!("the frame should have failed")
             }
             Ok(_) => end_op = ZSTD_e_end,
-            Err(_) => break,
+            Err(code) => break code,
         }
-    }
+    };
+    assert!(zstd_safe::is_error_kind(
+        code,
+        zstd_safe::zstd_sys::ZSTD_ErrorCode::ZSTD_error_srcSize_wrong
+    ));
 
     let mut buffer = Vec::with_capacity(64);
+    if refuses_unpledged_input() {
+        cctx.compress2(&mut buffer, b"hello").unwrap();
+        cctx.set_parameter(CParameter::NbWorkers(4)).unwrap();
+        cctx.compress2(&mut buffer, b"hello").unwrap();
+        return;
+    }
     assert!(cctx.compress2(&mut buffer, b"hello").is_err());
     assert!(cctx.set_parameter(CParameter::NbWorkers(4)).is_err());
     cctx.reset(zstd_safe::ResetDirective::SessionOnly).unwrap();
@@ -1343,7 +1363,8 @@ fn test_failed_multithreaded_job() {
 }
 
 /// A job can also fail while `compress2()` waits for the frame it abandons:
-/// it does not start a multithreaded frame then either.
+/// it does not start a multithreaded frame then either. (From zstd 1.6.0 on,
+/// the input is refused before any job starts.)
 #[cfg(all(feature = "std", feature = "zstdmt"))]
 #[test]
 fn test_failed_multithreaded_job_found_by_compress2() {
@@ -1357,14 +1378,19 @@ fn test_failed_multithreaded_job_found_by_compress2() {
     // With no room for output, this returns while the first job, which
     // takes more than the pledged size, still runs.
     let mut empty: [u8; 0] = [];
-    cctx.compress_stream2(
+    let res = cctx.compress_stream2(
         &mut OutBuffer::around(&mut empty[..]),
         &mut InBuffer::around(&data),
         ZSTD_e_continue,
-    )
-    .unwrap();
+    );
 
     let mut buffer = Vec::with_capacity(64);
+    if refuses_unpledged_input() {
+        assert!(res.is_err());
+        cctx.compress2(&mut buffer, b"hello").unwrap();
+        return;
+    }
+    res.unwrap();
     assert!(cctx.compress2(&mut buffer, b"hello").is_err());
     assert!(cctx.compress2(&mut buffer, b"hello").is_err());
     cctx.set_parameter(CParameter::NbWorkers(0)).unwrap();

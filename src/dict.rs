@@ -159,11 +159,8 @@ impl DecoderDictionary<'static> {
 }
 
 impl<'a> DecoderDictionary<'a> {
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    /// Create prepared dictionary for decompression
-    ///
-    /// Only available with the `experimental` feature. Use `DecoderDictionary::copy` otherwise.
+    /// Create prepared dictionary for decompression, referencing `dict`
+    /// without copying it.
     ///
     /// # Panics
     ///
@@ -173,13 +170,8 @@ impl<'a> DecoderDictionary<'a> {
         Self::try_new(dict).expect("zstd returned null pointer")
     }
 
-    #[cfg(feature = "experimental")]
-    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "experimental")))]
-    /// Create prepared dictionary for decompression, or an error if zstd
-    /// cannot load it.
-    ///
-    /// Only available with the `experimental` feature. Use
-    /// `DecoderDictionary::try_copy` otherwise.
+    /// Create prepared dictionary for decompression, referencing `dict`
+    /// without copying it, or an error if zstd cannot load it.
     pub fn try_new(dict: &'a [u8]) -> std::io::Result<Self> {
         let ddict = zstd_safe::DDict::try_create_by_reference(dict)
             .ok_or_else(invalid_dictionary)?;

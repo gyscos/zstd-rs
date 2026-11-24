@@ -16,8 +16,12 @@ fn try_copy_rejects_an_invalid_dictionary() {
 
 #[cfg(feature = "experimental")]
 #[test]
-fn try_new_rejects_an_invalid_dictionary() {
+fn try_new_rejects_an_invalid_encoder_dictionary() {
     assert!(EncoderDictionary::try_new(&CORRUPT, 3).is_err());
+}
+
+#[test]
+fn try_new_rejects_an_invalid_decoder_dictionary() {
     assert!(DecoderDictionary::try_new(&CORRUPT).is_err());
 }
 
